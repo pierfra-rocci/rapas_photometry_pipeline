@@ -3,19 +3,73 @@ Changelog
 
 This document records all notable changes to RAPAS Photometry Pipeline.
 
-Version 1.7.3 (Pre-final)
--------------------------
+Version 1.7.5
+-------------
+
+**Released: May 19, 2026**
+
+**Photometric Calibration**
+
+*   **Gaia VizieR fallback**: When the Gaia TAP service is unavailable or
+    returns an error, the pipeline now automatically retries the query against
+    the VizieR mirror with a reduced column set, keeping photometric calibration
+    available during TAP outages.
+*   **Zero-point calibration improvements**:
+
+    *   Sigma clipping is applied before the final zero-point fit.
+    *   Sources with residuals beyond ±0.5 mag from the median are excluded
+        before the fit.
+    *   Aperture 1.3× FWHM is used as the primary reference aperture for
+        zero-point determination.
+
+**New Functions**
+
+*   **``plot_astrocolibri_cutouts()``**: Generates postage-stamp cutout images
+    for Astro-Colibri transient candidates directly from the science frame,
+    enabling rapid visual inspection alongside catalog alerts.
+*   **``drop_legacy_magnitude_columns()``**: Utility to strip the legacy
+    (non-prefixed) magnitude columns from the output catalog when only
+    filter-prefixed aliases are needed.
+
+**Robustness & Testing**
+
+*   **Backend detection improvements**: Enhanced probing and fallback logic for
+    FastAPI / legacy backend auto-detection; new ``tests/test_backend_detection.py``
+    covers probe and fallback scenarios.
+*   **Graceful stdpipe import handling**: ``ImportError`` from optional stdpipe
+    components is caught and reported cleanly rather than crashing the module load.
+
+**Infrastructure**
+
+*   **Gunicorn UvicornWorker by default**: ``gunicorn.conf.py`` now sets
+    ``uvicorn.workers.UvicornWorker``, preventing WSGI/ASGI mismatches.
+*   **Dependency cleanup**: Removed unused ``mpmath`` dependency; tightened
+    ``setuptools`` version constraints for reproducible builds.
+
+**UI & Logging**
+
+*   **Consistent Streamlit message levels**: Messages use success / warning /
+    info / error severity throughout the pipeline.
+*   **Reduced log noise**: Verbose debug messages removed from the hot path.
+*   **FITS excluded from download list**: ``.fits`` files are no longer shown
+    among the per-analysis download buttons.
+*   **FWHM sampling**: Source sample size increased to 1 250 for better seeing
+    measurement stability.
+
+**Documentation**
+
+*   New FastAPI + Gunicorn troubleshooting section added to
+    ``docs/troubleshooting.rst``.
+
+Version 1.7.3
+-------------
 
 **Released: April 21, 2026**
 
-*   **Version bump to pre-final**: Internal consolidation of changes from 1.7.2
-    in preparation for the final stable release.
 *   **Photometry catalog aliases**: Exported calibrated magnitude columns now
     also include filter-prefixed aliases derived from the selected calibration
     band in ``GAIA_BANDS`` (for example ``rapasg_psf_mag``), while preserving
     the legacy column names for compatibility.
-*   ``release`` flag in ``src/__version__.py`` remains ``False`` until the
-    final stable tag is cut.
 
 Version 1.7.2
 -------------
