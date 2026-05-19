@@ -316,11 +316,30 @@ Firefox may have compatibility issues with Aladin Lite v3 due to WebAssembly loa
 - Check the generated log file to see which catalog steps completed, timed out,
   or were skipped.
 
-## Recent changes / Changelog (last update: 2026-04-21)
+## Recent changes / Changelog (last update: 2026-05-19)
 
-### Current Release (1.7.3)
+### Current Release (1.7.5)
 
-- **Pre-final release**: Internal consolidation of changes from 1.7.2 in preparation for the stable release.
+- **Gaia VizieR fallback**: When the Gaia TAP service is unavailable or returns an error, the pipeline automatically retries the query against the VizieR mirror with a reduced column set, maintaining photometric calibration availability during TAP outages.
+- **Zero-point calibration improvements**:
+  - Sigma clipping is now applied before the final zero-point fit for more robust outlier rejection
+  - Sources with residuals beyond ±0.5 mag from the median are excluded before the fit
+  - Aperture 1.3× FWHM is used as the primary reference aperture for zero-point determination
+- **New `plot_astrocolibri_cutouts()` function**: Generates postage-stamp cutout images for Astro-Colibri transient candidates directly from the science frame, enabling rapid visual inspection.
+- **New `drop_legacy_magnitude_columns()` helper**: Utility function to strip the legacy (non-prefixed) magnitude columns from the output catalog when only filter-prefixed aliases are needed.
+- **Backend detection improvements**: Enhanced error handling and detection logic for the FastAPI/legacy backend auto-detection; new `tests/test_backend_detection.py` test suite covers probe and fallback scenarios.
+- **Gunicorn uses UvicornWorker by default**: `gunicorn.conf.py` now sets `uvicorn.workers.UvicornWorker`, preventing WSGI/ASGI mismatches when the API is deployed with Gunicorn.
+- **Graceful stdpipe import handling**: `ImportError` from optional `stdpipe` components is caught and reported cleanly rather than crashing the module load.
+- **Dependency cleanup**: Removed the unused `mpmath` dependency; tightened `setuptools` version constraints for reproducible builds.
+- **FWHM sampling tuned**: Source sample size for FWHM estimation increased to 1 250 for better seeing measurement stability.
+- **UI and logging improvements**:
+  - Streamlit messages throughout the pipeline use consistent severity levels (success / warning / info / error)
+  - Verbose debug logging removed from the hot path to reduce log noise
+  - `.fits` files are excluded from the per-analysis download buttons to keep the archive list clean
+- **Troubleshooting docs**: New FastAPI + Gunicorn troubleshooting section added to `docs/troubleshooting.rst`.
+
+### Version 1.7.3
+
 - **Photometry catalog aliases**: exported calibrated magnitude columns now also include filter-prefixed aliases derived from the selected calibration band in `GAIA_BANDS` (for example `rapasg_psf_mag`, `rapasbp_aperture_mag_1_5`) while keeping the legacy column names for compatibility.
 
 ### Version 1.7.2
