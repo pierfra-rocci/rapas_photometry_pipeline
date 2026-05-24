@@ -183,7 +183,7 @@ if "matomo_injected" not in st.session_state:
     inject_matomo_tracking(site_id="83", matomo_url="https://analytics.obspm.fr/")
     st.session_state.matomo_injected = True
 
-# Custom CSS to control plot display size
+# Custom CSS to control plot display size and fix sidebar width
 st.markdown(
     f"""
 <style>
@@ -200,6 +200,14 @@ st.markdown(
     .element-container img {{
         max-width: 100% !important;
         height: auto !important;
+    }}
+    [data-testid="stSidebar"] {{
+        min-width: 480px !important;
+        max-width: 480px !important;
+        width: 480px !important;
+    }}
+    [data-testid="stSidebarResizeHandle"] {{
+        display: none !important;
     }}
 </style>
 """,
@@ -461,6 +469,8 @@ if st.session_state.logged_in:
     st.sidebar.markdown("")
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"**Logged in as:** _{st.session_state.username}_")
+    if st.sidebar.button("📋 View Pipeline Logs"):
+        st.switch_page("pages/showlogs.py")
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
         st.session_state.username = None
@@ -1658,9 +1668,7 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
                                     candidates_df.to_csv(
                                         transients_csv_path, index=False
                                     )
-                                    st.success(
-                                        f"Transient candidates saved to {os.path.basename(transients_csv_path)}"
-                                    )
+                                    st.success("Transient candidates saved")
                                 else:
                                     st.warning("No transient candidates found.")
                             except Exception as e:
