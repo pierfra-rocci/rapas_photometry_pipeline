@@ -18,6 +18,7 @@ from astropy.visualization import ZScaleInterval, ImageNormalize
 from src.tools_app import (
     initialize_session_state,
     load_fits_data,
+    load_tutorial_text,
     plot_magnitude_distribution,
     update_observatory_from_fits_header,
     display_catalog_in_aladin,
@@ -84,6 +85,24 @@ if getattr(sys, "frozen", False):
         )
 
 warnings.filterwarnings("ignore")
+
+
+def _build_persisted_upload(temp_path: str, file_name: str) -> SimpleNamespace:
+    """Return a lightweight file-like wrapper backed by a temp file."""
+    tmp = SimpleNamespace()
+
+    def _read():
+        with open(temp_path, "rb") as handle:
+            return handle.read()
+
+    def _getvalue():
+        with open(temp_path, "rb") as handle:
+            return handle.read()
+
+    tmp.read = _read
+    tmp.getvalue = _getvalue
+    tmp.name = file_name
+    return tmp
 
 if "backend_status_message" not in st.session_state:
     st.session_state.backend_status_message = "Determining backend..."
@@ -227,14 +246,15 @@ with st.expander("📘 Quick Start Tutorial"):
     tab_en, tab_fr = st.tabs(["🇬🇧 English", "🇫🇷 Français"])
     with tab_en:
         try:
-            with open(os.path.join("docs", "TUTORIAL.md"), "r", encoding="utf-8") as f:
-                st.markdown(f.read(), unsafe_allow_html=True)
+            st.markdown(load_tutorial_text("TUTORIAL.md"), unsafe_allow_html=True)
         except FileNotFoundError:
             st.warning("TUTORIAL.md not found. It should be in the `docs` folder.")
     with tab_fr:
         try:
-            with open(os.path.join("docs", "TUTORIAL_FR.md"), "r", encoding="utf-8") as f:
-                st.markdown(f.read(), unsafe_allow_html=True)
+            st.markdown(
+                load_tutorial_text("TUTORIAL_FR.md"),
+                unsafe_allow_html=True,
+            )
         except FileNotFoundError:
             st.warning("TUTORIAL_FR.md not found. It should be in the `docs` folder.")
 
@@ -469,8 +489,9 @@ if st.session_state.logged_in:
     st.sidebar.markdown("")
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"**Logged in as:** _{st.session_state.username}_")
-    if st.sidebar.button("📋 View Pipeline Logs"):
-        st.switch_page("pages/showlogs.py")
+    if st.session_state.username in ("admin", "rsavalle"):
+        if st.sidebar.button("📋 View Pipeline Logs"):
+            st.switch_page("pages/showlogs.py")
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
         st.session_state.username = None
@@ -498,8 +519,8 @@ st.sidebar.markdown(
 
 ###########################################################################
 
-# Persistent uploader: keep uploaded file bytes across reruns until cleared
-if "uploaded_bytes" not in st.session_state:
+# Persistent uploader: keep temp file path across reruns instead of raw bytes
+if "uploaded_temp_path" not in st.session_state:
     uploaded = st.file_uploader(
         "Before uploading the image, check all the parameters on the sidebar. ",
         type=["fits", "fit", "fts", "fits.gz"],
@@ -507,29 +528,41 @@ if "uploaded_bytes" not in st.session_state:
     )
     if uploaded:
         try:
-            st.session_state["uploaded_bytes"] = uploaded.getvalue()
+            suffix = os.path.splitext(uploaded.name)[1]
+            system_tmp = tempfile.gettempdir()
+            username = st.session_state.get("username", "anonymous")
+            user_tmp_dir = os.path.join(system_tmp, username)
+            os.makedirs(user_tmp_dir, exist_ok=True)
+
+            with tempfile.NamedTemporaryFile(
+                delete=False,
+                suffix=suffix,
+                dir=user_tmp_dir,
+            ) as tmp_file:
+                tmp_file.write(uploaded.getvalue())
+                st.session_state["uploaded_temp_path"] = tmp_file.name
+
             st.session_state["uploaded_name"] = uploaded.name
-            st.session_state["uploaded"] = uploaded
-            science_file = uploaded
+            science_file = _build_persisted_upload(
+                st.session_state["uploaded_temp_path"],
+                uploaded.name,
+            )
         except Exception:
             st.error("Failed to persist uploaded file. Please re-upload.")
+            st.session_state.pop("uploaded_temp_path", None)
             science_file = None
     else:
         science_file = None
 else:
-    tmp = SimpleNamespace()
-    tmp._bytes = st.session_state.get("uploaded_bytes")
-
-    def _read():
-        return tmp._bytes
-
-    def _getvalue():
-        return tmp._bytes
-
-    tmp.read = _read
-    tmp.getvalue = _getvalue
-    tmp.name = st.session_state.get("uploaded_name", "uploaded.fits")
-    science_file = tmp
+    temp_path = st.session_state.get("uploaded_temp_path")
+    if temp_path and os.path.exists(temp_path):
+        science_file = _build_persisted_upload(
+            temp_path,
+            st.session_state.get("uploaded_name", "uploaded.fits"),
+        )
+    else:
+        st.session_state.pop("uploaded_temp_path", None)
+        science_file = None
 
 science_file_path = None
 
@@ -581,22 +614,26 @@ if st.session_state.get("final_phot_table") is not None:
 
 # Run the full analysis pipeline only if the button was clicked
 if st.session_state.run_analysis_pipeline and science_file is not None:
-    suffix = os.path.splitext(science_file.name)[1]
+    persisted_upload_path = st.session_state.get("uploaded_temp_path")
+    if persisted_upload_path and os.path.exists(persisted_upload_path):
+        science_file_path = persisted_upload_path
+    else:
+        suffix = os.path.splitext(science_file.name)[1]
 
-    # Get the system temp directory
-    system_tmp = tempfile.gettempdir()
-    username = st.session_state.get("username", "anonymous")
-    user_tmp_dir = os.path.join(system_tmp, username)
+        # Get the system temp directory
+        system_tmp = tempfile.gettempdir()
+        username = st.session_state.get("username", "anonymous")
+        user_tmp_dir = os.path.join(system_tmp, username)
 
-    # Create the user-specific temp directory if it doesn't exist
-    os.makedirs(user_tmp_dir, exist_ok=True)
+        # Create the user-specific temp directory if it doesn't exist
+        os.makedirs(user_tmp_dir, exist_ok=True)
 
-    # Now use this directory for the temp file
-    with tempfile.NamedTemporaryFile(
-        delete=False, suffix=suffix, dir=user_tmp_dir
-    ) as tmp_file:
-        tmp_file.write(science_file.getvalue())
-        science_file_path = tmp_file.name
+        # Now use this directory for the temp file
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=suffix, dir=user_tmp_dir
+        ) as tmp_file:
+            tmp_file.write(science_file.getvalue())
+            science_file_path = tmp_file.name
 
     st.session_state["science_file_path"] = science_file_path
     st.session_state.files_loaded["science_file"] = science_file
@@ -604,6 +641,8 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
     base_filename = get_base_filename(science_file)
     st.session_state["base_filename"] = base_filename
     st.session_state["log_buffer"] = initialize_log(science_file.name)
+    st.session_state["log_summary_written"] = False
+    st.session_state["last_saved_log_content"] = None
 
 if st.session_state.run_analysis_pipeline and science_file is not None:
     with st.spinner("Loading FITS data..."):
@@ -1747,38 +1786,42 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
                 st.warning(
                     "Could not determine coordinates from image header. Cannot display ESASky or Aladin Viewer."
                 )
-            
+
             # Reset the button flag at the end of successful pipeline execution
             st.session_state.run_analysis_pipeline = False
 else:
-    # Try connecting to GAIA server at startup
-    try_gaia_server()
+    # Try connecting to GAIA server once per session.
+    if not st.session_state.get("gaia_server_checked", False):
+        st.session_state["gaia_server_available"] = try_gaia_server()
+        st.session_state["gaia_server_checked"] = True
 
 if "log_buffer" in st.session_state and st.session_state["log_buffer"] is not None:
     log_buffer = st.session_state["log_buffer"]
     log_filename = f"{st.session_state['base_filename']}.log"
     log_filepath = os.path.join(output_dir, log_filename)
 
-    # Get parameters from session state
-    seeing = st.session_state.analysis_parameters["seeing"]
-    threshold_sigma = st.session_state.analysis_parameters["threshold_sigma"]
-    fwhm_radius_factor = st.session_state.analysis_parameters.get("fwhm_radius_factor", 1.5)
-    detection_mask = st.session_state.analysis_parameters["detection_mask"]
-    filter_band = st.session_state.analysis_parameters["filter_band"]
-    filter_max_mag = 21.0
+    if not st.session_state.get("log_summary_written", False):
+        # Get parameters from session state
+        filter_band = st.session_state.analysis_parameters["filter_band"]
+        filter_max_mag = 21.0
 
-    write_to_log(
-        log_buffer, f"Elevation: {st.session_state.observatory_data['elevation']} m"
-    )
+        write_to_log(
+            log_buffer,
+            f"Elevation: {st.session_state.observatory_data['elevation']} m",
+        )
 
-    write_to_log(log_buffer, "Gaia Parameters", level="INFO")
-    write_to_log(log_buffer, f"Gaia Band: {filter_band}")
-    write_to_log(log_buffer, f"Gaia Max Magnitude: {filter_max_mag}")
+        write_to_log(log_buffer, "Gaia Parameters", level="INFO")
+        write_to_log(log_buffer, f"Gaia Band: {filter_band}")
+        write_to_log(log_buffer, f"Gaia Max Magnitude: {filter_max_mag}")
 
-    write_to_log(log_buffer, "Calibration Options", level="INFO")
+        write_to_log(log_buffer, "Calibration Options", level="INFO")
+        write_to_log(log_buffer, "Processing completed", level="INFO")
+        st.session_state["log_summary_written"] = True
 
-    # Finalize and save the log
-    write_to_log(log_buffer, "Processing completed", level="INFO")
-    with open(log_filepath, "w", encoding="utf-8") as f:
-        f.write(log_buffer.getvalue())
-    write_to_log(log_buffer, f"Log saved to {log_filepath}")
+    # Save the log only if content changed.
+    log_content = log_buffer.getvalue()
+    if st.session_state.get("last_saved_log_content") != log_content:
+        with open(log_filepath, "w", encoding="utf-8") as f:
+            f.write(log_content)
+        st.session_state["last_saved_log_content"] = log_content
+        write_to_log(log_buffer, f"Log saved to {log_filepath}")
