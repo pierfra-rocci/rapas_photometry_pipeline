@@ -9,6 +9,10 @@ from astropy.wcs import WCS
 import numpy as np
 import streamlit as st
 from astropy.table import Table
+
+# NumPy 2.0 removed np.in1d; restore it as an alias for np.isin for stdpipe compatibility
+if not hasattr(np, "in1d"):
+    np.in1d = np.isin  # type: ignore[attr-defined]
 from astropy.time import Time
 from astroquery.imcce import Skybot
 from src.tools_pipeline import get_prefixed_photometry_column
@@ -547,7 +551,13 @@ def plot_astrocolibri_cutouts(
         ac_type = row.get("astrocolibri_type", "")
         ac_class = row.get("astrocolibri_classification", "")
 
-        cand_dict = {"ra": ra, "dec": dec, "x": row.get("xcenter", 0), "y": row.get("ycenter", 0)}
+        cand_dict = {
+            "ra": ra,
+            "dec": dec,
+            # Handle photutils 3.0 column rename: xcenter/ycenter -> x_center/y_center
+            "x": row.get("xcenter") if "xcenter" in row.index else row.get("x_center", 0.0),
+            "y": row.get("ycenter") if "ycenter" in row.index else row.get("y_center", 0.0),
+        }
 
         try:
             cutout = cutouts.get_cutout(image, cand_dict, 25, header=header)
