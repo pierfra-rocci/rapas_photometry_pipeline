@@ -107,12 +107,14 @@ def perform_psf_photometry(
         # Required columns (raise helpful error if missing)
         if "flux" not in photo_table.colnames:
             raise ValueError("photo_table missing required column 'flux'")
-        if (
-            "xcentroid" not in photo_table.colnames
-            or "ycentroid" not in photo_table.colnames
-        ):
+        # Handle photutils 3.0 column rename: canonical name is 'x_centroid' (with
+        # underscore), but old code expects 'xcentroid'. Use whichever is present.
+        _xcol = "x_centroid" if "x_centroid" in photo_table.colnames else "xcentroid"
+        _ycol = "y_centroid" if "y_centroid" in photo_table.colnames else "ycentroid"
+        if _xcol not in photo_table.colnames or _ycol not in photo_table.colnames:
             raise ValueError(
-                "photo_table must contain 'xcentroid' and 'ycentroid' columns"
+                "photo_table must contain 'xcentroid'/'x_centroid' and "
+                "'ycentroid'/'y_centroid' columns"
             )
 
         # ========== EARLY FILTERING STEP ==========
@@ -121,8 +123,8 @@ def perform_psf_photometry(
 
         # Get initial arrays from full table
         flux_initial = np.asarray(photo_table["flux"])
-        xcentroid_initial = np.asarray(photo_table["xcentroid"])
-        ycentroid_initial = np.asarray(photo_table["ycentroid"])
+        xcentroid_initial = np.asarray(photo_table[_xcol])
+        ycentroid_initial = np.asarray(photo_table[_ycol])
 
         # If we have too many sources, keep only the brightest ones before detailed filtering
         photo_table_for_psf = photo_table  # Start with full table
@@ -192,8 +194,8 @@ def perform_psf_photometry(
         flux = _col_arr(photo_table_for_psf, "flux")
         roundness1 = _col_arr(photo_table_for_psf, "roundness1", np.nan)
         sharpness = _col_arr(photo_table_for_psf, "sharpness", np.nan)
-        xcentroid = _col_arr(photo_table_for_psf, "xcentroid")
-        ycentroid = _col_arr(photo_table_for_psf, "ycentroid")
+        xcentroid = _col_arr(photo_table_for_psf, _xcol)
+        ycentroid = _col_arr(photo_table_for_psf, _ycol)
 
         # Additional attributes for improved filtering
         # Try to get source properties that indicate size and shape
@@ -269,8 +271,8 @@ def perform_psf_photometry(
             snr_criteria[valid_snr] = snr[valid_snr] >= snr_threshold
         else:
             snr_criteria = np.ones(n_sources, dtype=bool)  # Skip S/N filtering
-        n_snr_pass = np.sum(snr_criteria)
-        st.write(f"  ✓ S/N ≥ {snr_threshold:.1f}: {n_snr_pass} high-S/N sources")
+        # n_snr_pass = np.sum(snr_criteria)
+        # st.write(f"  ✓ S/N ≥ {snr_threshold:.1f}: {n_snr_pass} high-S/N sources")
 
         # Define flux filtering criteria: keep BRIGHT, unsaturated stars
         # Focus on top percentile of flux distribution (bright stars have better S/N)
@@ -280,10 +282,10 @@ def perform_psf_photometry(
         flux_min = max(flux_25, flux_median)  # At least median brightness
         flux_max = flux_90  # Stay below 90th percentile (likely saturated)
 
-        st.write(
-            f"Target flux range: {flux_min:.1f} "
-            f"→ {flux_max:.1f} (25th-90th percentile, bright stars)"
-        )
+        # st.write(
+        #     f"Target flux range: {flux_min:.1f} "
+        #     f"→ {flux_max:.1f} (25th-90th percentile, bright stars)"
+        # )
 
         # Create individual boolean masks with explicit NaN handling
         valid_flux = np.isfinite(flux)
@@ -312,8 +314,8 @@ def perform_psf_photometry(
         flux_criteria[valid_flux] = (flux[valid_flux] >= flux_min) & (
             flux[valid_flux] <= flux_max
         )
-        n_flux_pass = np.sum(flux_criteria)
-        st.write(f"  ✓ Flux range: {n_flux_pass} sources")
+        # n_flux_pass = np.sum(flux_criteria)
+        # st.write(f"  ✓ Flux range: {n_flux_pass} sources")
 
         # ========== SATURATION FILTERING (STRICTER) ==========
         # Reject sources with peak values close to saturation
@@ -330,11 +332,11 @@ def perform_psf_photometry(
                 peak_85 * 0.95, img_max * 0.85
             )  # 5% below 85th or 85% of max
             saturation_criteria[valid_peak] = peak[valid_peak] < saturation_limit
-            n_sat_pass = np.sum(saturation_criteria)
-            st.write(
-                f"  ✓ Saturation check (strict): {n_sat_pass} "
-                f"unsaturated sources (limit: {saturation_limit:.0f}, img_max: {img_max:.0f})"
-            )
+            # n_sat_pass = np.sum(saturation_criteria)
+            # st.write(
+            #     f"  ✓ Saturation check (strict): {n_sat_pass} "
+            #     f"unsaturated sources (limit: {saturation_limit:.0f}, img_max: {img_max:.0f})"
+            # )
         else:
             # No peak data available; use image maximum as fallback
             img_max = np.nanmax(img)
@@ -357,11 +359,11 @@ def perform_psf_photometry(
             size_criteria[valid_fwhm] = (fwhm_sources[valid_fwhm] >= size_min) & (
                 fwhm_sources[valid_fwhm] <= size_max
             )
-            n_size_pass = np.sum(size_criteria)
-            st.write(
-                f"  ✓ Size/FWHM filter: {n_size_pass} "
-                f"point-like sources ({size_min:.2f}–{size_max:.2f} px)"
-            )
+            # n_size_pass = np.sum(size_criteria)
+            # st.write(
+            #     f"  ✓ Size/FWHM filter: {n_size_pass} "
+            #     f"point-like sources ({size_min:.2f}–{size_max:.2f} px)"
+            # )
         else:
             st.write("  ⓘ size filtering skipped")
 
@@ -371,8 +373,8 @@ def perform_psf_photometry(
         roundness_criteria[valid_roundness] = (
             np.abs(roundness1[valid_roundness]) < 0.4
         )  # Relaxed from 0.25
-        n_roundness_pass = np.sum(roundness_criteria)
-        st.write(f"  ✓ Roundness (|r₁| < 0.4): {n_roundness_pass} sources")
+        # n_roundness_pass = np.sum(roundness_criteria)
+        # st.write(f"  ✓ Roundness (|r₁| < 0.4): {n_roundness_pass} sources")
 
         # Add axis-ratio check if semi-major/minor axes available
         ellipticity_criteria = np.ones(n_sources, dtype=bool)
@@ -385,10 +387,8 @@ def perform_psf_photometry(
             ellipticity_criteria[valid_axes] = (
                 ellipticity < 0.3
             )  # Reject highly elongated objects
-            n_ellipticity_pass = np.sum(ellipticity_criteria)
-            st.write(f"  ✓ Ellipticity (ε < 0.3): {n_ellipticity_pass} sources")
-        else:
-            st.write("  ⓘ No axis data available; ellipticity filter skipped")
+            # n_ellipticity_pass = np.sum(ellipticity_criteria)
+            # st.write(f"  ✓ Ellipticity (ε < 0.3): {n_ellipticity_pass} sources")
 
         # Sharpness filtering DISABLED - too restrictive
         # sharpness_criteria = np.zeros(n_sources, dtype=bool)
@@ -396,7 +396,6 @@ def perform_psf_photometry(
         # n_sharpness_pass = np.sum(sharpness_criteria)
         # st.write(f"  ✓ Sharpness (sharp > 0.45): {n_sharpness_pass} sources")
         sharpness_criteria = np.ones(n_sources, dtype=bool)  # Accept all (disabled)
-        st.write("  ⓘ Sharpness filtering: disabled")
 
         # ========== CROWDING/ISOLATION FILTERING ==========
         # Reject stars with bright neighbors within isolation radius
@@ -438,12 +437,12 @@ def perform_psf_photometry(
                     if bright_neighbors > 2:
                         pass  # Too crowded, reject
 
-        n_crowding_pass = np.sum(crowding_criteria)
-        st.write(
-            f"  ✓ Isolation (no bright neighbors within "
-            f"{neighbor_radius}px, <{magnitude_threshold:.1f}Δmag): "
-            f"{n_crowding_pass} sources"
-        )
+        # n_crowding_pass = np.sum(crowding_criteria)
+        # st.write(
+        #     f"  ✓ Isolation (no bright neighbors within "
+        #     f"{neighbor_radius}px, <{magnitude_threshold:.1f}Δmag): "
+        #     f"{n_crowding_pass} sources"
+        # )
 
         # ========== EDGE CRITERIA ==========
         # Keep away from edges where PSF is affected
@@ -456,8 +455,8 @@ def perform_psf_photometry(
             & (ycentroid[valid_coords] > edge_buffer)
             & (ycentroid[valid_coords] < img.shape[0] - edge_buffer)
         )
-        n_edge_pass = np.sum(edge_criteria)
-        st.write(f"  ✓ Not near edges (>{edge_buffer:.0f}px): {n_edge_pass} sources")
+        # n_edge_pass = np.sum(edge_criteria)
+        # st.write(f"  ✓ Not near edges (>{edge_buffer:.0f}px): {n_edge_pass} sources")
 
         # ========== LOCAL BACKGROUND FLATNESS CHECK ==========
         # Ensure stars have flat local background (no gradients)
@@ -531,11 +530,11 @@ def perform_psf_photometry(
                 if bkg_variation > 0.15:  # More than 15% variation
                     background_criteria[i] = False
 
-        n_bkg_pass = np.sum(background_criteria)
-        st.write(
-            f"  ✓ Flat local background: {n_bkg_pass}/{n_background_checked} "
-            f"sources with uniform surroundings"
-        )
+        # n_bkg_pass = np.sum(background_criteria)
+        # st.write(
+        #     f"  ✓ Flat local background: {n_bkg_pass}/{n_background_checked} "
+        #     f"sources with uniform surroundings"
+        # )
 
         # Combine all criteria with validity checks (including S/N and background)
         good_stars_mask = (
@@ -554,23 +553,23 @@ def perform_psf_photometry(
 
         # ===== APPLY THE MASK =====
         filtered_photo_table = photo_table_for_psf[good_stars_mask]
-        st.write(f"Flux range: {flux_min:.1f} -> {flux_max:.1f}")
-        st.write(f"Stars after quality filtering: {len(filtered_photo_table)}")
+        # st.write(f"Flux range: {flux_min:.1f} -> {flux_max:.1f}")
+        # st.write(f"Stars after quality filtering: {len(filtered_photo_table)}")
 
         if len(filtered_photo_table) >= 5:
             try:
-                x_vals = np.asarray(filtered_photo_table["xcentroid"])
-                y_vals = np.asarray(filtered_photo_table["ycentroid"])
+                x_vals = np.asarray(filtered_photo_table[_xcol])
+                y_vals = np.asarray(filtered_photo_table[_ycol])
                 x_span = float(np.nanmax(x_vals) - np.nanmin(x_vals))
                 y_span = float(np.nanmax(y_vals) - np.nanmin(y_vals))
                 field_width = float(img.shape[1])
                 field_height = float(img.shape[0])
                 coverage_x = x_span / field_width if field_width > 0 else 0.0
                 coverage_y = y_span / field_height if field_height > 0 else 0.0
-                st.write(
-                    "Spatial coverage (normalized widths): "
-                    f"X={coverage_x:.2f}, Y={coverage_y:.2f}"
-                )
+                # st.write(
+                #     "Spatial coverage (normalized widths): "
+                #     f"X={coverage_x:.2f}, Y={coverage_y:.2f}"
+                # )
                 coverage_threshold = 0.35
                 if coverage_x < coverage_threshold or coverage_y < coverage_threshold:
                     st.warning(
@@ -622,8 +621,8 @@ def perform_psf_photometry(
     try:
         stars_table = Table()
         # extract_stars expects 'x' and 'y' column names
-        stars_table["x"] = filtered_photo_table["xcentroid"]
-        stars_table["y"] = filtered_photo_table["ycentroid"]
+        stars_table["x"] = filtered_photo_table[_xcol]
+        stars_table["y"] = filtered_photo_table[_ycol]
     except Exception as e:
         st.error(f"Error preparing star positions table: {e}")
         raise
@@ -653,13 +652,12 @@ def perform_psf_photometry(
                 )
 
         n_stars = len(stars)
-        st.write(f"{n_stars} stars extracted for PSF model.")
+        st.success(f"{n_stars} stars extracted for PSF model.")
 
         # basic inspection of cutouts for NaN/all-zero
         if hasattr(stars, "data") and stars.data is not None:
             if isinstance(stars.data, list) and len(stars.data) > 0:
                 has_nan = any(np.isnan(star_data).any() for star_data in stars.data)
-                st.write(f"NaN : {has_nan}")
             else:
                 st.write("Stars data is empty or not a list")
         else:
@@ -1020,8 +1018,8 @@ def perform_psf_photometry(
         )
 
         initial_params = Table()
-        initial_params["x"] = photo_table["xcentroid"]
-        initial_params["y"] = photo_table["ycentroid"]
+        initial_params["x"] = photo_table[_xcol]
+        initial_params["y"] = photo_table[_ycol]
         if "flux" in photo_table.colnames:
             initial_params["flux"] = photo_table["flux"]
         initial_params["x_0"] = initial_params["x"]
