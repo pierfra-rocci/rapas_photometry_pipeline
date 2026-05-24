@@ -52,6 +52,9 @@ maxMessageSize = 100
 # Default: false
 runOnSave = false
 
+# Time in seconds to keep disconnected sessions alive before cleanup.
+disconnectedSessionTTL = 60
+
 [browser]
 # Whether to send usage statistics to Streamlit.
 # Default: true
