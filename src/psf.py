@@ -157,9 +157,6 @@ def perform_psf_photometry(
             st.write(
                 f"Pre-selected {len(photo_table_for_psf)} brightest sources for PSF model construction"
             )
-            st.write(
-                f"   (Final photometry will be performed on all {len(photo_table_all_sources)} original sources)"
-            )
 
         # ---------- START REPLACEMENT BLOCK ----------
         # NOW work with photo_table_for_psf for all subsequent operations
@@ -233,9 +230,9 @@ def perform_psf_photometry(
                 snr = np.full(n_sources, np.nan)
                 snr[valid_flux_err] = flux[valid_flux_err] / flux_err[valid_flux_err]
                 valid_snr = np.isfinite(snr)
-                st.write(
-                    f"  ⓘ S/N computed from flux/flux_err for {np.sum(valid_snr)} sources"
-                )
+                # st.write(
+                #     f"  ⓘ S/N computed from flux/flux_err for {np.sum(valid_snr)} sources"
+                # )
             else:
                 # Approximate S/N from flux assuming Poisson noise: S/N ≈ sqrt(flux)
                 # This is a rough approximation for photon-limited regime
@@ -244,9 +241,9 @@ def perform_psf_photometry(
                 snr[valid_positive_flux] = np.sqrt(flux[valid_positive_flux])
                 valid_snr = np.isfinite(snr)
                 snr_is_approximated = True
-                st.write(
-                    f"  ⓘ S/N approximated as √flux for {np.sum(valid_snr)} sources (Poisson assumption)"
-                )
+                # st.write(
+                #     f"  ⓘ S/N approximated as √flux for {np.sum(valid_snr)} sources (Poisson assumption)"
+                # )
 
         # S/N threshold: ADAPTIVE based on actual S/N distribution
         # If S/N is approximated (Poisson), use percentile-based threshold instead of fixed value
@@ -257,9 +254,9 @@ def perform_psf_photometry(
             if snr_is_approximated or snr_median < 10:
                 # Use adaptive threshold: select top 50% of S/N values
                 snr_threshold = max(snr_median, np.percentile(snr_finite, 50))
-                st.write(
-                    f"  ⓘ Using adaptive S/N threshold (median S/N={snr_median:.1f})"
-                )
+                # st.write(
+                #     f"  ⓘ Using adaptive S/N threshold (median S/N={snr_median:.1f})"
+                # )
             else:
                 # Use fixed threshold for proper S/N values
                 snr_threshold = 20.0
@@ -341,7 +338,7 @@ def perform_psf_photometry(
             # No peak data available; use image maximum as fallback
             img_max = np.nanmax(img)
             saturation_limit = img_max * 0.80  # 80% of image max
-            st.write(
+            st.warning(
                 f"  ⓘ No peak flux in catalog; using 80% of image max ({saturation_limit:.0f}) as limit"
             )
 
@@ -364,8 +361,6 @@ def perform_psf_photometry(
             #     f"  ✓ Size/FWHM filter: {n_size_pass} "
             #     f"point-like sources ({size_min:.2f}–{size_max:.2f} px)"
             # )
-        else:
-            st.write("  ⓘ size filtering skipped")
 
         # ========== SHAPE/ELLIPTICITY FILTERING ==========
         # Reject blends and optical defects using roundness and axis ratio
@@ -710,8 +705,6 @@ def perform_psf_photometry(
             st.write(
                 f"{n_stars} valid stars remain for PSF model after filtering invalid data."
             )
-        else:
-            st.write(f"All {len(stars)} stars are valid for PSF model.")
 
         if len(stars) == 0:
             raise ValueError("No valid stars for PSF model after filtering.")
@@ -735,7 +728,6 @@ def perform_psf_photometry(
             valid_stars = []
 
         n_valid = len(valid_stars)
-        st.write(f"Using {n_valid} valid Star objects for ePSF construction")
 
         if n_valid < 5:
             raise ValueError("Too few valid Star objects for ePSF building")
@@ -748,9 +740,6 @@ def perform_psf_photometry(
             peaks = np.array([s.data.max() for s in valid_stars])
             top_idx = np.argsort(peaks)[-max_stars_for_epsf:][::-1]
             stars_for_builder = EPSFStars([valid_stars[i] for i in top_idx])
-            st.write(
-                f"✓ Selected {len(stars_for_builder)} brightest stars for ePSF construction."
-            )
         else:
             stars_for_builder = EPSFStars(valid_stars)
 
@@ -766,16 +755,12 @@ def perform_psf_photometry(
         builder_attempts = [dict(oversampling=2, maxiters=5)]
         if n_valid >= 150:
             builder_attempts.append(dict(oversampling=4, maxiters=5))
-        else:
-            st.write("Essai oversampling 4 ignoré (échantillon < 150 étoiles).")
 
         for params in builder_attempts:
             try:
                 oversamp = int(params["oversampling"])
                 maxiters = int(params["maxiters"])
-                st.write(
-                    f"Essai EPSFBuilder: oversampling={oversamp}, maxiters={maxiters}"
-                )
+
                 epsf_builder = EPSFBuilder(
                     oversampling=oversamp,
                     maxiters=maxiters,
@@ -785,7 +770,6 @@ def perform_psf_photometry(
                 )
                 epsf, _ = epsf_builder(stars_for_builder)
                 if epsf is not None:
-                    st.write(f"EPSFBuilder réussi (oversampling={oversamp})")
                     epsf_data = np.asarray(epsf.data)
                     break
             except Exception as build_error:
@@ -834,8 +818,6 @@ def perform_psf_photometry(
         else:
             oversamp = int(oversamp)
 
-        st.write(f"PSF oversampling factor: {oversamp}")
-
         try:
             from photutils.psf import ImagePSF
 
@@ -845,9 +827,7 @@ def perform_psf_photometry(
             st.write(f"Created ImagePSF with oversampling={oversamp}")
         except Exception as ipsf_err:
             st.warning(f"ImagePSF creation failed: {ipsf_err}")
-            # fallback to epsf object (works on newer photutils versions)
             psf_for_phot = epsf
-            st.write("Using EPSF model directly for photometry")
 
         # Verify PSF model center
         psf_center_y, psf_center_x = np.array(epsf_data.shape) / 2.0
@@ -895,13 +875,13 @@ def perform_psf_photometry(
                         psf_for_phot = ImagePSF(epsf_data, oversampling=oversamp)
                     except Exception:
                         pass  # Keep the previously created psf_for_phot
-                    st.write(
+                    st.warning(
                         f"✓ PSF re-centered: new peak offset "
                         f"({new_offset_x:.2f}, {new_offset_y:.2f}) px "
                         f"(was ({offset_x:.2f}, {offset_y:.2f}) px)"
                     )
                 else:
-                    st.write(
+                    st.warning(
                         "ⓘ Re-centering did not improve alignment "
                         f"(new offset: ({new_offset_x:.2f}, {new_offset_y:.2f}) px); "
                         "keeping original PSF."
@@ -909,7 +889,7 @@ def perform_psf_photometry(
             except Exception as _recenter_err:
                 st.warning(f"PSF re-centering skipped: {_recenter_err}. Keeping original PSF.")
         else:
-            st.write(
+            st.warning(
                 f"✓ PSF peak offset from center: ({offset_x:.2f}, {offset_y:.2f}) pixels (acceptable)"
             )
 
@@ -964,7 +944,6 @@ def perform_psf_photometry(
                 ensure_output_directory(directory=f"{username}_results"), psf_filename
             )
             hdu.writeto(psf_filepath, overwrite=True)
-            st.write(f"PSF model saved as FITS file ({model_type})")
 
             norm_epsf = simple_norm(epsf_data, "log", percent=99.0)
             fig_epsf_model, ax_epsf_model = plt.subplots(
@@ -1004,9 +983,6 @@ def perform_psf_photometry(
         # Create a SourceGrouper
         min_separation = 1.9 * fwhm
         grouper = SourceGrouper(min_separation=min_separation)
-        # sigma_clip = SigmaClip(sigma=3.0)
-        # bkgstat = MMMBackground(sigma_clip=sigma_clip)
-        # localbkg_estimator = LocalBackground(3.0 * fwhm, 5.0 * fwhm, bkgstat)
 
         psfphot = PSFPhotometry(
             psf_model=psf_for_phot,
@@ -1014,7 +990,6 @@ def perform_psf_photometry(
             finder=daostarfind,
             aperture_radius=1.3 * aperture_radius,
             grouper=grouper,
-            # localbkg_estimator=localbkg_estimator,
         )
 
         initial_params = Table()
@@ -1055,9 +1030,6 @@ def perform_psf_photometry(
             st.write(
                 f"Filtered out {len(initial_params) - len(initial_params_filtered)} sources that fall in masked regions"
             )
-            st.write(
-                f"Proceeding with {len(initial_params_filtered)} sources for PSF photometry"
-            )
 
             if len(initial_params_filtered) == 0:
                 st.error(
@@ -1066,8 +1038,6 @@ def perform_psf_photometry(
                 return None, epsf
 
             initial_params = initial_params_filtered
-        else:
-            st.write("No mask provided, using all sources for PSF photometry")
 
         st.write("Performing PSF photometry on sources...")
         # call PSFPhotometry: data first
@@ -1075,7 +1045,7 @@ def perform_psf_photometry(
             img, init_params=initial_params, mask=mask_bool, error=error
         )
         st.session_state["epsf_photometry_result"] = phot_epsf_result
-        st.write("PSF photometry completed successfully.")
+        st.success("PSF photometry completed successfully.")
         return phot_epsf_result, epsf
 
     except Exception as e:

@@ -20,21 +20,45 @@ from src.utils import write_to_log, ensure_output_directory
 warnings.filterwarnings("ignore")
 
 
-def try_gaia_server():
-    """Check if Gaia server is reachable."""
-    import streamlit as st
+@st.cache_data(ttl=300, show_spinner=False)
+def _gaia_server_available() -> bool:
+    """Check Gaia service availability with a short TTL cache."""
     from astroquery.gaia import Gaia
 
+    Gaia.load_tables(only_names=True)
+    return True
+
+
+def try_gaia_server():
+    """Check if Gaia server is reachable."""
     try:
-        # Try a simple query to check if the server is responding
-        Gaia.load_tables(only_names=True)
-        return True
+        # Try a simple query to check if the server is responding.
+        return _gaia_server_available()
     except Exception:
         st.warning(
             "⚠️ Unable to reach GAIA Server through Astroquery. \n"
             "The Server may be down or under maintenance. Please try again later !"
         )
         return False
+
+
+@st.cache_data(show_spinner=False)
+def load_tutorial_text(tutorial_file: str) -> str:
+    """Load and cache tutorial markdown from the docs directory."""
+    with open(os.path.join("docs", tutorial_file), "r", encoding="utf-8") as handle:
+        return handle.read()
+
+
+def _safe_unlink_session_path(path_key: str) -> None:
+    """Delete a session file if present and remove the session key."""
+    if path_key in st.session_state:
+        try:
+            path = st.session_state[path_key]
+            if path and os.path.exists(path):
+                os.unlink(path)
+        except Exception:
+            pass
+        del st.session_state[path_key]
 
 
 def clear_all_caches():
@@ -57,7 +81,7 @@ def clear_all_caches():
                 del st.session_state["uploaded"]
             except Exception:
                 pass
-        # Also clear persisted raw upload bytes and name if present
+
         if "uploaded_bytes" in st.session_state:
             try:
                 del st.session_state["uploaded_bytes"]
@@ -69,14 +93,8 @@ def clear_all_caches():
             except Exception:
                 pass
 
-        # Clear file-related session state
-        if "science_file_path" in st.session_state:
-            try:
-                if os.path.exists(st.session_state["science_file_path"]):
-                    os.unlink(st.session_state["science_file_path"])
-            except Exception:
-                pass
-            del st.session_state["science_file_path"]
+        _safe_unlink_session_path("uploaded_temp_path")
+        _safe_unlink_session_path("science_file_path")
 
         if "files_loaded" in st.session_state:
             st.session_state["files_loaded"] = {"science_file": None}
@@ -88,6 +106,8 @@ def clear_all_caches():
             "epsf_model",
             "epsf_photometry_result",
             "log_buffer",
+            "log_summary_written",
+            "last_saved_log_content",
         ]
         for key in result_keys:
             if key in st.session_state:
@@ -622,7 +642,7 @@ def provide_download_buttons(folder_path):
             and not f.lower().endswith(".fits")
         ]
         if not files:
-            st.write("No files found in output directory")
+            st.warning("No files found in output directory")
             return
 
         # Create a timestamp for the zip filename
@@ -702,8 +722,6 @@ def display_archived_files_browser(output_dir):
 
         # Sort files by modification time (newest first)
         zip_files.sort(key=lambda x: x["modified"], reverse=True)
-
-        st.write(f"**📦 {len(zip_files)} ZIP Archive(s)**")
 
         # Compact display with download buttons
         for file_info in zip_files:

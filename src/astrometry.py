@@ -251,7 +251,7 @@ def _try_source_detection_improved(image, header, min_sources=10):
                 )
 
         except Exception as e:
-            st.write(f"Detection failed with FWHM={fwhm_est} : {e}")
+            st.error(f"Detection failed with FWHM={fwhm_est} : {e}")
             continue
 
     return None

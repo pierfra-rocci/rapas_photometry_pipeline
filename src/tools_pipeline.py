@@ -912,10 +912,23 @@ def merge_photometry_catalogs(aperture_table, psf_table, tolerance_pixels=1.0):
     log_messages = []
 
     # Determine coordinate columns
-    aper_x = "xcenter" if "xcenter" in aperture_table.columns else "x_0"
-    aper_y = "ycenter" if "ycenter" in aperture_table.columns else "y_0"
-    psf_x = "x_init" if "x_init" in psf_table.columns else "xcenter"
-    psf_y = "y_init" if "y_init" in psf_table.columns else "ycenter"
+    # photutils 3.0 renamed xcenter/ycenter -> x_center/y_center (canonical in colnames)
+    aper_x = next(
+        (c for c in ["xcenter", "x_center", "x_0"] if c in aperture_table.columns),
+        "xcenter",
+    )
+    aper_y = next(
+        (c for c in ["ycenter", "y_center", "y_0"] if c in aperture_table.columns),
+        "ycenter",
+    )
+    psf_x = next(
+        (c for c in ["x_init", "xcenter", "x_center"] if c in psf_table.columns),
+        "x_init",
+    )
+    psf_y = next(
+        (c for c in ["y_init", "ycenter", "y_center"] if c in psf_table.columns),
+        "y_init",
+    )
 
     # Convert to DataFrames if needed
     if not isinstance(aperture_table, pd.DataFrame):
@@ -972,8 +985,8 @@ def merge_photometry_catalogs(aperture_table, psf_table, tolerance_pixels=1.0):
         psf_row = psf_table.iloc[psf_idx].to_dict()
 
         row = {
-            "xcenter": psf_row.get(psf_x),
-            "ycenter": psf_row.get(psf_y),
+            aper_x: psf_row.get(psf_x),
+            aper_y: psf_row.get(psf_y),
             "ra": psf_row.get("ra"),
             "dec": psf_row.get("dec"),
             "psf_flux": psf_row.get("flux_fit"),

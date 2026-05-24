@@ -105,7 +105,7 @@ def filter_skybot_candidates(
             skybot_results = Skybot._parse_result(_skybot_resp)
 
         if skybot_results is None or len(skybot_results) == 0:
-            st.write("✓ SkyBoT: No Solar System objects found in field")
+            st.warning("✓ SkyBoT: No Solar System objects found in field")
             return candidates
 
         # Astroquery's SkyBoT returns 'RA' and 'DEC' columns (uppercase)
