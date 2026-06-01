@@ -90,9 +90,9 @@ After processing, download the ZIP archive containing:
 
 | Quality Flag | S/N Range   | Reliability | Recommended Use  |
 | :----------- | :---------- | :---------- | :--------------- |
-| `good`       | S/N ≥ 5     | High        | Science-ready    |
-| `marginal`   | 3 ≤ S/N < 5 | Moderate    | Use with caution |
-| `poor`       | S/N < 3     | Low         | Exclude          |
+| `good`       | S/N > 10    | High        | Science-ready    |
+| `marginal`   | 5 < S/N ≤ 10 | Moderate   | Use with caution |
+| `poor`       | S/N ≤ 5     | Low         | Exclude          |
 
 Magnitude errors are propagated as:
 

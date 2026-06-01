@@ -173,9 +173,9 @@ Version 1.5.3
 *   **Error Propagation**: Added proper zero-point error propagation in calibrated magnitudes using quadrature: ``σ_mag_calib = √(σ_mag_inst² + σ_zp²)``
 *   **Quality Flags**: Added photometric quality flags for both aperture and PSF photometry:
     
-    - ``'good'``: S/N ≥ 5 (reliable photometry)
-    - ``'marginal'``: 3 ≤ S/N < 5 (use with caution)
-    - ``'poor'``: S/N < 3 (unreliable)
+    - ``'good'``: S/N > 10 (reliable photometry)
+    - ``'marginal'``: 5 < S/N ≤ 10 (use with caution)
+    - ``'poor'``: S/N ≤ 5 (unreliable)
     - ``'unknown'``: missing data
 
 **Documentation & Testing**

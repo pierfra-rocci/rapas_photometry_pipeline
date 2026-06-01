@@ -120,7 +120,7 @@ Source Detection & Photometry
    - Per-aperture background-corrected and raw flux measurements
    - Signal-to-noise ratio (S/N) calculation using background-corrected flux
    - Magnitude error calculation: ``σ_mag = 1.0857 × (σ_flux / flux)``
-   - Quality flags: 'good' (S/N≥5), 'marginal' (3≤S/N<5), 'poor' (S/N<3)
+   - Quality flags: 'good' (S/N>10), 'marginal' (5<S/N≤10), 'poor' (S/N≤5)
    - Magnitude calibration against GAIA DR3 zero-point
    - Support for aperture correction and PSF comparison
 
@@ -150,9 +150,14 @@ Photometric Calibration
    - Multiple photometric bands including synthetic photometry
    - Cone search with configurable radius
    - Proper motion and parallax data inclusion
+   - **VizieR fallback**: when the primary Gaia TAP service is unavailable, the
+     query is automatically retried against the VizieR mirror with a reduced
+     column set so calibration can proceed during TAP outages
 
 **Zero-Point Calculation**:
    - Robust calibration with sigma clipping outlier rejection
+   - Sources with residuals beyond ±0.5 mag from the median excluded before the final fit
+   - Aperture 1.3× FWHM used as the primary reference aperture for zero-point determination
    - Multiple aperture zero-point determination
    - Atmospheric extinction correction using airmass
    - Calibration star quality assessment
@@ -189,6 +194,8 @@ Multi-Catalog Cross-Matching
    - Configurable time windows around observation date
    - API key authentication for full access
    - Event classification and discovery information
+   - ``plot_astrocolibri_cutouts()``: postage-stamp cutouts of Astro-Colibri
+     candidates extracted from the science frame for rapid visual inspection
 
 **Solar System Objects (SkyBoT)**:
    - Moving object identification and ephemeris

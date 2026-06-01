@@ -85,9 +85,9 @@ Après le traitement, téléchargez l'archive ZIP contenant :
 
 | Indicateur | Plage S/N   | Fiabilité | Usage recommandé        |
 | :--------- | :---------- | :-------- | :---------------------- |
-| `good`     | S/N ≥ 5     | Élevée    | Données scientifiques   |
-| `marginal` | 3 ≤ S/N < 5 | Modérée   | À utiliser avec prudence |
-| `poor`     | S/N < 3     | Faible    | À exclure               |
+| `good`     | S/N > 10    | Élevée    | Données scientifiques   |
+| `marginal` | 5 < S/N ≤ 10 | Modérée  | À utiliser avec prudence |
+| `poor`     | S/N ≤ 5     | Faible    | À exclure               |
 
 Les erreurs de magnitude sont propagées comme suit :
 

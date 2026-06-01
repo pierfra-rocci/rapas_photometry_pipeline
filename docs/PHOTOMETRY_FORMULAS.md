@@ -160,16 +160,16 @@ Sources are assigned quality flags based on their S/N:
 
 | Quality Flag | S/N Range | Description | Recommendation |
 |-------------|-----------|-------------|----------------|
-| `'good'` | S/N ≥ 5 | Reliable photometry | Use for science |
-| `'marginal'` | 3 ≤ S/N < 5 | Marginal quality | Use with caution |
-| `'poor'` | S/N < 3 | Unreliable photometry | Exclude from analysis |
+| `'good'` | S/N > 10 | Reliable photometry | Use for science |
+| `'marginal'` | 5 < S/N ≤ 10 | Intermediate quality | Use with caution |
+| `'poor'` | S/N ≤ 5 | Unreliable photometry | Exclude from analysis |
 | `'unknown'` | N/A | Missing/invalid data | Exclude |
 
 ### Rationale
 
-- **S/N = 5**: Standard threshold in astronomy for reliable detections (5σ)
-- **S/N = 3**: Minimum for potential detections (3σ), but with higher uncertainty
-- **S/N < 3**: Below detection significance; likely dominated by noise
+- **S/N ≤ 5**: Detection may still be real, but the photometry is too uncertain to be labeled reliable
+- **5 < S/N ≤ 10**: Usable for inspection or exploratory analysis, but not in the highest-confidence class
+- **S/N > 10**: Conservative threshold for reliable photometry with smaller magnitude uncertainties
 
 ### Usage Example
 
