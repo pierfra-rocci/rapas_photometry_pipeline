@@ -330,10 +330,10 @@ def safe_catalog_query(query_func, error_msg, *args, **kwargs):
     try:
         result = query_func(*args, **kwargs)
         return result, None
-    except requests.exceptions.RequestException as e:
-        return None, f"{error_msg}: Network error - {str(e)}"
     except requests.exceptions.Timeout:
         return None, f"{error_msg}: Query timed out"
+    except requests.exceptions.RequestException as e:
+        return None, f"{error_msg}: Network error - {str(e)}"
     except ValueError as e:
         return None, f"{error_msg}: Value error - {str(e)}"
     except Exception as e:
