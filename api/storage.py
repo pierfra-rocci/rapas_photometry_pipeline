@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Tuple
 from uuid import uuid4
@@ -26,7 +26,7 @@ def build_storage_path(user_id: int, original_name: str) -> Tuple[Path, str]:
 
     Returns the full filesystem path and the relative path stored in the DB.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     user_folder = FITS_STORAGE_ROOT / f"user_{user_id}" / f"{now:%Y}" / f"{now:%m}"
     user_folder.mkdir(parents=True, exist_ok=True)
 

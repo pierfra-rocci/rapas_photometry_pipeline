@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 import base64
 import hashlib
 import json
@@ -44,7 +45,15 @@ from .schemas import (
 from .security import get_current_user
 from .storage import build_storage_path
 
-app = FastAPI(title="RAPAS API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Initialize application resources for the FastAPI lifespan."""
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
+app = FastAPI(title="RAPAS API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -53,13 +62,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-def startup() -> None:
-    """Initialize database schema on startup."""
-    Base.metadata.create_all(bind=engine)
-
 
 def _ensure_password_strength(password: str) -> None:
     """Validate minimal password complexity."""
