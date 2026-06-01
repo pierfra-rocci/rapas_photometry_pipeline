@@ -673,9 +673,9 @@ def detection_and_photometry(
         m_inst = -2.5 × log10(flux)
 
     Quality Flags:
-        - 'poor': S/N < 3 (unreliable photometry)
-        - 'marginal': 3 ≤ S/N < 5 (marginal quality)
-        - 'good': S/N ≥ 5 (reliable photometry)
+        - 'poor': S/N ≤ 5 (unreliable photometry)
+        - 'marginal': 5 < S/N ≤ 10 (marginal quality)
+        - 'good': S/N > 10 (reliable photometry)
         - 'unknown': missing data or calculation failed
     """
     daofind = None
@@ -955,7 +955,9 @@ def detection_and_photometry(
                 # Add quality flag based on S/N
                 snr_values = phot_table[f"snr{radius_suffix}"]
                 quality_flag = np.where(
-                    snr_values < 3, "poor", np.where(snr_values < 5, "marginal", "good")
+                    snr_values <= 5,
+                    "poor",
+                    np.where(snr_values <= 10, "marginal", "good"),
                 )
                 phot_table[f"quality_flag{radius_suffix}"] = quality_flag
 
@@ -999,7 +1001,9 @@ def detection_and_photometry(
                 # Add quality flag for PSF photometry
                 psf_snr = epsf_table["snr"]
                 psf_quality_flag = np.where(
-                    psf_snr < 3, "poor", np.where(psf_snr < 5, "marginal", "good")
+                    psf_snr <= 5,
+                    "poor",
+                    np.where(psf_snr <= 10, "marginal", "good"),
                 )
                 epsf_table["psf_quality_flag"] = psf_quality_flag
 
