@@ -216,7 +216,7 @@ def detect_backend(timeout: float = 2.0) -> Dict[str, str]:
                 mode="api",
                 api_url=api_url,
                 legacy_url=legacy_url,
-                message="",
+                message="Using API backend",
             )
 
         if _legacy_backend_reachable(legacy_url, timeout):
@@ -227,7 +227,7 @@ def detect_backend(timeout: float = 2.0) -> Dict[str, str]:
                 message=(
                     "API backend unhealthy "
                     f"(GET /health returned {response.status_code}). "
-                    "Legacy server"
+                    "Using legacy server"
                 ),
             )
 
@@ -247,7 +247,7 @@ def detect_backend(timeout: float = 2.0) -> Dict[str, str]:
                 mode="legacy",
                 api_url=api_url,
                 legacy_url=legacy_url,
-                message="Legacy server",
+                message="API backend not reachable. Using legacy server",
             )
 
         return _build_backend_info(

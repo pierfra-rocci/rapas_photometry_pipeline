@@ -29,7 +29,7 @@ from src.tools_app import (
     cleanup_temp_files,
     try_gaia_server,
 )
-from src.header_utils import select_science_header, copy_header_or_none
+from src.header_utils import select_science_header, copy_header_or_none, recover_original_wcs
 
 # Local Application Imports
 from src.tools_pipeline import (
@@ -547,6 +547,8 @@ if "uploaded_temp_path" not in st.session_state:
                 st.session_state["uploaded_temp_path"],
                 uploaded.name,
             )
+            st.success("File is ready.")
+            st.success(f"File '{uploaded.name}' is ready.")
         except Exception:
             st.error("Failed to persist uploaded file. Please re-upload.")
             st.session_state.pop("uploaded_temp_path", None)
@@ -684,7 +686,7 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
 
     # Check if they match (comparing the mapped value)
     if filter_mapped != selected_filter and filter_raw != "Unknown":
-        st.info(
+        st.caption(
             f"Filter in FITS header ({filter_raw}) maps to '{filter_mapped}'."
         )
         write_to_log(
@@ -764,9 +766,12 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
                             "Plate solving failed. Will use original WCS if available."
                         )
                         # Try to restore original WCS by reloading header
-                        _, original_header = load_fits_data(science_file)
-                        wcs_obj, wcs_error, _ = safe_wcs_create(original_header)
-                        if wcs_obj is not None:
+                        wcs_obj, original_header = recover_original_wcs(
+                            science_file,
+                            load_fits_data,
+                            safe_wcs_create,
+                        )
+                        if original_header is not None and wcs_obj is not None:
                             science_header = original_header
                             st.success("Restored original WCS solution")
                         else:
