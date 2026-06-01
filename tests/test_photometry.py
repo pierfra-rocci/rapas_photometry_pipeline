@@ -179,27 +179,28 @@ class TestQualityFlags:
 
     def test_quality_flag_thresholds(self):
         """Test quality flag assignment based on S/N thresholds."""
-        snr = np.array([2.5, 3.0, 4.0, 5.0, 10.0, 100.0])
+        snr = np.array([2.5, 5.0, 5.1, 10.0, 10.1, 100.0])
 
-        quality_flags = np.where(snr < 3, "poor", np.where(snr < 5, "marginal", "good"))
+        quality_flags = np.where(snr <= 5, "poor", np.where(snr <= 10, "marginal", "good"))
 
-        expected_flags = ["poor", "marginal", "marginal", "good", "good", "good"]
+        expected_flags = ["poor", "poor", "marginal", "marginal", "good", "good"]
 
         assert_array_equal(quality_flags, expected_flags)
 
     def test_quality_flag_boundary_cases(self):
         """Test quality flags at exact boundaries."""
         # Exactly at thresholds
-        snr_boundary = np.array([3.0, 5.0])
+        snr_boundary = np.array([5.0, 10.0, 10.0001])
 
         quality_flags = np.where(
-            snr_boundary < 3, "poor", np.where(snr_boundary < 5, "marginal", "good")
+            snr_boundary <= 5, "poor", np.where(snr_boundary <= 10, "marginal", "good")
         )
 
-        # S/N = 3.0 should be 'marginal' (not 'poor')
-        # S/N = 5.0 should be 'good' (not 'marginal')
-        assert quality_flags[0] == "marginal"
-        assert quality_flags[1] == "good"
+        # S/N = 5.0 should be 'poor' (inclusive lower threshold)
+        # S/N = 10.0 should be 'marginal' (good is strictly greater than 10)
+        assert quality_flags[0] == "poor"
+        assert quality_flags[1] == "marginal"
+        assert quality_flags[2] == "good"
 
 
 class TestNumericalStability:
@@ -274,7 +275,7 @@ class TestRealisticScenarios:
         assert_allclose(mag_err, 0.010857, rtol=1e-4)
 
         # Quality should be 'good'
-        quality = "good" if snr >= 5 else ("marginal" if snr >= 3 else "poor")
+        quality = "good" if snr > 10 else ("marginal" if snr > 5 else "poor")
         assert quality == "good"
 
     def test_faint_source_photometry(self):
@@ -289,9 +290,9 @@ class TestRealisticScenarios:
         assert_allclose(snr, 5.0)
         assert_allclose(mag_err, 0.2171, rtol=1e-3)
 
-        # Quality should be 'good' (just at threshold)
-        quality = "good" if snr >= 5 else ("marginal" if snr >= 3 else "poor")
-        assert quality == "good"
+        # Quality should be 'poor' (inclusive lower threshold)
+        quality = "good" if snr > 10 else ("marginal" if snr > 5 else "poor")
+        assert quality == "poor"
 
     def test_marginal_detection(self):
         """Test photometry of a marginal detection."""
@@ -305,9 +306,9 @@ class TestRealisticScenarios:
         assert_allclose(snr, 3.5)
         assert_allclose(mag_err, 0.3102, rtol=1e-3)
 
-        # Quality should be 'marginal'
-        quality = "good" if snr >= 5 else ("marginal" if snr >= 3 else "poor")
-        assert quality == "marginal"
+        # Quality should be 'poor'
+        quality = "good" if snr > 10 else ("marginal" if snr > 5 else "poor")
+        assert quality == "poor"
 
 
 class TestFWHMRadiusFactor:
