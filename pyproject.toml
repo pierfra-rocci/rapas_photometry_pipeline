@@ -129,6 +129,7 @@ dependencies = [
 dev = [
     "ruff>=0.11.6",
     "pytest==9.0.3",
+    "httpx==0.28.1",
     "black>=23.0.0",
     "flake8>=6.0.0",
     "pip-upgrade-all==0.1.6",
@@ -156,6 +157,9 @@ include = '\.pyi?$'
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = [
+    'ignore:pkg_resources is deprecated as an API\..*:DeprecationWarning',
+]
 
 [tool.isort]
 profile = "black"
