@@ -474,6 +474,48 @@ class TestDbTrackingModule:
             assert fits_id is not None
             assert zip_id is not None
 
+    def test_record_analysis_result_reuses_fits_and_links_multiple_archives(self, temp_db):
+        """One stored FITS file should be linkable to multiple result archives."""
+        from src.db_tracking import record_analysis_result, get_fits_for_zip, get_zips_for_fits
+
+        with patch("src.db_tracking.DB_PATH", temp_db):
+            first_fits_id, first_zip_id = record_analysis_result(
+                username="testuser",
+                original_filename="science.fits",
+                stored_fits_filename="user_1/2026/06/science_wcs.fits",
+                zip_archive_filename="science_run_a.zip",
+                zip_stored_relpath="rpp_results/user_1/2026/06/science_run_a.zip",
+                has_wcs=True,
+            )
+            second_fits_id, second_zip_id = record_analysis_result(
+                username="testuser",
+                original_filename="science.fits",
+                stored_fits_filename="user_1/2026/06/science_wcs.fits",
+                zip_archive_filename="science_run_b.zip",
+                zip_stored_relpath="rpp_results/user_1/2026/06/science_run_b.zip",
+                has_wcs=True,
+            )
+
+            assert first_fits_id is not None
+            assert first_fits_id == second_fits_id
+            assert first_zip_id is not None
+            assert second_zip_id is not None
+            assert first_zip_id != second_zip_id
+
+            linked_zips = get_zips_for_fits(first_fits_id)
+            assert len(linked_zips) == 2
+            assert {zip_row["stored_relpath"] for zip_row in linked_zips} == {
+                "rpp_results/user_1/2026/06/science_run_a.zip",
+                "rpp_results/user_1/2026/06/science_run_b.zip",
+            }
+
+            linked_fits_a = get_fits_for_zip(first_zip_id)
+            linked_fits_b = get_fits_for_zip(second_zip_id)
+            assert len(linked_fits_a) == 1
+            assert len(linked_fits_b) == 1
+            assert linked_fits_a[0]["id"] == first_fits_id
+            assert linked_fits_b[0]["id"] == first_fits_id
+
     def test_get_fits_files_for_user(self, temp_db):
         """Test getting FITS files for a user."""
         from src.db_tracking import record_wcs_fits_file, get_fits_files_for_user

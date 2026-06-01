@@ -27,9 +27,18 @@ Date: 2026-01-07
 """
 
 import numpy as np
+import pandas as pd
 import pytest
 from numpy.testing import assert_allclose, assert_array_equal
+from astropy.modeling.models import Gaussian2D
+from astropy.table import Table
+from photutils.aperture import CircularAperture, aperture_photometry
+from photutils.detection import DAOStarFinder
 
+import src.pipeline as pipeline_module
+import src.psf as psf_module
+from src.pipeline import calculate_zero_point
+from src.psf import perform_psf_photometry
 from src.tools_pipeline import add_calibrated_magnitudes, drop_legacy_magnitude_columns
 
 
@@ -565,6 +574,254 @@ class TestPrefixedMagnitudeAliases:
         assert "aperture_mag_1_5" not in out.columns
         assert "aperture_mag_err_1_5" not in out.columns
         assert "instrumental_mag_1_5" not in out.columns
+
+
+class TestZeroPointCalibration:
+    """Test robust zero-point estimation and outlier rejection."""
+
+    def test_zero_point_rejects_outliers_and_recovers_true_baseline(
+        self,
+        monkeypatch,
+        tmp_path,
+    ):
+        """Synthetic calibration stars with 3 outliers should keep the true ZP."""
+        true_zero_point = 25.0
+
+        instrumental_good = np.linspace(-10.4, -8.5, 20)
+        residuals_good = np.array(
+            [
+                -0.02,
+                0.01,
+                0.00,
+                -0.01,
+                0.02,
+                -0.02,
+                0.01,
+                -0.01,
+                0.00,
+                0.02,
+                -0.02,
+                0.01,
+                -0.01,
+                0.00,
+                0.02,
+                -0.02,
+                0.01,
+                -0.01,
+                0.00,
+                0.02,
+            ]
+        )
+        catalog_good = instrumental_good + true_zero_point + residuals_good
+
+        instrumental_outliers = np.array([-10.0, -9.4, -8.8])
+        zero_point_outliers = np.array([31.2, 18.4, 29.7])
+        catalog_outliers = instrumental_outliers + zero_point_outliers
+
+        matched_table = pd.DataFrame(
+            {
+                "instrumental_mag_1_3": np.concatenate(
+                    [instrumental_good, instrumental_outliers]
+                ),
+                "phot_g_mean_mag": np.concatenate([catalog_good, catalog_outliers]),
+                "aperture_mag_err_1_3": np.full(23, 0.03),
+            }
+        )
+        phot_table = pd.DataFrame(
+            {
+                "instrumental_mag_1_3": np.array([-10.2, -9.7]),
+                "instrumental_mag_1_1": np.array([-10.3, -9.8]),
+                "instrumental_mag_1_5": np.array([-10.1, -9.6]),
+            }
+        )
+
+        info_messages = []
+        warning_messages = []
+        success_messages = []
+        error_messages = []
+
+        class FakeStreamlit:
+            def __init__(self):
+                self.session_state = {
+                    "base_filename": "zp_regression",
+                    "username": "tester",
+                }
+
+            def info(self, message):
+                info_messages.append(message)
+
+            def warning(self, message):
+                warning_messages.append(message)
+
+            def success(self, message):
+                success_messages.append(message)
+
+            def error(self, message):
+                error_messages.append(message)
+
+            def pyplot(self, _figure):
+                return None
+
+        monkeypatch.setattr(pipeline_module, "st", FakeStreamlit())
+        monkeypatch.setattr(
+            pipeline_module,
+            "ensure_output_directory",
+            lambda directory=None: str(tmp_path),
+        )
+
+        zero_point_value, zero_point_std, figure = calculate_zero_point(
+            phot_table,
+            matched_table,
+            filter_band="phot_g_mean_mag",
+            air=1.2,
+        )
+
+        assert zero_point_value == pytest.approx(true_zero_point, abs=0.01)
+        assert zero_point_std == pytest.approx(0.0, abs=0.01)
+        assert figure is not None
+        assert any("kept 20 / 23 calibration stars" in msg for msg in info_messages)
+        assert success_messages
+        assert not warning_messages
+        assert not error_messages
+
+        final_phot_table = pipeline_module.st.session_state["final_phot_table"]
+        assert "aperture_mag_1_3" in final_phot_table.columns
+        assert_allclose(
+            final_phot_table["aperture_mag_1_3"].values,
+            phot_table["instrumental_mag_1_3"].values + zero_point_value,
+            atol=1e-10,
+        )
+
+
+class TestPsfApertureCoherency:
+    """Test consistency between aperture and PSF photometry on synthetic data."""
+
+    def test_psf_and_aperture_fluxes_agree_for_high_snr_synthetic_stars(
+        self,
+        monkeypatch,
+        tmp_path,
+    ):
+        """PSF and 1.3×FWHM aperture fluxes should agree within 5% in the high-S/N regime."""
+        image_shape = (540, 540)
+        fwhm = 3.0
+        sigma = fwhm / 2.3548200450309493
+        noise_std = 5.0
+
+        y_grid, x_grid = np.mgrid[: image_shape[0], : image_shape[1]]
+        image = np.zeros(image_shape, dtype=float)
+
+        x_positions = np.arange(45, 495, 45)
+        y_positions = np.arange(45, 495, 45)
+        positions = [(float(x), float(y)) for y in y_positions for x in x_positions]
+        amplitudes = np.linspace(1400.0, 2300.0, len(positions))
+
+        for amplitude, (x_mean, y_mean) in zip(amplitudes, positions):
+            model = Gaussian2D(
+                amplitude=amplitude,
+                x_mean=x_mean,
+                y_mean=y_mean,
+                x_stddev=sigma,
+                y_stddev=sigma,
+            )
+            image += model(x_grid, y_grid)
+
+        rng = np.random.default_rng(1234)
+        image += rng.normal(0.0, noise_std, image_shape)
+        error = np.full(image_shape, noise_std, dtype=float)
+
+        daofind = DAOStarFinder(fwhm=fwhm, threshold=8.0 * noise_std)
+        sources = Table(
+            {
+                "xcentroid": np.array([pos[0] for pos in positions]),
+                "ycentroid": np.array([pos[1] for pos in positions]),
+                "flux": amplitudes * (2.0 * np.pi * sigma**2),
+                "roundness1": np.zeros(len(positions)),
+                "sharpness": np.full(len(positions), 0.8),
+                "fwhm": np.full(len(positions), fwhm),
+                "a": np.full(len(positions), np.nan),
+                "b": np.full(len(positions), np.nan),
+                "peak": np.full(len(positions), np.nan),
+                "snr": np.full(len(positions), 120.0),
+            }
+        )
+
+        class FakeStreamlit:
+            def __init__(self):
+                self.session_state = {
+                    "base_filename": "psf_coherency",
+                    "username": "tester",
+                }
+
+            def write(self, *_args, **_kwargs):
+                return None
+
+            def success(self, *_args, **_kwargs):
+                return None
+
+            def warning(self, *_args, **_kwargs):
+                return None
+
+            def error(self, *_args, **_kwargs):
+                return None
+
+            def pyplot(self, *_args, **_kwargs):
+                return None
+
+        monkeypatch.setattr(psf_module, "st", FakeStreamlit())
+        monkeypatch.setattr(psf_module, "ensure_output_directory", lambda directory=None: str(tmp_path))
+
+        psf_table, _ = perform_psf_photometry(
+            image,
+            sources,
+            fwhm,
+            daofind,
+            mask=None,
+            error=error,
+            max_sources_for_psf=700,
+            max_stars_for_epsf=150,
+        )
+
+        assert psf_table is not None
+        assert len(psf_table) >= 20
+        assert "flux_fit" in psf_table.colnames
+
+        aperture = CircularAperture(
+            np.transpose((sources["xcentroid"], sources["ycentroid"])),
+            r=1.3 * fwhm,
+        )
+        aperture_table = aperture_photometry(image, aperture, error=error)
+
+        matched_aperture_fluxes = []
+        matched_psf_fluxes = []
+        matched_psf_snr = []
+
+        aperture_positions = np.column_stack(
+            [np.asarray(sources["xcentroid"]), np.asarray(sources["ycentroid"])]
+        )
+
+        for row in psf_table:
+            x_fit = float(row["x_fit"])
+            y_fit = float(row["y_fit"])
+            distances = np.hypot(aperture_positions[:, 0] - x_fit, aperture_positions[:, 1] - y_fit)
+            nearest = int(np.argmin(distances))
+            if distances[nearest] > 2.0:
+                continue
+
+            matched_aperture_fluxes.append(float(aperture_table["aperture_sum"][nearest]))
+            matched_psf_fluxes.append(float(row["flux_fit"]))
+            if "flux_err" in psf_table.colnames and np.isfinite(row["flux_err"]) and row["flux_err"] > 0:
+                matched_psf_snr.append(float(row["flux_fit"] / row["flux_err"]))
+
+        assert len(matched_psf_fluxes) >= 15
+
+        matched_aperture_fluxes = np.asarray(matched_aperture_fluxes)
+        matched_psf_fluxes = np.asarray(matched_psf_fluxes)
+        relative_difference = np.abs(matched_aperture_fluxes - matched_psf_fluxes) / matched_psf_fluxes
+
+        assert np.median(relative_difference) < 0.05
+        assert np.percentile(relative_difference, 90) < 0.08
+        assert matched_psf_snr
+        assert np.median(matched_psf_snr) > 20.0
 
 
 if __name__ == "__main__":
