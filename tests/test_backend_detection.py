@@ -21,7 +21,7 @@ def test_detect_backend_prefers_api_when_healthy() -> None:
         backend = detect_backend(timeout=0.1)
 
     assert backend["mode"] == "api"
-    assert backend["message"] == "Using API backend"
+    assert backend["message"] == ""
     mock_get.assert_called_once_with("http://localhost:8000/health", timeout=0.1)
 
 
