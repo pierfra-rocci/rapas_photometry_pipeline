@@ -547,7 +547,6 @@ if "uploaded_temp_path" not in st.session_state:
                 st.session_state["uploaded_temp_path"],
                 uploaded.name,
             )
-            st.success("File is ready.")
             st.success(f"File '{uploaded.name}' is ready.")
         except Exception:
             st.error("Failed to persist uploaded file. Please re-upload.")

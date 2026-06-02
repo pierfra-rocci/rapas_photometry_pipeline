@@ -216,7 +216,7 @@ def detect_backend(timeout: float = 2.0) -> Dict[str, str]:
                 mode="api",
                 api_url=api_url,
                 legacy_url=legacy_url,
-                message="Using API backend",
+                message="",
             )
 
         if _legacy_backend_reachable(legacy_url, timeout):
