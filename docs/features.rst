@@ -121,7 +121,9 @@ Source Detection & Photometry
    - Signal-to-noise ratio (S/N) calculation using background-corrected flux
    - Magnitude error calculation: ``σ_mag = 1.0857 × (σ_flux / flux)``
    - Quality flags: 'good' (S/N>10), 'marginal' (5<S/N≤10), 'poor' (S/N≤5)
-   - Magnitude calibration against GAIA DR3 zero-point
+    - Magnitude calibration against the fitted catalog zero-point
+    - Optional parallel ``*_colorcorr`` magnitude columns when a usable catalog
+       color is available for the selected calibration band
    - Support for aperture correction and PSF comparison
 
 **PSF Photometry**:
@@ -163,6 +165,16 @@ Photometric Calibration
    - Calibration star quality assessment
    - Zero-point uncertainty estimation and propagation
    - Correct column name lookup for error columns
+
+**Color-Term Calibration**:
+    - First-order color term fitted from the matched calibration stars after the
+       scalar zero-point calibration
+    - Uses simple catalog colors when available: Gaia ``BP-RP`` and Sloan-style
+       ``g-r``, ``r-i``, or ``i-z`` depending on the selected calibration band
+    - Writes parallel ``*_colorcorr`` magnitude columns instead of replacing the
+       baseline calibrated magnitudes
+    - Automatically skipped when the selected filter is unsupported or when the
+       final catalog lacks usable color information for a source
 
 **Magnitude Systems**:
    - GAIA G, BP, RP photometric bands

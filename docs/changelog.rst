@@ -21,6 +21,16 @@ Version 1.7.5
         before the fit.
     *   Aperture 1.3× FWHM is used as the primary reference aperture for
         zero-point determination.
+*   **Color-term calibration**:
+
+    *   The pipeline can now fit a simple first-order color term from matched
+        calibration stars when the selected calibration band has a supported
+        catalog color.
+    *   Supported color definitions currently include Gaia ``BP-RP`` and the
+        Sloan-style colors ``g-r``, ``r-i``, and ``i-z``.
+    *   Color-corrected magnitudes are written as parallel ``*_colorcorr``
+        columns instead of replacing the baseline zero-point-calibrated
+        magnitudes.
 
 **New Functions**
 
@@ -53,8 +63,17 @@ Version 1.7.5
 *   **Reduced log noise**: Verbose debug messages removed from the hot path.
 *   **FITS excluded from download list**: ``.fits`` files are no longer shown
     among the per-analysis download buttons.
+*   **Archived ZIP lazy loading**: The sidebar archive browser now lists
+    historical ZIP files without reading them at page load; a ZIP is read only
+    when the user explicitly requests that specific archived download.
 *   **FWHM sampling**: Source sample size increased to 1 250 for better seeing
     measurement stability.
+
+**External Catalog Robustness**
+
+*   **SkyBoT malformed-response fallback**: If SkyBoT returns an unreadable
+    payload, the pipeline now logs a warning and continues without SkyBoT
+    matches instead of surfacing an unexpected processing error.
 
 **Documentation**
 

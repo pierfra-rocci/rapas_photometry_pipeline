@@ -152,6 +152,42 @@ Error propagation becomes:
 σ_mag_calib = √(σ_mag_inst² + σ_zero_point² + (airmass × σ_k)²)
 ```
 
+### Color-Term Calibration (Optional)
+
+When catalog colors are available for a matched source, the pipeline can also
+apply a simple linear color-term correction after the standard zero-point
+calibration.
+
+Baseline calibrated magnitude:
+```
+mag_calib = mag_inst + zero_point
+```
+
+Color-corrected calibrated magnitude:
+```
+mag_calib_colorcorr = mag_calib + color_term_offset
+```
+
+The fitted offset is modeled as:
+```
+color_term_offset = intercept + C × (color - color_ref)
+```
+
+Where:
+- `C`: fitted color-term coefficient
+- `color`: per-source catalog color, for example `BP-RP` or `g-r`
+- `color_ref`: median color of the retained calibration stars
+- `intercept`: residual offset relative to the scalar zero point
+
+This follows the same first-order idea described in STDPipe, while keeping the
+existing scalar zero-point calibration as the compatibility baseline.
+
+### Practical Limitation
+
+Color-corrected magnitudes are only written for sources that have the required
+catalog color columns in the final table. Unmatched sources, or sources without
+usable catalog colors, keep the standard zero-point-calibrated magnitudes only.
+
 ---
 
 ## Quality Flags
@@ -195,6 +231,7 @@ usable_sources = df[df['quality_flag_1_1'].isin(['good', 'marginal'])]
 | S/N | `flux / flux_error` | 3–1000 |
 | Magnitude Error | `1.0857 × (flux_err / flux)` | 0.01–0.3 mag |
 | Calibrated Mag Error | `√(σ_inst² + σ_zp²)` | 0.02–0.35 mag |
+| Color-Corrected Mag | `mag_calib + intercept + C × (color - color_ref)` | calibration-dependent |
 | Instrumental Magnitude | `-2.5 × log₁₀(flux)` | 10–25 mag |
 
 ---

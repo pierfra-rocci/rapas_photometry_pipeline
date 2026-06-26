@@ -8,7 +8,7 @@ Ce tutoriel vous guide à travers une session d'analyse typique.
 
 Dans la zone principale, utilisez l'outil de chargement pour sélectionner votre image FITS. Extensions supportées : `.fits`, `.fit`, `.fts`, `.fits.gz`, `.fts.gz`.
 
-Le chargement du fichier ne fait que le mettre en attente dans l'interface. Le fichier FITS est chargé et vérifié uniquement après avoir cliqué sur le bouton **Start Analysis Pipeline**.
+Le chargement du fichier le met en attente dans l'interface et affiche immédiatement un aperçu brut de l'en-tête pour vérifier les métadonnées. Le chargement complet du FITS et l'analyse ne démarrent qu'après un clic sur le bouton **Start Analysis Pipeline**.
 
 ## 2. Configurer l'Observatoire
 
@@ -51,7 +51,7 @@ Les étapes réalisées sont :
 2. **Détection des sources et suppression des rayons cosmiques**
 3. **Photométrie** : Multi-ouvertures (jusqu'à 3) et photométrie PSF, calcul du S/N, de l'erreur et des indicateurs de qualité
 4. **Raffinement astrométrique** (si activé)
-5. **Calibration photométrique** : Croisement avec des catalogues pour le point zéro
+5. **Calibration photométrique** : Croisement avec des catalogues pour le point zéro et, lorsque les couleurs de catalogue sont disponibles, correction simple du terme de couleur
 6. **Croisement multi-catalogues** : GAIA DR3, SIMBAD, SkyBoT, AAVSO VSX, Milliquas, Catalogue 10 pc, Astro-Colibri
 7. **Détection de transitoires** (si activée)
 
@@ -62,6 +62,8 @@ Si **Astrometry Check** est activé, l'application force une nouvelle solution m
 Après le traitement, téléchargez l'archive ZIP contenant :
 
 - `*_catalog.csv` / `.vot` : Catalogue des sources avec photométrie, erreurs, indicateurs et croisements. Chaque ouverture produit ses propres colonnes : `aperture_mag_X_X`, `aperture_mag_err_X_X`, `snr_X_X`, `quality_flag_X_X` (ouvertures fixes : `_1_1`, `_1_3` ; ouverture utilisateur : ex. `_1_5` pour un facteur 1,5). Le catalogue conserve aussi les noms historiques et ajoute des alias préfixés par le filtre de calibration sélectionné, par exemple `rapasg_psf_mag` ou `rapasg_aperture_mag_1_5`.
+
+	Lorsque les étoiles de calibration possèdent une couleur de catalogue exploitable, l'export peut aussi contenir des colonnes de magnitude corrigée du terme de couleur en parallèle, par exemple `psf_mag_colorcorr` ou `aperture_mag_1_3_colorcorr`, ainsi que des colonnes de suivi comme `source_color`, `color_term_label`, `color_term_value` et `color_term_offset`. Ces colonnes supplémentaires ne remplacent pas les magnitudes calibrées standard par point zéro ; elles s'ajoutent au catalogue. Comme pour les magnitudes calibrées de base, ces colonnes corrigées peuvent aussi recevoir des alias préfixés par le filtre sélectionné, par exemple `rapasg_psf_mag_colorcorr` ou `r_aperture_mag_1_3_colorcorr`.
 - `*_background.fits` : Cartes de fond 2D et de bruit
 - `*_psf.fits` : Modèle PSF empirique
 - `*_wcs_header.txt` : En-tête de la solution astrométrique

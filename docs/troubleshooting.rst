@@ -179,6 +179,17 @@ Catalog Query Issues (SIMBAD, SkyBoT, etc.)
     criteria within your image field.
 *   **Solution**: This is expected for many fields. The message is informational.
 
+**SkyBoT parse error: "not well-formed (invalid token)"**
+
+*   **Problem**: SkyBoT returned a malformed or non-XML payload for the query,
+    so parsing failed.
+*   **Solution**:
+    *   The pipeline now treats this as a warning and continues without SkyBoT
+        matches.
+    *   Re-run later to retry the external service response.
+    *   Check the log preview text to verify the response was malformed rather
+        than a local configuration issue.
+
 **Astro-Colibri: No matches or Error**
 
 *   **Problem**: Invalid or missing API key, network issue, or no recent events

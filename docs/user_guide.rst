@@ -72,7 +72,7 @@ Depending on the file and selected options, this can include:
 - WCS validation and optional local plate solving
 - Source detection and FWHM estimation
 - Aperture photometry and PSF photometry
-- GAIA-based zero-point calibration
+- Catalog-based zero-point calibration and, when colors are available, a simple color-term correction
 - Catalog enhancement through external services
 - Optional transient-candidate search
 - Packaging of outputs into downloadable files
@@ -135,11 +135,19 @@ catalog.
 Result ZIP archives typically contain the generated catalogs, logs, plots, and
 other analysis products created during the run.
 
+When the matched calibration stars include a usable catalog color, the exported
+catalog may also contain additional color-corrected magnitude columns such as
+``psf_mag_colorcorr`` or ``aperture_mag_1_3_colorcorr``. These are written in
+parallel with the standard zero-point-calibrated magnitudes, not in place of
+them. The catalog may also include trace columns such as ``source_color``,
+``color_term_label``, ``color_term_value``, and ``color_term_offset``.
+
 Saved Settings and Archives
 ---------------------------
 
 - Use **Save Settings** to persist observatory and analysis parameters when the API backend is active.
 - Use the archived-results area to review previously stored FITS uploads and ZIP outputs tied to your account.
+- In the archived-results sidebar browser, ZIP content is loaded only when you click to download a specific archive, reducing rerun overhead while keeping the full archive list visible.
 
 Practical Tips
 --------------

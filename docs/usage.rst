@@ -74,9 +74,10 @@ Quick Start (Development)
 
 6. **Upload the FITS file and start processing**
 
-   - Uploading a FITS file only stages it in the interface.
-   - The FITS file is actually loaded, the header and WCS are checked, and
-     astrometry is run only after you click **Start Analysis Pipeline**.
+   - Uploading a FITS file stages it in the interface and immediately shows a
+     raw header preview.
+   - Full FITS loading, header/WCS checks, and astrometry are run only after
+     you click **Start Analysis Pipeline**.
    - If **Astrometry Check** is enabled, the app forces a new plate-solving
      attempt even when a valid WCS already exists.
 

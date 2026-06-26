@@ -9,8 +9,9 @@ This tutorial guides you through a typical analysis session.
 
 In the main area, use the file uploader to select your FITS image. Supported extensions: `.fits`, `.fit`, `.fts`, `.fits.gz`, `.fts.gz`.
 
-Uploading the file only stages it in the interface. The FITS file is loaded and
-checked only after you click the Start Analysis button.
+Uploading the file stages it in the interface and immediately shows a raw
+header preview so you can verify metadata. Full FITS loading and analysis start
+only after you click the Start Analysis button.
 
 ## 2. Configure Observatory
 
@@ -54,7 +55,7 @@ The following steps are performed:
 2. **Source Detection & Cosmic Ray Removal**
 3. **Photometry**: Multi-aperture (up to 3 apertures) and PSF photometry, S/N and error calculation, quality flag assignment
 4. **Astrometric Refinement** (if enabled)
-5. **Photometric Calibration**: Cross-match with catalogs for zero-point
+5. **Photometric Calibration**: Cross-match with catalogs for zero-point and, when possible, a simple color-term correction
 6. **Multi-Catalog Cross-Matching**: GAIA DR3, SIMBAD, SkyBoT, AAVSO VSX, Milliquas, 10 Parsec, Astro-Colibri
 7. **Transient Detection** (if enabled)
 
@@ -67,6 +68,8 @@ tries to restore and continue with the original WCS when possible.
 After processing, download the ZIP archive containing:
 
 - `*_catalog.csv` / `.vot`: Source catalog with photometry, errors, flags, and cross-matches. Each aperture produces its own set of columns: `aperture_mag_X_X`, `aperture_mag_err_X_X`, `snr_X_X`, `quality_flag_X_X` (fixed apertures: `_1_1`, `_1_3`; user-defined aperture: e.g. `_1_5` for FWHM Radius Factor = 1.5). The catalog also keeps the legacy names and adds filter-prefixed aliases derived from the selected calibration band, for example `rapasg_psf_mag` or `rapasg_aperture_mag_1_5`.
+
+	When the matched calibration stars contain a usable catalog color, the export may also include additional color-corrected magnitude columns such as `psf_mag_colorcorr` or `aperture_mag_1_3_colorcorr`, plus tracing fields like `source_color`, `color_term_label`, `color_term_value`, and `color_term_offset`. These extra columns do not replace the standard zero-point-calibrated magnitudes; they are written in parallel so the baseline workflow remains unchanged. Like the baseline calibrated magnitudes, the color-corrected columns can also receive filter-prefixed aliases derived from the selected calibration band, for example `rapasg_psf_mag_colorcorr` or `r_aperture_mag_1_3_colorcorr`.
 - `*_background.fits`: 2D background and RMS maps
 - `*_psf.fits`: Empirical PSF model
 - `*_wcs_header.txt`: Astrometric solution header
@@ -106,7 +109,8 @@ Magnitude errors are propagated as:
 Some cross-match steps depend on external services such as GAIA, SIMBAD,
 SkyBoT, and Astro-Colibri. Network errors, timeouts, or empty catalog results do
 not necessarily stop the full analysis. In many cases the pipeline continues with
-partial results and records warnings in the log.
+partial results and records warnings in the log. The same applies when SkyBoT
+returns a malformed or unreadable response payload.
 
 ## Support
 
