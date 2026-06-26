@@ -186,3 +186,4 @@ stdpipe_tutorial.ipynb
 .pytest_cache/
 __pycache__/
 .github/
+photometry_pipeline.ipynb

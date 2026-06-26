@@ -23,6 +23,7 @@ A comprehensive astronomical photometry pipeline built with Streamlit, featuring
 
 - **Catalogs integration**: Automatic cross-matching with standard star catalogs
 - **Zero-point calculation**: Robust photometric calibration with outlier rejection
+- **Color-term correction**: Optional first-order color correction fitted from matched calibration stars when catalog colors are available
 - **Multiple filter bands**: Support for GAIA, synthetic, PanStarrs et SkyMapper photometry bands
 
 ### 🛰️ Multi-Catalog Cross-Matching
@@ -130,8 +131,10 @@ Set your observatory location and parameters in the sidebar (name, latitude, lon
 ### 5. Upload FITS File
 
 Upload your astronomical image to the main area. Supported extensions: `.fits`, `.fit`, `.fts`, `.fits.gz`, `.fts.gz`.
-The upload step stages the file in the UI. Loading, WCS validation, and any
-astrometry re-solve begin only after you click **Start Analysis Pipeline**.
+The upload step stages the file in the UI and shows an immediate raw header
+preview so you can inspect metadata before processing. Full loading, WCS
+validation, and any astrometry re-solve begin only after you click
+**Start Analysis Pipeline**.
 
 ### 6. Run Analysis
 
@@ -204,12 +207,16 @@ to fall back to the original WCS solution when available.
   including the legacy column names (for example `psf_mag`,
   `aperture_mag_1_5`) plus filter-prefixed aliases derived from the selected
   calibration band (for example `rapasg_psf_mag`,
-  `rapasg_aperture_mag_1_5`)
+  `rapasg_aperture_mag_1_5`). When catalog colors are available, the export may
+  also include parallel color-corrected columns such as
+  `psf_mag_colorcorr` and `aperture_mag_1_5_colorcorr`, plus trace fields like
+  `source_color`, `color_term_label`, `color_term_value`, and
+  `color_term_offset`
 - **Background Model**: 2D background and RMS maps (FITS)
 - **PSF Model**: Empirical PSF (FITS)
 - **WCS Header**: Astrometric solution (TXT)
 - **WCS-Solved FITS**: Original image with updated WCS header (when astrometry is performed)
-- **Plots**: FWHM, magnitude distributions, zero-point calibration
+- **Plots**: FWHM, magnitude distributions, zero-point calibration, and color-term diagnostics when available
 - **Log File**: Detailed processing log
 
 ---
@@ -235,6 +242,7 @@ The pipeline uses `stdpipe` as a Python wrapper around a local Astrometry.net in
 The pipeline generates comprehensive output files, available as a ZIP download:
 
 - **Photometry Catalog** (CSV and VOTable): Complete source catalog with multi-aperture and PSF photometry
+- **Color-Corrected Magnitudes**: Additional `*_colorcorr` columns written in parallel with the standard zero-point-calibrated magnitudes when a usable catalog color is available
 - **Log File**: Detailed processing log with timestamps
 - **Background Model** (FITS): 2D background and RMS maps
 - **PSF Model** (FITS): Empirical PSF (or Gaussian fallback) for the field
@@ -325,6 +333,9 @@ Firefox may have compatibility issues with Aladin Lite v3 due to WebAssembly loa
   - Sigma clipping is now applied before the final zero-point fit for more robust outlier rejection
   - Sources with residuals beyond ±0.5 mag from the median are excluded before the fit
   - Aperture 1.3× FWHM is used as the primary reference aperture for zero-point determination
+- **Color-term calibration**:
+  - A simple first-order color term can now be fitted from matched calibration stars when the selected filter has a supported catalog color
+  - The pipeline writes parallel `*_colorcorr` magnitude columns instead of replacing the baseline zero-point-calibrated outputs
 - **New `plot_astrocolibri_cutouts()` function**: Generates postage-stamp cutout images for Astro-Colibri transient candidates directly from the science frame, enabling rapid visual inspection.
 - **New `drop_legacy_magnitude_columns()` helper**: Utility function to strip the legacy (non-prefixed) magnitude columns from the output catalog when only filter-prefixed aliases are needed.
 - **Backend detection improvements**: Enhanced error handling and detection logic for the FastAPI/legacy backend auto-detection; new `tests/test_backend_detection.py` test suite covers probe and fallback scenarios.
@@ -336,6 +347,8 @@ Firefox may have compatibility issues with Aladin Lite v3 due to WebAssembly loa
   - Streamlit messages throughout the pipeline use consistent severity levels (success / warning / info / error)
   - Verbose debug logging removed from the hot path to reduce log noise
   - `.fits` files are excluded from the per-analysis download buttons to keep the archive list clean
+  - Archived ZIP files in the sidebar are listed without preloading their contents; archive bytes are loaded only when a specific archived download is requested
+  - SkyBoT parsing now degrades gracefully on malformed service payloads by logging a warning and continuing without SkyBoT matches
 - **Troubleshooting docs**: New FastAPI + Gunicorn troubleshooting section added to `docs/troubleshooting.rst`.
 
 ### Version 1.7.3
@@ -367,6 +380,7 @@ Firefox may have compatibility issues with Aladin Lite v3 due to WebAssembly loa
   - The pipeline computes flux, S/N, magnitude, magnitude error, and quality flag for this aperture alongside the two fixed ones
   - Output catalog columns follow the same naming convention: `aperture_mag_X_X`, `aperture_mag_err_X_X`, `snr_X_X`, `quality_flag_X_X` (e.g. `_1_5` for a factor of 1.5)
   - The zero point is applied to the third aperture in the same calibration pass as the fixed apertures
+  - When calibration-star colors are available, matching `*_colorcorr` magnitude columns are also exported in parallel with the baseline calibrated magnitudes
   - Values 1.1 and 1.3 are reserved for the existing fixed apertures; selecting them collapses back to two apertures without duplication
   - The value is saved in the per-user configuration and persists across sessions
 - **Packaging and Runtime Fixes**:

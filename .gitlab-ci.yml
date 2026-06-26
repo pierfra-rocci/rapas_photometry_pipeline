@@ -1,0 +1,97 @@
+stages:
+  - deploy-test
+  - deploy-prod
+
+build_sonar:
+  stage: deploy-test
+
+  rules:
+      #- if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+      #- if: $CI_COMMIT_BRANCH == 'master'
+      - if: $CI_COMMIT_BRANCH == 'main'
+      #- if: $CI_COMMIT_BRANCH == 'develop'
+  
+  tags:
+      - linux
+      - sonar
+  
+  image: 
+    name: sonarsource/sonar-scanner-cli:11
+    entrypoint: [""]
+
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"  # Defines the location of the analysis task cache
+    GIT_DEPTH: "0"  # Tells git to fetch all the branches of the project, required by the analysis task
+
+  cache:
+      policy: pull-push
+      key: "sonar-cache-$CI_COMMIT_REF_SLUG"
+      paths:
+        - "${SONAR_USER_HOME}/cache"
+        - sonar-scanner/
+        
+  script: 
+    - echo SONAR_TOKEN=$SONAR_TOKEN
+    - echo SONAR_HOST_URL=$SONAR_HOST_URL
+    - sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}"
+ 
+  allow_failure: true
+  
+
+
+deploy_on_rapas_test:
+  stage: deploy-test
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'  # Deploy on rapas-test only if branch is main
+  tags:
+      - linux
+      - rapas-test
+  script:
+    - |
+      echo Hello from `hostname`
+      echo PATH=$PATH
+      echo pwd=`pwd`
+      echo id=`id`
+      echo CI_COMMIT_BRANCH=$CI_COMMIT_BRANCH
+      echo CI_PIPELINE_SOURCE=$CI_PIPELINE_SOURCE
+    - |
+      echo "Updating webapp with git pull"
+      sudo -u rpp bash << EOF
+      cd /home/rpp/rpp
+      git pull https://gitlab-ci-token:${CI_JOB_TOKEN}@voparis-gitlab.obspm.fr/RAPAS/rpp main
+      EOF
+    - |
+      echo "Restarting backend"
+      sudo /bin/systemctl restart uvicorn-rpp
+    - |
+      echo "Restarting frontend"
+      sudo /bin/systemctl restart streamlit-rpp
+
+deploy_on_rapas_prod:
+  stage: deploy-prod
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "prod"'  # Deploy on rapas only if branch is prod
+  tags:
+      - linux
+      - rapas-prod
+  script:
+    - |
+      echo Hello from `hostname`
+      echo PATH=$PATH
+      echo pwd=`pwd`
+      echo id=`id`
+      echo CI_COMMIT_BRANCH=$CI_COMMIT_BRANCH
+      echo CI_PIPELINE_SOURCE=$CI_PIPELINE_SOURCE
+    - |
+      echo "Updating webapp with git pull"
+      sudo -u rpp bash << EOF
+      cd /home/rpp/rpp
+      git pull https://gitlab-ci-token:${CI_JOB_TOKEN}@voparis-gitlab.obspm.fr/RAPAS/rpp prod
+      EOF
+    - |
+      echo "Restarting backend"
+      sudo /bin/systemctl restart uvicorn-rpp
+    - |
+      echo "Restarting frontend"
+      sudo /bin/systemctl restart streamlit-rpp
+    
