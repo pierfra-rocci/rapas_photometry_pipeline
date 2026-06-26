@@ -1,32 +1,27 @@
-# Show the contents of app log files on server
+# Show the contents of app log files on server in real-time
 
 import streamlit as st
 
 
-def show_file(filepath):
+def read_last_lines(filepath: str, n: int = 200) -> str:
+    """Return the last *n* lines of *filepath* as a single string."""
     try:
-        # Read the file
-        with open(filepath, "r") as file:
-            content = file.read()
-
-        # Display the content
-        st.text_area("File Content", content, height=300)
+        with open(filepath, "r") as fh:
+            lines = fh.readlines()
+        return "".join(lines[-n:]) if lines else "(log is empty)"
     except FileNotFoundError:
-        st.error("File not found. Check the path.")
-    except Exception as e:
-        st.error(f"An error occurred: {e}")
+        return f"(file not found: {filepath})"
+    except Exception as exc:
+        return f"(error reading file: {exc})"
 
 
 st.set_page_config(
-    page_title="RPP Server Logs",
+    page_title="RAPAS Pipeline Logs",
     page_icon=":sparkles:",
-    layout="centered",
+    layout="wide",
 )
 
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-
-if not st.session_state.logged_in:
+if not st.session_state.get("logged_in", False):
     st.warning("You must log in to access this page.")
     try:
         st.switch_page("pages/login.py")
@@ -37,10 +32,32 @@ if not st.session_state.logged_in:
         )
     st.stop()
 
-# Add a button
-if st.button("Show Backend Log"):
-    show_file('backend.log')
+st.title("📋 Pipeline Logs")
 
-# Add a button
-if st.button("Show Frontend Log"):
-    show_file('frontend.log')
+col_back, col_info = st.columns([1, 5])
+with col_back:
+    if st.button("← Back to App"):
+        st.switch_page("pages/app.py")
+with col_info:
+    st.caption("Showing last 200 lines · auto-refreshes every 5 s · read-only")
+
+tab_backend, tab_frontend = st.tabs(["🖥️ Backend Log", "🌐 Frontend Log"])
+
+
+@st.fragment(run_every=5)
+def _show_log(filepath: str) -> None:
+    content = read_last_lines(filepath)
+    st.text_area(
+        label=filepath,
+        value=content,
+        height=600,
+        disabled=True,
+        label_visibility="collapsed",
+    )
+
+
+with tab_backend:
+    _show_log("backend.log")
+
+with tab_frontend:
+    _show_log("frontend.log")

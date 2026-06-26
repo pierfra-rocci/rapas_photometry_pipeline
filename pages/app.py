@@ -42,6 +42,7 @@ from src.tools_pipeline import (
     get_filter_prefix,
     merge_photometry_catalogs,
     clean_photometry_table,
+    apply_color_term_correction,
 )
 from src.utils import (
     FIGURE_SIZES,
@@ -62,6 +63,7 @@ from src.pipeline import (
     calculate_zero_point,
     detection_and_photometry,
     airmass,
+    fit_color_term_correction,
 )
 
 from src.astrometry import solve_with_astrometrynet
@@ -236,7 +238,7 @@ st.markdown(
 # Add application version to the sidebar
 st.title(":sparkles: **RAPAS Photometry Pipeline**")
 st.markdown(
-    "| [**RAPAS Home**](https://rapas.imcce.fr/) | [<img src='https://github.githubassets.com/favicons/favicon.svg' width='16' style='vertical-align:middle'/> **GitHub**](https://github.com/pierfra-rocci/rpp) |",
+    "| [**RAPAS Home**](https://rapas.imcce.fr/) | [<img src='https://github.githubassets.com/favicons/favicon.svg' width='16' style='vertical-align:middle'/> **GitHub**](https://github.com/pierfra-rocci/rapas_photometry_pipeline) |",
     unsafe_allow_html=True,
 )
 st.caption(st.session_state.backend_status_message)
@@ -548,11 +550,20 @@ if "uploaded_temp_path" not in st.session_state:
                 uploaded.name,
             )
             st.success(f"File '{uploaded.name}' is ready.")
+
+            # Best-effort preview: expose the raw FITS header before analysis starts.
+            try:
+                _, preview_header = load_fits_data(science_file)
+                st.session_state["preview_header"] = preview_header
+            except Exception:
+                st.session_state.pop("preview_header", None)
         except Exception:
             st.error("Failed to persist uploaded file. Please re-upload.")
             st.session_state.pop("uploaded_temp_path", None)
+            st.session_state.pop("preview_header", None)
             science_file = None
     else:
+        st.session_state.pop("preview_header", None)
         science_file = None
 else:
     temp_path = st.session_state.get("uploaded_temp_path")
@@ -563,6 +574,7 @@ else:
         )
     else:
         st.session_state.pop("uploaded_temp_path", None)
+        st.session_state.pop("preview_header", None)
         science_file = None
 
 science_file_path = None
@@ -577,6 +589,11 @@ st.session_state.observatory_data = {
 
 # Add button to start the analysis (appears right after image upload)
 if science_file is not None:
+    preview_header = st.session_state.get("preview_header")
+    if preview_header is not None:
+        with st.expander("Image Header (Preview Before Analysis)", expanded=False):
+            st.text(repr(preview_header))
+
     st.markdown("---")
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -1308,6 +1325,7 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
                     if matched_table is not None:
                         st.subheader("Cross-matched Catalog (first 10 rows)")
                         st.dataframe(matched_table.head(10))
+                        color_term_result = None
 
                         with st.spinner("Calculating zero point..."):
                             zero_point_value, zero_point_std, zp_plot = (
@@ -1326,6 +1344,40 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
                                     f"Zero point: {zero_point_value:.2f} ± {zero_point_std:.2f}",
                                 )
                                 write_to_log(log_buffer, f"Airmass: {air:.2f}")
+
+                                color_term_result = fit_color_term_correction(
+                                    matched_table,
+                                    filter_band=filter_band,
+                                    zero_point=zero_point_value,
+                                    fwhm_radius_factor=fwhm_radius_factor,
+                                )
+                                if color_term_result.get("fitted"):
+                                    st.info(
+                                        "Color term fitted: "
+                                        f"{color_term_result['color_label']} -> "
+                                        f"C={color_term_result['color_term']:.4f}, "
+                                        f"N={color_term_result['n_used']}, "
+                                        f"scatter={color_term_result['scatter']:.4f} mag"
+                                    )
+                                    write_to_log(
+                                        log_buffer,
+                                        "Color term: "
+                                        f"{color_term_result['color_label']} / "
+                                        f"C={color_term_result['color_term']:.4f} / "
+                                        f"N={color_term_result['n_used']}",
+                                    )
+                                    if color_term_result.get("diagnostic_figure") is not None:
+                                        st.pyplot(color_term_result["diagnostic_figure"])
+                                        plt.close(color_term_result["diagnostic_figure"])
+                                elif color_term_result.get("supported"):
+                                    st.warning(
+                                        "Color term skipped: "
+                                        f"{color_term_result.get('reason', 'insufficient calibration stars')}"
+                                    )
+                                else:
+                                    st.info(
+                                        "Color term not available for this calibration filter."
+                                    )
 
                                 try:
                                     if (
@@ -1521,6 +1573,11 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
                                             search_radius_arcsec=search_radius,
                                         )
                                         handle_log_messages(log_messages)
+                                        final_table = apply_color_term_correction(
+                                            final_table,
+                                            color_term_result,
+                                            filter_band=filter_band,
+                                        )
                                 elif final_table is not None:
                                     st.warning(
                                         "RA/DEC coordinates not available for catalog cross-matching"
@@ -1696,6 +1753,95 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
                                             ],
                                         }
                                     )
+
+                                    if (
+                                        final_phot_table is not None
+                                        and not final_phot_table.empty
+                                    ):
+                                        phot_x_col = next(
+                                            (
+                                                col
+                                                for col in [
+                                                    "xcenter",
+                                                    "x_center",
+                                                    "X (pix)",
+                                                ]
+                                                if col in final_phot_table.columns
+                                            ),
+                                            None,
+                                        )
+                                        phot_y_col = next(
+                                            (
+                                                col
+                                                for col in [
+                                                    "ycenter",
+                                                    "y_center",
+                                                    "Y (pix)",
+                                                ]
+                                                if col in final_phot_table.columns
+                                            ),
+                                            None,
+                                        )
+
+                                        if phot_x_col is not None and phot_y_col is not None:
+                                            photometry_columns = [
+                                                col
+                                                for col in final_phot_table.columns
+                                                if (
+                                                    "mag" in col.lower()
+                                                    or "snr" in col.lower()
+                                                    or col == "phot_method"
+                                                )
+                                            ]
+                                            photometry_columns = [
+                                                col
+                                                for col in photometry_columns
+                                                if col not in candidates_df.columns
+                                            ]
+
+                                            photometry_export = (
+                                                final_phot_table[
+                                                    [phot_x_col, phot_y_col, *photometry_columns]
+                                                ]
+                                                .copy()
+                                                .rename(
+                                                    columns={
+                                                        phot_x_col: "X (pix)",
+                                                        phot_y_col: "Y (pix)",
+                                                    }
+                                                )
+                                            )
+                                            photometry_export["_x_round"] = (
+                                                pd.to_numeric(
+                                                    photometry_export["X (pix)"],
+                                                    errors="coerce",
+                                                ).round(2)
+                                            )
+                                            photometry_export["_y_round"] = (
+                                                pd.to_numeric(
+                                                    photometry_export["Y (pix)"],
+                                                    errors="coerce",
+                                                ).round(2)
+                                            )
+                                            photometry_export = photometry_export.drop(
+                                                columns=["X (pix)", "Y (pix)"]
+                                            )
+
+                                            candidates_df["_x_round"] = pd.to_numeric(
+                                                candidates_df["X (pix)"], errors="coerce"
+                                            ).round(2)
+                                            candidates_df["_y_round"] = pd.to_numeric(
+                                                candidates_df["Y (pix)"], errors="coerce"
+                                            ).round(2)
+                                            candidates_df = candidates_df.merge(
+                                                photometry_export,
+                                                on=["_x_round", "_y_round"],
+                                                how="left",
+                                            )
+                                            candidates_df = candidates_df.drop(
+                                                columns=["_x_round", "_y_round"]
+                                            )
+
                                     # Display the DataFrame in Streamlit
                                     st.dataframe(
                                         candidates_df, use_container_width=True

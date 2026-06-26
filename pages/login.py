@@ -71,7 +71,7 @@ if not st.session_state.logged_in:
     st.title(":sparkles: RAPAS Photometry Pipeline")
     st.caption(st.session_state.backend_status_message)
 
-    with st.expander("👋 First time here ?"):
+    with st.expander("👋 First time ? / Première fois ?"):
         guide_en, guide_fr = st.tabs(["🇬🇧 English", "🇫🇷 Français"])
         with guide_en:
             st.markdown(
