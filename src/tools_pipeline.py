@@ -88,6 +88,183 @@ def get_prefixed_photometry_column(column_name: str, filter_band: str | None) ->
     return f"{filter_prefix}_{column_name}"
 
 
+def resolve_photometric_color_columns(filter_band: str | None) -> dict:
+    """Resolve the simplest supported catalog color definition for a filter.
+
+    Parameters
+    ----------
+    filter_band : str or None
+        Selected calibration filter band.
+
+    Returns
+    -------
+    dict
+        Mapping describing the supported color term definition.
+    """
+    unsupported = {
+        "supported": False,
+        "filter_band": filter_band,
+        "color_label": None,
+        "primary_column": None,
+        "secondary_column": None,
+        "derived_column": None,
+    }
+
+    if not filter_band:
+        return unsupported
+
+    if filter_band in {"phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"}:
+        return {
+            "supported": True,
+            "filter_band": filter_band,
+            "color_label": "BP-RP",
+            "primary_column": "phot_bp_mean_mag",
+            "secondary_column": "phot_rp_mean_mag",
+            "derived_column": "bp_rp",
+        }
+
+    if filter_band in {"gmag", "rmag"}:
+        return {
+            "supported": True,
+            "filter_band": filter_band,
+            "color_label": "g-r",
+            "primary_column": "gmag",
+            "secondary_column": "rmag",
+            "derived_column": None,
+        }
+
+    if filter_band == "imag":
+        return {
+            "supported": True,
+            "filter_band": filter_band,
+            "color_label": "r-i",
+            "primary_column": "rmag",
+            "secondary_column": "imag",
+            "derived_column": None,
+        }
+
+    if filter_band == "zmag":
+        return {
+            "supported": True,
+            "filter_band": filter_band,
+            "color_label": "i-z",
+            "primary_column": "imag",
+            "secondary_column": "zmag",
+            "derived_column": None,
+        }
+
+    return unsupported
+
+
+def extract_photometric_color_series(table, filter_band: str | None):
+    """Return per-source color values for the selected calibration filter.
+
+    The helper accepts both raw matched-table columns and the prefixed columns
+    created during final catalog enhancement.
+    """
+    color_config = resolve_photometric_color_columns(filter_band)
+    metadata = {
+        **color_config,
+        "found_columns": [],
+    }
+
+    if table is None or len(table) == 0 or not color_config["supported"]:
+        return None, metadata
+
+    def _candidate_columns(column_name: str | None) -> list[str]:
+        if not column_name:
+            return []
+        return [
+            column_name,
+            f"gaia_{column_name}",
+            f"calib_{column_name}",
+        ]
+
+    derived_column = color_config.get("derived_column")
+    for candidate in _candidate_columns(derived_column):
+        if candidate in table.columns:
+            metadata["found_columns"] = [candidate]
+            return pd.to_numeric(table[candidate], errors="coerce"), metadata
+
+    primary_candidates = _candidate_columns(color_config.get("primary_column"))
+    secondary_candidates = _candidate_columns(color_config.get("secondary_column"))
+
+    primary_column = next((col for col in primary_candidates if col in table.columns), None)
+    secondary_column = next((col for col in secondary_candidates if col in table.columns), None)
+
+    if primary_column and secondary_column:
+        metadata["found_columns"] = [primary_column, secondary_column]
+        primary_values = pd.to_numeric(table[primary_column], errors="coerce")
+        secondary_values = pd.to_numeric(table[secondary_column], errors="coerce")
+        return primary_values - secondary_values, metadata
+
+    return None, metadata
+
+
+def apply_color_term_correction(final_table, color_term_result, filter_band: str | None = None):
+    """Append color-corrected magnitudes without altering legacy columns.
+
+    Parameters
+    ----------
+    final_table : pandas.DataFrame
+        Final table containing calibrated magnitudes.
+    color_term_result : dict or None
+        Result returned by the color-term fitting helper.
+    filter_band : str or None
+        Selected calibration filter band.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Table with additional color-corrected magnitude columns when possible.
+    """
+    if final_table is None or len(final_table) == 0:
+        return final_table
+
+    if not color_term_result or not color_term_result.get("fitted", False):
+        return final_table
+
+    source_color, color_metadata = extract_photometric_color_series(final_table, filter_band)
+    if source_color is None:
+        return final_table
+
+    corrected_table = final_table.copy()
+    color_ref = float(color_term_result.get("color_ref", 0.0))
+    color_term_value = float(color_term_result.get("color_term", 0.0))
+    intercept = float(color_term_result.get("intercept", 0.0))
+    color_offset = intercept + color_term_value * (source_color - color_ref)
+    valid_color_mask = np.isfinite(color_offset)
+
+    corrected_table["source_color"] = source_color
+    corrected_table["color_term_label"] = color_term_result.get("color_label")
+    corrected_table["color_term_value"] = color_term_value
+    corrected_table["color_term_ref"] = color_ref
+    corrected_table["color_term_offset"] = color_offset
+    corrected_table["color_term_applied"] = valid_color_mask
+    corrected_table["color_term_columns"] = ",".join(color_metadata.get("found_columns", []))
+
+    for column in list(corrected_table.columns):
+        if column == "psf_mag" or column.startswith("aperture_mag_"):
+            if column.endswith("_colorcorr") or column.startswith("aperture_mag_err_"):
+                continue
+            corrected_table[f"{column}_colorcorr"] = corrected_table[column] + color_offset
+            corrected_table.loc[~valid_color_mask, f"{column}_colorcorr"] = np.nan
+
+    filter_prefix = get_filter_prefix(filter_band)
+    if filter_prefix:
+        alias_map = {}
+        for column in list(corrected_table.columns):
+            if column.endswith("_colorcorr") and not column.startswith(f"{filter_prefix}_"):
+                alias_name = f"{filter_prefix}_{column}"
+                if alias_name not in corrected_table.columns:
+                    alias_map[alias_name] = corrected_table[column]
+
+        if alias_map:
+            corrected_table = corrected_table.assign(**alias_map)
+
+    return corrected_table
+
+
 def drop_legacy_magnitude_columns(final_table, filter_band=None):
     """Remove legacy magnitude columns when prefixed aliases are available.
 
@@ -104,11 +281,12 @@ def drop_legacy_magnitude_columns(final_table, filter_band=None):
 
     cols_to_drop = []
     for col in list(final_table.columns):
+        is_colorcorr_col = col.endswith("_colorcorr")
         is_legacy_mag_col = (
             col == "psf_mag"
             or col == "psf_mag_err"
             or col == "psf_instrumental_mag"
-            or col.startswith("aperture_mag_")
+            or (col.startswith("aperture_mag_") and not is_colorcorr_col)
             or col.startswith("aperture_mag_err_")
             or col.startswith("instrumental_mag_bkg_corr_")
             or col.startswith("instrumental_mag_")

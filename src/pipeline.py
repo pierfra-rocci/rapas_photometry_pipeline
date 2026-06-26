@@ -19,11 +19,162 @@ from photutils.detection import DAOStarFinder
 from photutils.aperture import (CircularAperture, CircularAnnulus,
                                 aperture_photometry)
 
-from src.tools_pipeline import safe_wcs_create, estimate_background
+from src.tools_pipeline import (
+    safe_wcs_create,
+    estimate_background,
+    extract_photometric_color_series,
+)
 from src.utils import ensure_output_directory
 
 from typing import Union, Optional, Dict, Tuple
 from src.psf import perform_psf_photometry
+
+
+def fit_color_term_correction(
+    matched_table,
+    filter_band: str,
+    zero_point: float,
+    fwhm_radius_factor: float = 1.5,
+    min_points: int = 5,
+    sigma_threshold: float = 3.0,
+    max_iterations: int = 5,
+):
+    """Fit a simple linear color term on the matched calibration stars.
+
+    The fit is performed on residuals relative to the existing scalar zero point,
+    preserving the current calibration workflow as the baseline path.
+    """
+    result = {
+        "supported": False,
+        "fitted": False,
+        "reason": None,
+        "filter_band": filter_band,
+        "instrumental_mag_col": None,
+        "color_label": None,
+        "color_ref": None,
+        "color_term": None,
+        "intercept": None,
+        "effective_zero_point": None,
+        "n_used": 0,
+        "scatter": None,
+        "diagnostic_figure": None,
+    }
+
+    if matched_table is None or len(matched_table) == 0:
+        result["reason"] = "No matched calibration stars available."
+        return result
+
+    color_series, color_metadata = extract_photometric_color_series(matched_table, filter_band)
+    result["supported"] = color_metadata.get("supported", False)
+    result["color_label"] = color_metadata.get("color_label")
+    if color_series is None:
+        result["reason"] = "Catalog colors are unavailable for the selected filter."
+        return result
+
+    preferred_radius = 1.3
+    radius_suffix = f"_{str(preferred_radius).replace('.', '_')}"
+    instrumental_mag_col = f"instrumental_mag{radius_suffix}"
+    if instrumental_mag_col not in matched_table.columns:
+        candidate_cols = sorted(
+            [col for col in matched_table.columns if col.startswith("instrumental_mag_")]
+        )
+        if not candidate_cols:
+            result["reason"] = "No instrumental magnitude column is available for color fitting."
+            return result
+        instrumental_mag_col = candidate_cols[0]
+
+    result["instrumental_mag_col"] = instrumental_mag_col
+
+    fit_table = pd.DataFrame(
+        {
+            "instrumental_mag": pd.to_numeric(
+                matched_table[instrumental_mag_col], errors="coerce"
+            ),
+            "catalog_mag": pd.to_numeric(matched_table[filter_band], errors="coerce"),
+            "source_color": pd.to_numeric(color_series, errors="coerce"),
+        }
+    )
+    fit_table = fit_table.replace([np.inf, -np.inf], np.nan).dropna().copy()
+
+    if len(fit_table) < min_points:
+        result["reason"] = (
+            f"Need at least {min_points} matched stars with valid colors; found {len(fit_table)}."
+        )
+        return result
+
+    color_ref = float(np.median(fit_table["source_color"]))
+    fit_table["color_centered"] = fit_table["source_color"] - color_ref
+    fit_table["residual"] = fit_table["catalog_mag"] - (
+        fit_table["instrumental_mag"] + float(zero_point)
+    )
+
+    for _ in range(max_iterations):
+        x_values = fit_table["color_centered"].to_numpy(dtype=float)
+        y_values = fit_table["residual"].to_numpy(dtype=float)
+        design_matrix = np.column_stack([np.ones(len(x_values)), x_values])
+        intercept, color_term = np.linalg.lstsq(design_matrix, y_values, rcond=None)[0]
+        model = intercept + color_term * x_values
+        residuals = y_values - model
+
+        if len(fit_table) <= min_points:
+            break
+
+        median_residual = float(np.median(residuals))
+        mad = float(np.median(np.abs(residuals - median_residual)))
+        scale = 1.4826 * mad if mad > 0 else float(np.std(residuals, ddof=1))
+        if not np.isfinite(scale) or scale <= 0:
+            break
+
+        keep_mask = np.abs(residuals - median_residual) <= sigma_threshold * scale
+        if keep_mask.all() or keep_mask.sum() < min_points:
+            break
+        fit_table = fit_table.iloc[keep_mask].copy()
+
+    x_values = fit_table["color_centered"].to_numpy(dtype=float)
+    y_values = fit_table["residual"].to_numpy(dtype=float)
+    design_matrix = np.column_stack([np.ones(len(x_values)), x_values])
+    intercept, color_term = np.linalg.lstsq(design_matrix, y_values, rcond=None)[0]
+    model = intercept + color_term * x_values
+    residuals = y_values - model
+    scatter = float(np.std(residuals, ddof=1)) if len(residuals) > 1 else 0.0
+
+    fig, ax = plt.subplots(figsize=(7, 5), dpi=100)
+    ax.scatter(
+        fit_table["source_color"],
+        fit_table["residual"],
+        alpha=0.7,
+        color="tab:blue",
+        label="Calibration stars",
+    )
+    color_grid = np.linspace(
+        fit_table["source_color"].min(),
+        fit_table["source_color"].max(),
+        100,
+    )
+    model_grid = intercept + color_term * (color_grid - color_ref)
+    ax.plot(color_grid, model_grid, color="tab:red", label="Linear color term")
+    ax.axhline(0.0, color="gray", linestyle="--", linewidth=1)
+    ax.set_xlabel(result["color_label"] or "Color")
+    ax.set_ylabel("Catalog - (instrumental + zero point)")
+    ax.set_title("Color-Term Fit")
+    ax.grid(True, alpha=0.4)
+    ax.legend()
+    fig.tight_layout()
+
+    result.update(
+        {
+            "fitted": True,
+            "reason": None,
+            "color_ref": color_ref,
+            "color_term": float(color_term),
+            "intercept": float(intercept),
+            "effective_zero_point": float(zero_point) + float(intercept),
+            "n_used": int(len(fit_table)),
+            "scatter": scatter,
+            "diagnostic_figure": fig,
+        }
+    )
+    return result
 
 
 def mask_and_remove_cosmic_rays(image_data, header):

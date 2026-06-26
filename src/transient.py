@@ -15,6 +15,7 @@ if not hasattr(np, "in1d"):
     np.in1d = np.isin  # type: ignore[attr-defined]
 from astropy.time import Time
 from astroquery.imcce import Skybot
+from xml.parsers.expat import ExpatError
 from src.tools_pipeline import get_prefixed_photometry_column
 
 from src.tools_pipeline import fix_header
@@ -101,8 +102,15 @@ def filter_skybot_candidates(
         if _skybot_resp.status_code == 204 or not _skybot_resp.text.strip():
             skybot_results = None
         else:
-            Skybot._get_raw_response = False
-            skybot_results = Skybot._parse_result(_skybot_resp)
+            try:
+                Skybot._get_raw_response = False
+                skybot_results = Skybot._parse_result(_skybot_resp)
+            except (ExpatError, ValueError) as parse_error:
+                st.warning(
+                    f"SkyBoT returned an unreadable response ({parse_error}). "
+                    "Skipping Solar System object filtering."
+                )
+                skybot_results = None
 
         if skybot_results is None or len(skybot_results) == 0:
             st.warning("✓ SkyBoT: No Solar System objects found in field")

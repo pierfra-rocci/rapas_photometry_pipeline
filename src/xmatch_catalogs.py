@@ -2,6 +2,7 @@ import os
 import json
 from datetime import datetime, timedelta
 import requests
+from xml.parsers.expat import ExpatError
 
 import numpy as np
 import pandas as pd
@@ -613,6 +614,34 @@ def cross_match_with_gaia(
             catalog_table_filtered[mag_column_for_output][matched_indices_catalog]
         )
 
+        if is_sloan_filter:
+            standardized_sloan_columns = {
+                "gmag": ["gmag", "gPSF"],
+                "rmag": ["rmag", "rPSF"],
+                "imag": ["imag", "iPSF"],
+                "zmag": ["zmag", "zPSF"],
+            }
+            for standard_name, candidates in standardized_sloan_columns.items():
+                source_column = next(
+                    (col for col in candidates if col in catalog_table_filtered.colnames),
+                    None,
+                )
+                if source_column is not None:
+                    matched_table[standard_name] = np.asarray(
+                        catalog_table_filtered[source_column][matched_indices_catalog]
+                    )
+        else:
+            for extra_column in [
+                "phot_g_mean_mag",
+                "phot_bp_mean_mag",
+                "phot_rp_mean_mag",
+                "bp_rp",
+            ]:
+                if extra_column in catalog_table_filtered.colnames:
+                    matched_table[extra_column] = np.asarray(
+                        catalog_table_filtered[extra_column][matched_indices_catalog]
+                    )
+
         valid_mags = np.isfinite(matched_table[filter_band])
         matched_table = matched_table[valid_mags]
 
@@ -764,18 +793,26 @@ def enhance_catalog(
                     + matched_table["ycenter"].round(2).astype(str)
                 )
 
-                gaia_cols = [
+                calib_cols = [
                     col
                     for col in matched_table.columns
                     if any(x in col for x in ["gaia", "phot_"])
+                    or col in {"bp_rp", "gmag", "rmag", "imag", "zmag"}
                 ]
-                gaia_cols.append("match_id")
-                gaia_subset = matched_table[gaia_cols].copy()
+                calib_cols.append("match_id")
+                calib_cols = list(dict.fromkeys(calib_cols))
+                gaia_subset = matched_table[calib_cols].copy()
 
                 rename_dict = {
-                    col: f"gaia_{col}"
+                    col: (
+                        f"gaia_{col}"
+                        if (col.startswith("phot_") or col == "bp_rp" or "gaia" in col)
+                        else f"calib_{col}"
+                    )
                     for col in gaia_subset.columns
-                    if col != "match_id" and not col.startswith("gaia_")
+                    if col != "match_id"
+                    and not col.startswith("gaia_")
+                    and not col.startswith("calib_")
                 }
                 if rename_dict:
                     gaia_subset = gaia_subset.rename(columns=rename_dict)
@@ -1149,8 +1186,16 @@ def enhance_catalog(
                 if _skybot_resp.status_code == 204 or not _skybot_resp.text.strip():
                     skybot_result = None
                 else:
-                    Skybot._get_raw_response = False
-                    skybot_result = Skybot._parse_result(_skybot_resp)
+                    try:
+                        Skybot._get_raw_response = False
+                        skybot_result = Skybot._parse_result(_skybot_resp)
+                    except (ExpatError, ValueError) as parse_error:
+                        preview = _skybot_resp.text.strip().replace("\n", " ")[:120]
+                        log_messages.append(
+                            "WARNING: SkyBoT response could not be parsed "
+                            f"({parse_error}). Skipping SkyBoT match. Response preview: {preview}"
+                        )
+                        skybot_result = None
 
                 if skybot_result is None or len(skybot_result) == 0:
                     log_messages.append(

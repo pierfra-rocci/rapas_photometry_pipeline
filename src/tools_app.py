@@ -723,7 +723,10 @@ def display_archived_files_browser(output_dir):
         # Sort files by modification time (newest first)
         zip_files.sort(key=lambda x: x["modified"], reverse=True)
 
-        # Compact display with download buttons
+        # Keep lightweight UI state for deferred archive loading
+        selected_archive = st.session_state.get("archived_selected_zip")
+
+        # Compact display with per-file selection buttons
         for file_info in zip_files:
             # Format file size
             size = file_info["size"]
@@ -742,7 +745,7 @@ def display_archived_files_browser(output_dir):
             if len(display_name) > 25:
                 display_name = display_name[:21] + "..."
 
-            # Create compact row with download button
+            # Create compact row with action button
             col1, col2 = st.columns([3, 1])
 
             with col1:
@@ -750,21 +753,40 @@ def display_archived_files_browser(output_dir):
                 st.caption(f"{size_str} • {date_str}")
 
             with col2:
-                try:
-                    with open(file_info["path"], "rb") as f:
-                        file_data = f.read()
+                if st.button(
+                    "⬇️",
+                    key=f"select_zip_{file_info['name']}",
+                    help=f"Prepare download for {file_info['name']}",
+                    use_container_width=True,
+                ):
+                    st.session_state["archived_selected_zip"] = file_info
+                    st.session_state.pop("archived_selected_zip_data", None)
+                    selected_archive = file_info
 
-                    st.download_button(
-                        label="⬇️",
-                        data=file_data,
-                        file_name=file_info["name"],
-                        mime="application/zip",
-                        key=f"download_zip_{file_info['name']}",
-                        help=f"Download {file_info['name']}",
-                        use_container_width=True,
-                    )
+        if selected_archive:
+            st.caption(f"Selected archive: {selected_archive['name']}")
+
+            file_data = st.session_state.get("archived_selected_zip_data")
+            if file_data is None:
+                try:
+                    with open(selected_archive["path"], "rb") as handle:
+                        file_data = handle.read()
+                    st.session_state["archived_selected_zip_data"] = file_data
                 except Exception as e:
-                    st.error(f"Error: {str(e)[:15]}...")
+                    st.error(f"Error opening archive: {str(e)}")
+                    return
+
+            downloaded = st.download_button(
+                label=f"Download {selected_archive['name']}",
+                data=file_data,
+                file_name=selected_archive["name"],
+                mime="application/zip",
+                key=f"download_selected_zip_{selected_archive['name']}",
+                use_container_width=True,
+            )
+            if downloaded:
+                st.session_state.pop("archived_selected_zip_data", None)
+                st.session_state.pop("archived_selected_zip", None)
 
     except Exception as e:
         st.error(f"Error accessing results directory: {str(e)}") 
