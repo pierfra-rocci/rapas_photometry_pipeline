@@ -37,9 +37,14 @@ from photutils.detection import DAOStarFinder
 
 import src.pipeline as pipeline_module
 import src.psf as psf_module
-from src.pipeline import calculate_zero_point
+from src.pipeline import calculate_zero_point, fit_color_term_correction
 from src.psf import perform_psf_photometry
-from src.tools_pipeline import add_calibrated_magnitudes, drop_legacy_magnitude_columns
+from src.tools_pipeline import (
+    add_calibrated_magnitudes,
+    drop_legacy_magnitude_columns,
+    resolve_photometric_color_columns,
+    apply_color_term_correction,
+)
 
 
 class TestSNRCalculations:
@@ -574,6 +579,144 @@ class TestPrefixedMagnitudeAliases:
         assert "aperture_mag_1_5" not in out.columns
         assert "aperture_mag_err_1_5" not in out.columns
         assert "instrumental_mag_1_5" not in out.columns
+
+
+class TestColorTermCalibration:
+    """Test the standalone color-term calibration helpers."""
+
+    def test_resolve_photometric_color_columns_for_supported_filters(self):
+        gaia_config = resolve_photometric_color_columns("phot_g_mean_mag")
+        assert gaia_config["supported"] is True
+        assert gaia_config["color_label"] == "BP-RP"
+
+        sloan_config = resolve_photometric_color_columns("imag")
+        assert sloan_config["supported"] is True
+        assert sloan_config["color_label"] == "r-i"
+
+        unsupported_config = resolve_photometric_color_columns("v_jkc_mag")
+        assert unsupported_config["supported"] is False
+
+    def test_fit_color_term_recovers_known_linear_coefficient(self):
+        n_sources = 24
+        instrumental_mag = np.linspace(-10.2, -8.1, n_sources)
+        rp_mag = np.linspace(13.2, 14.0, n_sources)
+        color = np.linspace(0.2, 1.4, n_sources)
+        bp_mag = rp_mag + color
+        zero_point = 25.0
+        true_color_term = 0.18
+        color_ref = np.median(color)
+        catalog_mag = instrumental_mag + zero_point + true_color_term * (color - color_ref)
+
+        matched_table = pd.DataFrame(
+            {
+                "instrumental_mag_1_3": instrumental_mag,
+                "phot_g_mean_mag": catalog_mag,
+                "phot_bp_mean_mag": bp_mag,
+                "phot_rp_mean_mag": rp_mag,
+            }
+        )
+
+        result = fit_color_term_correction(
+            matched_table,
+            filter_band="phot_g_mean_mag",
+            zero_point=zero_point,
+        )
+
+        assert result["supported"] is True
+        assert result["fitted"] is True
+        assert result["n_used"] == n_sources
+        assert result["color_term"] == pytest.approx(true_color_term, abs=1e-6)
+        assert result["intercept"] == pytest.approx(0.0, abs=1e-6)
+        assert result["diagnostic_figure"] is not None
+
+    def test_apply_color_term_correction_appends_new_columns_and_keeps_legacy(self):
+        final_table = pd.DataFrame(
+            {
+                "id": [1, 2],
+                "psf_mag": [14.1, 15.2],
+                "aperture_mag_1_3": [14.0, 15.1],
+                "calib_gmag": [14.6, 15.7],
+                "calib_rmag": [14.2, 15.1],
+            }
+        )
+
+        color_term_result = {
+            "fitted": True,
+            "color_label": "g-r",
+            "color_term": 0.2,
+            "color_ref": 0.4,
+            "intercept": 0.01,
+        }
+
+        corrected = apply_color_term_correction(
+            final_table,
+            color_term_result,
+            filter_band="rmag",
+        )
+
+        expected_color = final_table["calib_gmag"] - final_table["calib_rmag"]
+        expected_offset = 0.01 + 0.2 * (expected_color - 0.4)
+
+        assert "psf_mag" in corrected.columns
+        assert "aperture_mag_1_3" in corrected.columns
+        assert "psf_mag_colorcorr" in corrected.columns
+        assert "aperture_mag_1_3_colorcorr" in corrected.columns
+        assert "r_psf_mag_colorcorr" in corrected.columns
+        assert "r_aperture_mag_1_3_colorcorr" in corrected.columns
+        assert_allclose(corrected["source_color"].values, expected_color.values)
+        assert_allclose(corrected["color_term_offset"].values, expected_offset.values)
+        assert_allclose(
+            corrected["psf_mag_colorcorr"].values,
+            (final_table["psf_mag"] + expected_offset).values,
+        )
+        assert_allclose(
+            corrected["r_psf_mag_colorcorr"].values,
+            corrected["psf_mag_colorcorr"].values,
+        )
+
+    def test_drop_legacy_magnitude_columns_keeps_unprefixed_colorcorr_when_alias_exists(self):
+        df = pd.DataFrame(
+            {
+                "id": [1],
+                "psf_mag": [12.3],
+                "psf_mag_colorcorr": [12.25],
+                "aperture_mag_1_5": [12.4],
+                "aperture_mag_1_5_colorcorr": [12.35],
+                "rapasg_psf_mag": [12.3],
+                "rapasg_psf_mag_colorcorr": [12.25],
+                "rapasg_aperture_mag_1_5": [12.4],
+                "rapasg_aperture_mag_1_5_colorcorr": [12.35],
+            }
+        )
+
+        out = drop_legacy_magnitude_columns(df, filter_band="phot_g_mean_mag")
+
+        assert "rapasg_psf_mag_colorcorr" in out.columns
+        assert "rapasg_aperture_mag_1_5_colorcorr" in out.columns
+        assert "psf_mag_colorcorr" in out.columns
+        assert "aperture_mag_1_5_colorcorr" in out.columns
+
+    def test_apply_color_term_correction_skips_when_color_is_missing(self):
+        final_table = pd.DataFrame(
+            {
+                "id": [1],
+                "psf_mag": [14.1],
+            }
+        )
+
+        corrected = apply_color_term_correction(
+            final_table,
+            {
+                "fitted": True,
+                "color_label": "BP-RP",
+                "color_term": 0.1,
+                "color_ref": 0.8,
+                "intercept": 0.0,
+            },
+            filter_band="phot_g_mean_mag",
+        )
+
+        assert list(corrected.columns) == list(final_table.columns)
 
 
 class TestZeroPointCalibration:

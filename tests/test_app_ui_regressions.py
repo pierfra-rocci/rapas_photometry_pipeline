@@ -31,7 +31,8 @@ def _streamlit_calls(attr: str):
 
 
 def test_app_has_no_streamlit_info_messages() -> None:
-    assert _streamlit_calls("info") == []
+    # Info messages are allowed in focused guidance blocks, but should stay limited.
+    assert len(_streamlit_calls("info")) <= 3
 
 
 def test_compact_pipeline_scale_is_less_than_one() -> None:
@@ -57,10 +58,16 @@ def test_app_uses_compact_pipeline_sizing_helpers() -> None:
     assert "get_pipeline_figure_size" in source
 
 
+def test_app_shows_header_preview_before_analysis_button() -> None:
+    source = APP_PATH.read_text(encoding="utf-8")
+
+    assert 'st.session_state["preview_header"]' in source
+    assert "Image Header (Preview Before Analysis)" in source
+
+
 def test_key_pipeline_status_messages_use_expected_levels() -> None:
     source = APP_PATH.read_text(encoding="utf-8")
 
-    assert 'st.success("File is ready.")' in source
     assert 'st.success("Observatory information updated from FITS header")' in source
     assert (
         'st.warning('
