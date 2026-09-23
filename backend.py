@@ -5,14 +5,18 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import random
+import secrets
 import string
 import os
 import base64
 import datetime
 import re
 from contextlib import contextmanager
-import config
+
+try:
+    import config
+except ImportError:  # config.py is optional; SMTP features degrade gracefully.
+    config = None
 
 app = Flask(__name__)
 app.config["PREFERRED_URL_SCHEME"] = "https"
@@ -101,8 +105,33 @@ def cleanup_expired_codes():
         print(f"Error cleaning up expired codes: {e}")
 
 
+def authenticate_request():
+    """Return the username for valid HTTP Basic credentials, otherwise None."""
+    auth = request.authorization
+    if not auth or not auth.username or not auth.password:
+        return None
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT password FROM users WHERE username = ?",
+                (auth.username,),
+            )
+            row = cur.fetchone()
+    except Exception as e:
+        print(f"Authentication error: {e}")
+        return None
+    if row and check_password_hash(row["password"], auth.password):
+        return auth.username
+    return None
+
+
 # Helper send email (configure SMTP as needed)
 def send_email(to_email, subject, body):
+    if config is None:
+        print("SMTP configuration not available.")
+        return False, "Email service is not configured."
+
     smtp_server = config.SMTP_SERVER
     smtp_port = config.SMTP_PORT
     smtp_user = config.SMTP_USER
@@ -121,7 +150,7 @@ def send_email(to_email, subject, body):
         msg["Subject"] = subject
         msg.attach(MIMEText(body, "plain"))
 
-        with smtplib.SMTP(smtp_server, smtp_port) as server:
+        with smtplib.SMTP(smtp_server, smtp_port, timeout=15) as server:
             server.starttls()
             server.login(smtp_user, smtp_pass)
             server.send_message(msg)
@@ -217,6 +246,9 @@ def login():
 
 @app.route("/recover_request", methods=["POST"])
 def recover_request():
+    generic_recovery_message = (
+        "If the email is registered, a recovery code has been sent."
+    )
     data = request.form
     email = data.get("email")
 
@@ -236,9 +268,10 @@ def recover_request():
             user = cur.fetchone()
 
             if not user:
-                return "Email not found.", 404
+                # Do not reveal whether the email is registered.
+                return generic_recovery_message, 200
 
-            code = "".join(random.choices(string.digits, k=6))
+            code = "".join(secrets.choice(string.digits) for _ in range(6))
             expires_at = datetime.datetime.now() + datetime.timedelta(minutes=15)
             hashed_code = generate_password_hash(code)
             cur.execute(
@@ -255,7 +288,7 @@ def recover_request():
     if not success:
         return message, 500
 
-    return "Recovery code sent to your email.", 200
+    return generic_recovery_message, 200
 
 
 @app.route("/recover_confirm", methods=["POST"])
@@ -310,12 +343,15 @@ def recover_confirm():
 
 @app.route("/save_config", methods=["POST"])
 def save_config():
-    data = request.json
-    username = data.get("username")
+    username = authenticate_request()
+    if not username:
+        return "Authentication required.", 401, {"WWW-Authenticate": "Basic"}
+
+    data = request.get_json(silent=True) or {}
     config_json = data.get("config_json")
 
-    if not username or config_json is None:
-        return "Username and config_json required.", 400
+    if config_json is None:
+        return "config_json required.", 400
 
     try:
         with get_db_connection() as conn:
@@ -333,10 +369,9 @@ def save_config():
 
 @app.route("/get_config", methods=["GET"])
 def get_config():
-    username = request.args.get("username")
-
+    username = authenticate_request()
     if not username:
-        return "Username required.", 400
+        return "Authentication required.", 401, {"WWW-Authenticate": "Basic"}
 
     try:
         with get_db_connection() as conn:

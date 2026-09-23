@@ -185,5 +185,14 @@ encode_pass.py
 stdpipe_tutorial.ipynb
 .pytest_cache/
 __pycache__/
+# Local SMTP credentials (never commit); use config.example.py as a template
+config.py
+
+# Local SQLite databases and migration backups (contain user records)
+users.db
+users_dev.db
+*_backup_*.db
 .github/
 photometry_pipeline.ipynb
+.freebuff/
+freebuff/
