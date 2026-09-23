@@ -40,5 +40,22 @@ def build_storage_path(user_id: int, original_name: str) -> Tuple[Path, str]:
 
 
 def resolve_storage_path(rel_path: str) -> Path:
-    """Resolve a stored relative path to an absolute file path."""
-    return FITS_STORAGE_ROOT / Path(rel_path)
+    """Resolve a stored relative path to an absolute file path.
+
+    ``rel_path`` is untrusted input when it comes from a client or a database
+    row, so the result is confined to the FITS storage root. Both traversal
+    (``../..``) and absolute paths are rejected: joining an absolute path onto
+    the root would otherwise discard the root completely.
+
+    Raises:
+        ValueError: if the resolved path lies outside the storage root.
+    """
+    root = Path(FITS_STORAGE_ROOT).resolve()
+    candidate = (root / Path(rel_path)).resolve()
+
+    if candidate != root and root not in candidate.parents:
+        raise ValueError(
+            f"Refusing to resolve a path outside the FITS storage root: {rel_path!r}"
+        )
+
+    return candidate

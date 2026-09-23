@@ -108,6 +108,14 @@ class FitsFile(Base):
             "stored_relpath",
             name="uq_fits_user_relpath",
         ),
+        # Deduplicate per user only: a global hash constraint would leak the
+        # fact that another account already holds some content and would block
+        # a user from uploading a file another user happens to own.
+        UniqueConstraint(
+            "user_id",
+            "sha256",
+            name="uq_fits_user_sha256",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -120,7 +128,6 @@ class FitsFile(Base):
     sha256: Mapped[str] = mapped_column(
         String(64),
         nullable=False,
-        unique=True,
     )
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[FitsFileStatus] = mapped_column(

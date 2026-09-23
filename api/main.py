@@ -28,6 +28,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from .config import CORS_ALLOW_ORIGINS, MAX_UPLOAD_BYTES
 from .database import Base, engine, get_db
 from .models import FitsFile, FitsFileStatus, PasswordRecoveryCode, User
 from .schemas import (
@@ -57,7 +58,7 @@ app = FastAPI(title="RAPAS API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ALLOW_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -89,6 +90,7 @@ def _ensure_password_strength(password: str) -> None:
 
 RECOVERY_CODE_LENGTH = 6
 RECOVERY_CODE_LIFETIME_MINUTES = 15
+SMTP_TIMEOUT_SECONDS = 15
 
 try:  # pragma: no cover - optional SMTP configuration
     import config as smtp_config  # type: ignore[import]
@@ -159,7 +161,9 @@ def _send_recovery_email(to_email: str, code: str) -> None:
     message.attach(MIMEText(f"Your recovery code is: {code}", "plain"))
 
     try:
-        with smtplib.SMTP(smtp_server_str, smtp_port_int) as server:
+        with smtplib.SMTP(
+            smtp_server_str, smtp_port_int, timeout=SMTP_TIMEOUT_SECONDS
+        ) as server:
             server.starttls()
             server.login(smtp_user_str, smtp_pass_str)
             server.send_message(message)
@@ -240,9 +244,12 @@ def recovery_request(
     db: Session = Depends(get_db),
 ) -> Message:
     """Initiate password recovery by emailing a numeric code."""
+    generic_message = "If the email is registered, a recovery code has been sent."
+
     user = db.query(User).filter(User.email == payload.email).first()
     if not user:
-        raise HTTPException(status_code=404, detail="Email not found.")
+        # Do not reveal whether the email is registered.
+        return Message(message=generic_message)
 
     _cleanup_expired_codes(db)
 
@@ -279,7 +286,7 @@ def recovery_request(
         ) from exc
 
     db.commit()
-    return Message(message="Recovery code sent to your email.")
+    return Message(message=generic_message)
 
 
 @app.post("/api/recovery/confirm", response_model=Message)
@@ -288,11 +295,17 @@ def recovery_confirm(
     db: Session = Depends(get_db),
 ) -> Message:
     """Validate the recovery code and update the password."""
+    # Validate the password first so an unknown email cannot be told apart from
+    # a known one by the returned error message.
+    _ensure_password_strength(payload.new_password)
+
     user = db.query(User).filter(User.email == payload.email).first()
     if not user:
-        raise HTTPException(status_code=404, detail="Email not found.")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid or expired recovery code.",
+        )
 
-    _ensure_password_strength(payload.new_password)
     _cleanup_expired_codes(db)
 
     codes = (
@@ -366,6 +379,7 @@ async def _write_temp_file(upload: UploadFile) -> tuple[Path, str, int]:
     """Stream upload contents to a temp file while computing SHA256."""
     sha = hashlib.sha256()
     size = 0
+    too_large = False
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
         tmp_path = Path(tmp.name)
         try:
@@ -376,8 +390,17 @@ async def _write_temp_file(upload: UploadFile) -> tuple[Path, str, int]:
                 tmp.write(chunk)
                 sha.update(chunk)
                 size += len(chunk)
+                if size > MAX_UPLOAD_BYTES:
+                    too_large = True
+                    break
         finally:
             await upload.close()
+    if too_large:
+        tmp_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Uploaded file exceeds the maximum allowed size.",
+        )
     if size == 0:
         tmp_path.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
