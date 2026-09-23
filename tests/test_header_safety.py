@@ -1,12 +1,6 @@
-import sys
-from pathlib import Path
 from unittest.mock import Mock
 
 from src.header_utils import copy_header_or_none, select_science_header
-
-ROOT_DIR = Path(__file__).resolve().parents[1]
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
 
 
 class TestHeaderSafety:

@@ -1,10 +1,6 @@
-from pathlib import Path
-import sys
 from unittest.mock import MagicMock, patch
 
 import requests
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pages.api_client import detect_backend
 

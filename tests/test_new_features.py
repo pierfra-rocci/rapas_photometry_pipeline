@@ -4,16 +4,20 @@ Non-regression tests for features added in the 1.7.x development cycle:
 1. plot_astrocolibri_cutouts() (src/transient.py)
    - Early-return guards
    - Hemisphere-aware survey selection (PanSTARRS / SkyMapper)
-   - PNG filename sanitisation
-   - Magnitude column fallback priority
+   - Magnitude / error column fallback priority
+     (select_astrocolibri_magnitude / select_astrocolibri_magnitude_error)
+   - PNG filename sanitisation (sanitize_astrocolibri_name)
 
 2. Residuals plot error bar column selection (src/pipeline.py)
-   - Always uses aperture_mag_err_1_3 (fixed 1.3× aperture)
-   - Fallback to generic aperture_mag_err
-   - Fallback to zeros when no error column is present
+   - select_residual_error_column() prefers aperture_mag_err_1_3 (fixed 1.3×
+     aperture), then falls back to aperture_mag_err, then to zeros
 
-3. Filter mismatch warning text (pages/app.py)
-   - Warning no longer includes the verbose "Consider updating" suffix
+3. Filter mismatch caption text (src/tools_pipeline.py)
+   - format_filter_mismatch_message() no longer includes the verbose
+     "Consider updating" suffix
+
+These tests call the real production helpers rather than re-implementing their
+logic, so a behavioural change in src/ actually fails the suite.
 """
 
 import sys
@@ -195,11 +199,13 @@ class TestAstrocolibriSurveySelection:
 # ─── 3. plot_astrocolibri_cutouts — PNG filename sanitisation ─────────────────
 
 class TestAstrocolibriSafeFilename:
-    """The safe_name function mirrors the logic in plot_astrocolibri_cutouts."""
+    """sanitize_astrocolibri_name() produces the PNG filename in production."""
 
     @staticmethod
     def _safe(name: str) -> str:
-        return "".join(c if c.isalnum() or c in "_-" else "_" for c in str(name))
+        from src.transient import sanitize_astrocolibri_name
+
+        return sanitize_astrocolibri_name(name)
 
     def test_alphanumeric_name_unchanged(self):
         assert self._safe("GRB20240101A") == "GRB20240101A"
@@ -224,26 +230,52 @@ class TestAstrocolibriSafeFilename:
     def test_empty_string(self):
         assert self._safe("") == ""
 
+    def test_saved_png_path_uses_sanitized_name(self, tmp_path):
+        """End-to-end: the production save path embeds the sanitized name."""
+        from astropy.io.fits import Header
+
+        from src.transient import plot_astrocolibri_cutouts
+
+        df = _make_ac_table(n_sources=1, n_matches=1)
+        df.loc[0, "astrocolibri_name"] = "SN 2024/xyz"
+        header = Header()
+        mock_fig = MagicMock()
+
+        with patch("src.transient.st"), \
+             patch("src.transient.fix_header", return_value=(header, None)), \
+             patch("src.transient.cutouts.get_cutout",
+                   return_value={"image": np.zeros((25, 25)), "header": header}), \
+             patch("src.transient.templates.get_hips_image",
+                   side_effect=Exception("network disabled")), \
+             patch("src.transient.plot_cutout", return_value=mock_fig), \
+             patch("src.transient.plt.close"):
+            saved = plot_astrocolibri_cutouts(
+                df, np.zeros((500, 500)), header, str(tmp_path), "science", "r", 10.0
+            )
+
+        assert len(saved) == 1
+        assert saved[0].endswith("science_astrocolibri_01_SN_2024_xyz.png")
+
 
 # ─── 4. plot_astrocolibri_cutouts — magnitude column priority ─────────────────
 
 class TestAstrocolibriMagColumnPriority:
-    """Magnitude column fallback: psf_mag → aperture_mag_1_3 → aperture_mag_1_1 → None."""
+    """Fallback priority: psf_mag → aperture_mag_1_3 → aperture_mag_1_1 → None.
+
+    Drives the real select_astrocolibri_magnitude[_error]() helpers.
+    """
 
     @staticmethod
     def _pick_mag(row: dict):
-        """Mirrors the mag-selection logic inside plot_astrocolibri_cutouts."""
-        mag_val = None
-        for col in ["psf_mag", "aperture_mag_1_3", "aperture_mag_1_1"]:
-            if col in row and row[col] is not None:
-                try:
-                    v = float(row[col])
-                    if np.isfinite(v):
-                        mag_val = v
-                        break
-                except (TypeError, ValueError):
-                    pass
-        return mag_val
+        from src.transient import select_astrocolibri_magnitude
+
+        return select_astrocolibri_magnitude(row)
+
+    @staticmethod
+    def _pick_mag_err(row: dict):
+        from src.transient import select_astrocolibri_magnitude_error
+
+        return select_astrocolibri_magnitude_error(row)
 
     def test_psf_mag_takes_priority(self):
         row = {"psf_mag": 17.5, "aperture_mag_1_3": 17.8, "aperture_mag_1_1": 17.9}
@@ -272,6 +304,44 @@ class TestAstrocolibriMagColumnPriority:
     def test_skips_inf_psf_mag_and_falls_back(self):
         row = {"psf_mag": float("inf"), "aperture_mag_1_3": 17.8}
         assert self._pick_mag(row) == pytest.approx(17.8)
+
+    def test_error_columns_follow_same_priority(self):
+        row = {"psf_mag_err": 0.05, "aperture_mag_err_1_3": 0.06}
+        assert self._pick_mag_err(row) == pytest.approx(0.05)
+        assert self._pick_mag_err({"aperture_mag_err_1_3": 0.06}) == pytest.approx(0.06)
+        assert self._pick_mag_err({"aperture_mag_err_1_1": 0.07}) == pytest.approx(0.07)
+        assert self._pick_mag_err({"ra": 1.0}) is None
+
+    def test_non_numeric_value_is_skipped(self):
+        row = {"psf_mag": "not-a-number", "aperture_mag_1_3": 17.8}
+        assert self._pick_mag(row) == pytest.approx(17.8)
+
+    def test_cutout_title_uses_selected_magnitude(self):
+        """End-to-end: the production title shows the selected magnitude."""
+        from astropy.io.fits import Header
+
+        from src.transient import plot_astrocolibri_cutouts
+
+        df = _make_ac_table(n_sources=1, n_matches=1)
+        df.loc[0, "psf_mag"] = 17.5
+        df.loc[0, "psf_mag_err"] = 0.05
+        header = Header()
+        mock_fig = MagicMock()
+
+        with patch("src.transient.st"), \
+             patch("src.transient.fix_header", return_value=(header, None)), \
+             patch("src.transient.cutouts.get_cutout",
+                   return_value={"image": np.zeros((25, 25)), "header": header}), \
+             patch("src.transient.templates.get_hips_image",
+                   side_effect=Exception("network disabled")), \
+             patch("src.transient.plot_cutout", return_value=mock_fig) as mock_plot, \
+             patch("src.transient.plt.close"):
+            plot_astrocolibri_cutouts(
+                df, np.zeros((500, 500)), header, "/tmp", "science", "r", 10.0
+            )
+
+        title = mock_plot.call_args.kwargs["title"]
+        assert "mag=17.50 ± 0.050" in title
 
 
 # ─── 5. plot_astrocolibri_cutouts — skip rows with invalid coordinates ─────────
@@ -333,7 +403,7 @@ class TestAstrocolibriInvalidCoordinates:
 # ─── 6. Residuals plot error bar column selection ─────────────────────────────
 
 class TestResidualsErrorBarSelection:
-    """Mirrors the error-column selection logic in calculate_zero_point().
+    """Drives the real select_residual_error_column() from src/pipeline.py.
 
     The residuals plot always prefers aperture_mag_err_1_3 (fixed 1.3× aperture),
     with fallbacks to aperture_mag_err and then zeros.
@@ -341,15 +411,9 @@ class TestResidualsErrorBarSelection:
 
     @staticmethod
     def _select_aperture_err(matched_table: pd.DataFrame, residuals: np.ndarray):
-        """Exact copy of the selection block in calculate_zero_point()."""
-        aperture_err_col = "aperture_mag_err_1_3"
-        if aperture_err_col in matched_table.columns:
-            aperture_mag_err = matched_table[aperture_err_col].values
-        elif "aperture_mag_err" in matched_table.columns:
-            aperture_mag_err = matched_table["aperture_mag_err"].values
-        else:
-            aperture_mag_err = np.zeros_like(residuals)
-        return aperture_mag_err
+        from src.pipeline import select_residual_error_column
+
+        return select_residual_error_column(matched_table, residuals)
 
     def test_uses_aperture_mag_err_1_3_when_present(self):
         residuals = np.array([0.01, -0.02, 0.03])
@@ -389,26 +453,36 @@ class TestResidualsErrorBarSelection:
         result = self._select_aperture_err(table, residuals)
         np.testing.assert_array_equal(result, err_1_3)
 
-    def test_error_propagation_with_zero_point_scatter(self):
-        """y-error combines aperture_mag_err_1_3 and zero-point scatter."""
-        aperture_err = np.array([0.03, 0.05, 0.10])
-        zp_err = 0.02
-        yerr = np.sqrt(aperture_err**2 + zp_err**2)
-        expected = np.sqrt([0.03**2 + 0.02**2,
-                            0.05**2 + 0.02**2,
-                            0.10**2 + 0.02**2])
-        np.testing.assert_allclose(yerr, expected, rtol=1e-10)
+    def test_every_branch_returns_ndarray_of_matching_shape(self):
+        """Every fallback branch returns a numpy array aligned with residuals."""
+        residuals = np.zeros(3)
+        for table in (
+            pd.DataFrame({"aperture_mag_err_1_3": [0.1, 0.2, 0.3]}),
+            pd.DataFrame({"aperture_mag_err": [0.1, 0.2, 0.3]}),
+            pd.DataFrame({"other": [1, 2, 3]}),
+        ):
+            result = self._select_aperture_err(table, residuals)
+            assert isinstance(result, np.ndarray)
+            assert result.shape == (3,)
 
 
-# ─── 7. Filter mismatch warning text ─────────────────────────────────────────
+# ─── 7. Filter mismatch caption text ─────────────────────────────────────────
 
 class TestFilterWarningText:
-    """The filter mismatch warning must not include the verbose 'Consider updating' suffix."""
+    """Drives the real format_filter_mismatch_message() from src/tools_pipeline.py."""
 
     @staticmethod
     def _build_warning(filter_raw: str, filter_mapped: str) -> str:
-        """Mirrors the warning construction in pages/app.py after the fix."""
-        return f"WARNING: Filter in FITS header ({filter_raw}) maps to '{filter_mapped}'."
+        from src.tools_pipeline import format_filter_mismatch_message
+
+        return format_filter_mismatch_message(filter_raw, filter_mapped)
+
+    def test_exact_caption_format(self):
+        """The caption text is exactly what pages/app.py displays."""
+        assert (
+            self._build_warning("G", "phot_g_mean_mag")
+            == "Filter in FITS header (G) maps to 'phot_g_mean_mag'."
+        )
 
     def test_warning_contains_raw_filter(self):
         w = self._build_warning("G", "gmag")

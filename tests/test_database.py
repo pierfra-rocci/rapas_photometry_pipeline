@@ -16,7 +16,7 @@ import sqlite3
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -32,7 +32,6 @@ from api.schemas import (
     WcsFitsFileSummary,
     ZipArchiveSummary,
     WcsFitsFileWithZips,
-    ZipArchiveWithFits,
     WcsFitsFileListResponse,
     ZipArchiveListResponse,
 )

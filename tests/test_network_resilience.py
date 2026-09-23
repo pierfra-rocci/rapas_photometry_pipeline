@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import requests
-
-import pytest
 from astropy.table import Table
 from astropy.wcs import WCS
 

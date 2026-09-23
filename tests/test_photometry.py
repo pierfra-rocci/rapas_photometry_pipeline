@@ -398,7 +398,6 @@ class TestFWHMRadiusFactor:
         """
         import pandas as pd
 
-        fwhm = 5.0
         n_sources = 10
         rng = np.random.default_rng(42)
         flux = rng.uniform(500, 5000, n_sources)

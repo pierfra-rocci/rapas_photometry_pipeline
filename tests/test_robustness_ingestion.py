@@ -14,6 +14,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from werkzeug.security import generate_password_hash
 
+from api import main as api_main
 from api.database import Base, get_db
 from api.main import app
 from api.models import FitsFile, User
@@ -46,6 +47,12 @@ def api_client(tmp_path, monkeypatch):
     )
     TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     Base.metadata.create_all(engine)
+
+    # The app lifespan runs ``Base.metadata.create_all(bind=engine)`` against
+    # the module-level engine, which points at the real users.db. Redirect that
+    # engine at the isolated test database so the suite never touches the
+    # developer's database (and never fails when that file is not lockable).
+    monkeypatch.setattr(api_main, "engine", engine)
 
     def override_get_db():
         db = TestingSessionLocal()
@@ -187,3 +194,85 @@ def test_listing_is_isolated_by_authenticated_user(api_client):
     assert alice_files[0]["stored_relpath"].startswith(f"user_{user_1.id}/")
     assert bob_files[0]["stored_relpath"].startswith(f"user_{user_2.id}/")
     assert alice_files[0]["stored_relpath"] != bob_files[0]["stored_relpath"]
+
+
+def test_identical_content_is_allowed_across_users(api_client):
+    """Content-hash uniqueness must be per user, not global.
+
+    A global constraint would leak that another account already holds the
+    content and would block a legitimate upload of a shared/standard file.
+    """
+    client, session_factory, storage_root = api_client
+    user_1 = _create_user(session_factory, "alice", "secret")
+    user_2 = _create_user(session_factory, "bob", "secret")
+    fits_bytes = _make_fits_bytes()
+
+    alice_upload = _upload_file(client, "alice", "secret", "science.fits", fits_bytes)
+    bob_upload = _upload_file(client, "bob", "secret", "science.fits", fits_bytes)
+
+    assert alice_upload.status_code == 201
+    assert bob_upload.status_code == 201
+    assert alice_upload.json()["sha256"] == bob_upload.json()["sha256"]
+
+    with session_factory() as session:
+        records = session.query(FitsFile).all()
+        assert len(records) == 2
+        assert {record.user_id for record in records} == {user_1.id, user_2.id}
+
+    stored_files = [path for path in storage_root.rglob("*") if path.is_file()]
+    assert len(stored_files) == 2
+
+
+def test_same_user_repeated_content_is_still_rejected(api_client):
+    """Per-user de-duplication must keep rejecting a user's own repeat upload."""
+    client, session_factory, _ = api_client
+    _create_user(session_factory, "alice", "secret")
+    fits_bytes = _make_fits_bytes()
+
+    first = _upload_file(client, "alice", "secret", "first.fits", fits_bytes)
+    second = _upload_file(client, "alice", "secret", "first.fits", fits_bytes)
+
+    assert first.status_code == 201
+    assert second.status_code == 409
+
+
+@pytest.fixture
+def storage_root(tmp_path, monkeypatch):
+    """Point the storage helpers at an isolated directory."""
+    root = tmp_path / "fits_storage"
+    root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(storage_module, "FITS_STORAGE_ROOT", root)
+    return root
+
+
+def test_resolve_storage_path_accepts_stored_relative_paths(storage_root):
+    """A relative path from build_storage_path round-trips inside the root."""
+    _, rel_path = storage_module.build_storage_path(7, "science.fits")
+
+    resolved = storage_module.resolve_storage_path(rel_path)
+
+    assert resolved == storage_root / rel_path
+    assert storage_root in resolved.parents
+
+
+@pytest.mark.parametrize(
+    "malicious_path",
+    [
+        "../outside.fits",
+        "../../outside.fits",
+        "user_1/../../outside.fits",
+        "user_1/2026/09/../../../../outside.fits",
+    ],
+)
+def test_resolve_storage_path_rejects_traversal(storage_root, malicious_path):
+    """Traversal attempts must not escape the FITS storage root."""
+    with pytest.raises(ValueError):
+        storage_module.resolve_storage_path(malicious_path)
+
+
+def test_resolve_storage_path_rejects_absolute_paths(storage_root):
+    """An absolute path must not silently replace the storage root."""
+    outside = Path(storage_root.anchor) / "etc" / "passwd"
+
+    with pytest.raises(ValueError):
+        storage_module.resolve_storage_path(str(outside))
