@@ -39,6 +39,8 @@ if "backend_mode" not in st.session_state:
     st.session_state.backend_mode = "legacy"
 if "api_credentials" not in st.session_state:
     st.session_state.api_credentials = None
+if "legacy_credentials" not in st.session_state:
+    st.session_state.legacy_credentials = None
 if "backend_status_message" not in st.session_state:
     st.session_state.backend_status_message = "Determining backend..."
 if "backend_initialized" not in st.session_state:
@@ -154,11 +156,16 @@ Besoin d'aide ou vous avez trouvé un bug ? Contactez [rpp_support](mailto:rpp_s
                         response = requests.post(
                             f"{legacy_url}/login",
                             data={"username": login_username, "password": login_password},
+                            timeout=15,
                         )
                         if response.status_code == 200:
                             st.session_state.logged_in = True
                             st.session_state.username = login_username
                             st.session_state.backend_mode = "legacy"
+                            st.session_state.legacy_credentials = {
+                                "username": login_username,
+                                "password": login_password,
+                            }
                             st.rerun()
                         else:
                             st.error(response.text)
@@ -222,6 +229,7 @@ Besoin d'aide ou vous avez trouvé un bug ? Contactez [rpp_support](mailto:rpp_s
                                     "password": reg_password,
                                     "email": reg_email,
                                 },
+                                timeout=15,
                             )
                             if response.status_code == 201:
                                 st.success(response.text)
@@ -279,6 +287,7 @@ Besoin d'aide ou vous avez trouvé un bug ? Contactez [rpp_support](mailto:rpp_s
                             resp = requests.post(
                                 f"{st.session_state.legacy_backend_url}/recover_request",
                                 data={"email": recovery_email},
+                                timeout=15,
                             )
                             if resp.status_code == 200:
                                 st.session_state.recovery_step = 1
@@ -353,6 +362,7 @@ Besoin d'aide ou vous avez trouvé un bug ? Contactez [rpp_support](mailto:rpp_s
                                             "code": code,
                                             "new_password": new_password,
                                         },
+                                        timeout=15,
                                     )
                                     if resp.status_code == 200:
                                         st.success("Password updated. You can now log in.")
@@ -398,15 +408,20 @@ else:
             else:
                 config = None
         else:
-            config_url = f"{st.session_state.legacy_backend_url}/get_config"
-            resp = requests.get(
-                config_url,
-                params={"username": st.session_state.username},
-            )
-            if resp.status_code == 200 and resp.text and resp.text != "{}":
-                config = json.loads(resp.text)
-            else:
+            legacy_creds = st.session_state.get("legacy_credentials")
+            if not legacy_creds:
                 config = None
+            else:
+                config_url = f"{st.session_state.legacy_backend_url}/get_config"
+                resp = requests.get(
+                    config_url,
+                    auth=(legacy_creds["username"], legacy_creds["password"]),
+                    timeout=15,
+                )
+                if resp.status_code == 200 and resp.text and resp.text != "{}":
+                    config = json.loads(resp.text)
+                else:
+                    config = None
 
         if config:
             if "analysis_parameters" in config:

@@ -43,12 +43,14 @@ from src.tools_pipeline import (
     merge_photometry_catalogs,
     clean_photometry_table,
     apply_color_term_correction,
+    format_filter_mismatch_message,
 )
 from src.utils import (
     FIGURE_SIZES,
     PIPELINE_PLOT_MIN_HEIGHT,
     get_base_filename,
     ensure_output_directory,
+    sanitize_username,
     initialize_log,
     get_pipeline_figure_size,
     write_to_log,
@@ -464,17 +466,23 @@ if st.sidebar.button("💾 Save Settings"):
             "legacy_backend_url",
             "http://localhost:5000",
         )
-        try:
-            resp = requests.post(
-                f"{legacy_url}/save_config",
-                json={"username": name, "config_json": json.dumps(params)},
-            )
-            if resp.status_code != 200:
-                st.sidebar.warning(f"Could not save config to DB: {resp.text}")
-            else:
-                st.sidebar.success("Settings saved.")
-        except Exception as e:  # pragma: no cover - network failure
-            st.sidebar.warning(f"Could not connect to backend: {e}")
+        legacy_creds = st.session_state.get("legacy_credentials")
+        if not legacy_creds:
+            st.sidebar.warning("Missing legacy credentials. Please log in again.")
+        else:
+            try:
+                resp = requests.post(
+                    f"{legacy_url}/save_config",
+                    json={"username": name, "config_json": json.dumps(params)},
+                    auth=(legacy_creds["username"], legacy_creds["password"]),
+                    timeout=15,
+                )
+                if resp.status_code != 200:
+                    st.sidebar.warning(f"Could not save config to DB: {resp.text}")
+                else:
+                    st.sidebar.success("Settings saved.")
+            except Exception as e:  # pragma: no cover - network failure
+                st.sidebar.warning(f"Could not connect to backend: {e}")
 
 with st.sidebar:
     if st.button("🧹 Reset Analysis"):
@@ -482,7 +490,7 @@ with st.sidebar:
 
 # Add archived files browser to sidebar
 with st.sidebar.expander("📁 Archived Analysis", expanded=False):
-    username = st.session_state.get("username", "anonymous")
+    username = sanitize_username(st.session_state.get("username", "anonymous"))
     output_dir = ensure_output_directory(directory=f"{username}_results")
     display_archived_files_browser(output_dir)
 
@@ -498,6 +506,7 @@ if st.session_state.logged_in:
         st.session_state.logged_in = False
         st.session_state.username = None
         st.session_state.api_credentials = None
+        st.session_state.legacy_credentials = None
         st.success("Logged out successfully.")
         try:
             st.switch_page("pages/login.py")
@@ -532,7 +541,9 @@ if "uploaded_temp_path" not in st.session_state:
         try:
             suffix = os.path.splitext(uploaded.name)[1]
             system_tmp = tempfile.gettempdir()
-            username = st.session_state.get("username", "anonymous")
+            username = sanitize_username(
+                st.session_state.get("username", "anonymous")
+            )
             user_tmp_dir = os.path.join(system_tmp, username)
             os.makedirs(user_tmp_dir, exist_ok=True)
 
@@ -607,7 +618,7 @@ if science_file is not None:
 
 
 catalog_name = f"{st.session_state['base_filename']}_catalog.csv"
-username = st.session_state.get("username", "anonymous")
+username = sanitize_username(st.session_state.get("username", "anonymous"))
 output_dir = ensure_output_directory(directory=f"{username}_results")
 st.session_state["output_dir"] = output_dir
 
@@ -640,7 +651,9 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
 
         # Get the system temp directory
         system_tmp = tempfile.gettempdir()
-        username = st.session_state.get("username", "anonymous")
+        username = sanitize_username(
+            st.session_state.get("username", "anonymous")
+        )
         user_tmp_dir = os.path.join(system_tmp, username)
 
         # Create the user-specific temp directory if it doesn't exist
@@ -703,7 +716,7 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
     # Check if they match (comparing the mapped value)
     if filter_mapped != selected_filter and filter_raw != "Unknown":
         st.caption(
-            f"Filter in FITS header ({filter_raw}) maps to '{filter_mapped}'."
+            format_filter_mismatch_message(filter_raw, filter_mapped)
         )
         write_to_log(
             st.session_state.log_buffer,
@@ -1498,8 +1511,10 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
                                     base_filename = st.session_state.get(
                                         "base_filename", "photometry"
                                     )
-                                    username = st.session_state.get(
-                                        "username", "anonymous"
+                                    username = sanitize_username(
+                                        st.session_state.get(
+                                            "username", "anonymous"
+                                        )
                                     )
                                     output_dir = ensure_output_directory(
                                         directory=f"{username}_results"
