@@ -20,6 +20,9 @@ from astroquery.imcce import Skybot
 from src.tools_pipeline import URL
 from src.utils import safe_catalog_query
 
+# Timeout (seconds) for outbound HTTP requests so a slow service cannot hang a run
+HTTP_TIMEOUT_SECONDS = 30
+
 
 def cross_match_with_gaia(
     _phot_table,
@@ -903,7 +906,12 @@ def enhance_catalog(
             }
 
             # Perform the POST request
-            response = requests.post(url, headers=headers, data=json.dumps(body))
+            response = requests.post(
+                url,
+                headers=headers,
+                data=json.dumps(body),
+                timeout=HTTP_TIMEOUT_SECONDS,
+            )
 
             # Process the response
             try:

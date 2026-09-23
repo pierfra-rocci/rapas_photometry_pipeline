@@ -252,15 +252,21 @@ def make_border_mask(
         - If tuple of 2 elements: (vertical, horizontal) borders
         - If tuple of 4 elements: (top, bottom, left, right) borders
     invert : bool, default=True
-        If True, the mask will be inverted (False for border regions)
-        If False, the mask will be True for non-border regions
+        Selects which region the returned mask marks as True:
+        - If True (default): border pixels are True (masked) and the inner
+          region is False. This matches the "True = masked" convention used by
+          the photometry pipeline.
+        - If False: the inner (non-border) region is True and border pixels
+          are False.
     dtype : numpy.dtype, default=bool
         Data type of the output mask
 
     Returns
     -------
     numpy.ndarray
-        Binary mask with the same height and width as the input image
+        Binary mask with the same height and width as the input image.
+        True marks the selected region: the border when ``invert=True``
+        (the default), and the inner region when ``invert=False``.
 
     Raises
     ------
@@ -277,7 +283,7 @@ def make_border_mask(
     >>> mask = make_border_mask(img, 10)
     >>> # Create a mask with different vertical/horizontal borders
     >>> mask = make_border_mask(img, (20, 30))
-    >>> # Create a mask with custom borders for each side
+    >>> # Custom borders per side, marking the inner region True instead:
     >>> mask = make_border_mask(img, (10, 20, 30, 40), invert=False)
     """
     import numbers
@@ -1268,6 +1274,33 @@ def show_subtracted_image(image_sub):
     plt.close(fig)
 
 
+def select_residual_error_column(matched_table, residuals):
+    """Return the magnitude-error array used for the residuals error bars.
+
+    The residuals plot always uses the fixed 1.3x aperture error, regardless
+    of the user-defined FWHM radius factor, falling back to the generic
+    ``aperture_mag_err`` column and finally to zeros.
+
+    Parameters
+    ----------
+    matched_table : pandas.DataFrame
+        Cross-matched table that may hold one of the error columns.
+    residuals : numpy.ndarray
+        Residuals array; only its shape is used for the zero fallback.
+
+    Returns
+    -------
+    numpy.ndarray
+        Error values aligned with *residuals*.
+    """
+    aperture_err_col = "aperture_mag_err_1_3"
+    if aperture_err_col in matched_table.columns:
+        return matched_table[aperture_err_col].values
+    if "aperture_mag_err" in matched_table.columns:
+        return matched_table["aperture_mag_err"].values
+    return np.zeros_like(residuals)
+
+
 def calculate_zero_point(_phot_table, _matched_table, filter_band, air, fwhm_radius_factor: float = 1.5):
     """
     Calculate photometric zero point from matched sources with GAIA.
@@ -1545,13 +1578,7 @@ def calculate_zero_point(_phot_table, _matched_table, filter_band, air, fwhm_rad
 
         # Always use the fixed 1.3× aperture error for the residuals plot,
         # regardless of the user-defined FWHM radius factor.
-        aperture_err_col = "aperture_mag_err_1_3"
-        if aperture_err_col in _matched_table.columns:
-            aperture_mag_err = _matched_table[aperture_err_col].values
-        elif "aperture_mag_err" in _matched_table.columns:
-            aperture_mag_err = _matched_table["aperture_mag_err"].values
-        else:
-            aperture_mag_err = np.zeros_like(residuals)
+        aperture_mag_err = select_residual_error_column(_matched_table, residuals)
 
         zp_err = zero_point_std if zero_point_std is not None else 0.0
         yerr = np.sqrt(aperture_mag_err**2 + zp_err**2)

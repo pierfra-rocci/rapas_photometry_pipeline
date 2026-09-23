@@ -1558,3 +1558,24 @@ def extract_filter_from_header(header):
     mapped_band = FILTER_DICT.get(normalized, "phot_g_mean_mag")
 
     return raw_filter, mapped_band
+
+
+def format_filter_mismatch_message(filter_raw, filter_mapped) -> str:
+    """Build the user-facing caption for a header/selection filter mismatch.
+
+    Kept as a pure helper so the exact wording is covered by unit tests and
+    cannot drift from the message shown in the app.
+
+    Parameters
+    ----------
+    filter_raw : str or None
+        Filter value as read from the FITS header.
+    filter_mapped : str or None
+        GAIA band the raw filter was mapped to.
+
+    Returns
+    -------
+    str
+        Caption text describing the mapping.
+    """
+    return f"Filter in FITS header ({filter_raw}) maps to '{filter_mapped}'."

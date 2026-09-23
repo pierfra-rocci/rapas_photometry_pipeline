@@ -24,6 +24,9 @@ FIGURE_SIZES = {
 PIPELINE_IMAGE_SCALE = 0.75
 PIPELINE_PLOT_MIN_HEIGHT = 320
 
+# Timeout (seconds) for outbound HTTP requests so a slow service cannot hang a run
+REQUEST_TIMEOUT_SECONDS = 30
+
 
 def get_pipeline_figure_size(base_size):
     """Return a smaller display-only size for pipeline image figures."""
@@ -62,7 +65,7 @@ def get_json(url: str):
     if not url.startswith("http"):
         return json.dumps({"error": "invalid URL"})
     try:
-        req = requests.get(url)
+        req = requests.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
         req.raise_for_status()
         if not req.content:
             return json.dumps({"error": "empty response"})
@@ -263,6 +266,40 @@ def write_to_log(log_buffer, message, level="INFO"):
     log_buffer.write(f"[{timestamp}] {level.upper()}: {message}\n")
 
 
+def sanitize_username(username, fallback="anonymous"):
+    """
+    Derive a filesystem-safe path component from a username.
+
+    Usernames are only length-validated at registration, so they may contain
+    path separators or ``..``. Reduce the value to a single directory name so
+    it cannot escape whatever directory it is later joined to.
+
+    Parameters
+    ----------
+    username : str
+        The raw username, possibly containing unsafe characters.
+    fallback : str
+        Value returned when nothing usable remains after sanitizing.
+
+    Returns
+    -------
+    str
+        A single path component containing no separators.
+    """
+    if not isinstance(username, str):
+        return fallback
+    # Drop any directory components the caller may have supplied.
+    candidate = username.replace("\\", "/").rsplit("/", 1)[-1]
+    candidate = "".join(
+        ch if (ch.isalnum() or ch in "._-") else "_" for ch in candidate
+    )
+    # A bare "." or ".." (or an empty name) would still alias/traverse.
+    candidate = candidate.strip("._")
+    if not candidate:
+        return fallback
+    return candidate[:64]
+
+
 def ensure_output_directory(directory=""):
     # c:\Users\pierf\rpp\src
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -272,7 +309,11 @@ def ensure_output_directory(directory=""):
     parent_dir = os.path.dirname(project_root)
     # c:\Users\pierf\rpp_results
     results_root = os.path.join(parent_dir, "rpp_results")
-    final_path = os.path.join(results_root, directory)
+    # ``directory`` is derived from the username, which is not charset-checked
+    # at registration: keep it to a single component so it cannot escape
+    # results_root (e.g. "../../etc"). An empty name keeps the legacy default.
+    safe_directory = sanitize_username(directory, fallback="")
+    final_path = os.path.join(results_root, safe_directory)
 
     if not os.path.exists(final_path):
         try:

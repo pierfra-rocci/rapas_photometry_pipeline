@@ -468,6 +468,44 @@ def find_candidates(
     return candidates
 
 
+# Magnitude / error columns used for the Astro-Colibri cutout titles, in
+# descending order of preference.
+ASTROCOLIBRI_MAG_COLUMNS = ("psf_mag", "aperture_mag_1_3", "aperture_mag_1_1")
+ASTROCOLIBRI_MAG_ERR_COLUMNS = (
+    "psf_mag_err",
+    "aperture_mag_err_1_3",
+    "aperture_mag_err_1_1",
+)
+
+
+def _first_finite_value(row, columns):
+    """Return the first finite float found in *row* for *columns*, else None."""
+    for column in columns:
+        if column in row and row[column] is not None:
+            try:
+                value = float(row[column])
+            except (TypeError, ValueError):
+                continue
+            if np.isfinite(value):
+                return value
+    return None
+
+
+def select_astrocolibri_magnitude(row):
+    """Return the best available finite magnitude for an Astro-Colibri row."""
+    return _first_finite_value(row, ASTROCOLIBRI_MAG_COLUMNS)
+
+
+def select_astrocolibri_magnitude_error(row):
+    """Return the best available finite magnitude error for a row."""
+    return _first_finite_value(row, ASTROCOLIBRI_MAG_ERR_COLUMNS)
+
+
+def sanitize_astrocolibri_name(name) -> str:
+    """Return a filesystem-safe token derived from an Astro-Colibri name."""
+    return "".join(c if c.isalnum() or c in "_-" else "_" for c in str(name))
+
+
 def plot_astrocolibri_cutouts(
     final_table,
     image,
@@ -534,26 +572,8 @@ def plot_astrocolibri_cutouts(
             continue
 
         # Retrieve the best available magnitude / error for the title
-        mag_val = None
-        mag_err_val = None
-        for mag_col in ["psf_mag", "aperture_mag_1_3", "aperture_mag_1_1"]:
-            if mag_col in row and row[mag_col] is not None:
-                try:
-                    v = float(row[mag_col])
-                    if np.isfinite(v):
-                        mag_val = v
-                        break
-                except (TypeError, ValueError):
-                    pass
-        for err_col in ["psf_mag_err", "aperture_mag_err_1_3", "aperture_mag_err_1_1"]:
-            if err_col in row and row[err_col] is not None:
-                try:
-                    v = float(row[err_col])
-                    if np.isfinite(v):
-                        mag_err_val = v
-                        break
-                except (TypeError, ValueError):
-                    pass
+        mag_val = select_astrocolibri_magnitude(row)
+        mag_err_val = select_astrocolibri_magnitude_error(row)
 
         name = row.get("astrocolibri_name", f"AC_{i+1}")
         ac_type = row.get("astrocolibri_type", "")
@@ -607,7 +627,7 @@ def plot_astrocolibri_cutouts(
 
         # Save PNG to output_dir so it ends up in the ZIP
         try:
-            safe_name = "".join(c if c.isalnum() or c in "_-" else "_" for c in str(name))
+            safe_name = sanitize_astrocolibri_name(name)
             png_filename = f"{base_filename}_astrocolibri_{i+1:02d}_{safe_name}.png"
             png_path = os.path.join(output_dir, png_filename)
             fig.savefig(png_path, dpi=100, bbox_inches="tight")
@@ -647,7 +667,7 @@ def plot_cutout(
     r0=None,
     **kwargs,
 ):
-    """Routine for displaying various image planes from the cutout structure returned by :func:`stdpipe.cutouts.get_cutout`.
+    r"""Routine for displaying various image planes from the cutout structure returned by :func:`stdpipe.cutouts.get_cutout`.
 
     The cutout planes are displayed in a single row, in the order defined by `planes` paremeters. Optionally, circular mark may be overlayed over the planes at the specified pixel position inside the cutout.
 
