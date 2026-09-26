@@ -73,8 +73,8 @@ Après le traitement, téléchargez l'archive ZIP contenant :
 
 **Note sur les fichiers FITS avec WCS** : Lorsqu'une astrométrie est effectuée, le pipeline sauvegarde l'image originale avec la solution WCS mise à jour à deux endroits :
 
-1. **Dans l'archive ZIP** (`*_wcs.fits`) — inclus dans votre téléchargement
-2. **Dans `rpp_data/fits/`** — copie permanente écrasée si le fichier est retraité
+1. **Dans l'Archive** (`*_wcs.fits`) — inclus dans votre téléchargement
+2. **Dans `rpp_data/fits/`** — copie permanente écrasée si le fichier est retraité (même nom, même date d'observation). Cela permet de conserver un historique des fichiers FITS avec WCS pour les analyses futures.
 
 **Suivi des analyses** : Tous les résultats sont automatiquement enregistrés dans la base de données :
 

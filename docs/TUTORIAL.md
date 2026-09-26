@@ -79,8 +79,8 @@ After processing, download the ZIP archive containing:
 
 **Note on WCS-Solved FITS Files**: When astrometry is performed, the pipeline saves your original image with the updated WCS solution in two locations:
 
-1. **In the ZIP archive** (`*_wcs.fits`) - included with your download
-2. **In `rpp_data/fits/`** - a permanent copy that gets overwritten if you reprocess the same file
+1. **In the Archive** (`*_wcs.fits`) - included with your download
+2. **In `rpp_data/fits/`** - a permanent copy that gets overwritten if you reprocess the same file (same name, same observation date). This allows you to maintain a history of WCS-solved FITS files for future analyses. 
 
 **Analysis Tracking**: All analysis results are automatically tracked in the database:
 
