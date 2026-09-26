@@ -85,8 +85,8 @@ Here is what you need to get started:
 1. **Create an account** — go to the *Sign Up* tab below and register with a username, password, and email.
 2. **Login** — use your credentials in the *Login* tab.
 3. **Upload a FITS image** — images must be **16-bit or 32-bit** (8-bit images are not supported).
-4. **Configure your observatory** — fill in your site coordinates in the *Observatory Data* panel.
-5. **Set analysis parameters** — adjust detection and photometry settings in the *Analysis Parameters* panel.
+4. **Configure your observatory** — fill in your site coordinates in the *Observatory* panel.
+5. **Set analysis parameters** — adjust detection and photometry settings in the *Parameters* panel.
 6. **Run the pipeline** — click **▶️ Start Analysis** and download your results as a ZIP archive.
 
 Need help or want to report a bug? Contact [rpp_support](mailto:rpp_support@saf-astronomie.fr).
@@ -102,8 +102,8 @@ Voici ce dont vous avez besoin pour commencer :
 1. **Créer un compte** — rendez-vous dans l'onglet *Sign Up* ci-dessous et inscrivez-vous avec un nom d'utilisateur, un mot de passe et une adresse e-mail.
 2. **Se connecter** — utilisez vos identifiants dans l'onglet *Login*.
 3. **Charger une image FITS** — les images doivent être encodées sur **16 bits ou 32 bits** (les images 8 bits ne sont pas prises en charge).
-4. **Configurer votre observatoire** — renseignez les coordonnées de votre site dans le panneau *Observatory Data*.
-5. **Régler les paramètres d'analyse** — ajustez les paramètres de détection et de photométrie dans le panneau *Analysis Parameters*.
+4. **Configurer votre observatoire** — renseignez les coordonnées de votre site dans le panneau *Observatory*.
+5. **Régler les paramètres d'analyse** — ajustez les paramètres de détection et de photométrie dans le panneau *Parameters*.
 6. **Lancer le pipeline** — cliquez sur **▶️ Start Analysis** et téléchargez vos résultats sous forme d'archive ZIP.
 
 Besoin d'aide ou vous avez trouvé un bug ? Contactez [rpp_support](mailto:rpp_support@saf-astronomie.fr).

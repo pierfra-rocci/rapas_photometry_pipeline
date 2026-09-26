@@ -147,7 +147,7 @@ if not st.session_state.backend_initialized:
 # is the supported workaround. Matomo handles cross-frame tracking
 # natively, so page views and link clicks are recorded correctly.
 
-def inject_matomo_tracking(site_id: str = "83",
+def inject_matomo_tracking(site_id: str = "83", 
                            matomo_url: str = "https://analytics.obspm.fr/"):
     """
     Inject the Matomo JS tracker into the Streamlit page.
@@ -265,7 +265,7 @@ with st.expander("📘 Quick Start Tutorial"):
 st.sidebar.markdown(f"**Version:** _{version}_")
 st.sidebar.caption(st.session_state.backend_status_message)
 
-with st.sidebar.expander("🔭 Observatory Data", expanded=False):
+with st.sidebar.expander("🔭 Observatory", expanded=False):
     st.session_state.observatory_name = st.text_input(
         "Observatory Name",
         value=st.session_state.observatory_name,
@@ -317,7 +317,7 @@ with st.sidebar.expander("🔭 Observatory Data", expanded=False):
         if elevation_input.strip():
             st.error("Please enter a valid number for elevation.")
 
-with st.sidebar.expander("⚙️ Analysis Parameters", expanded=False):
+with st.sidebar.expander("⚙️ Parameters", expanded=False):
     st.session_state.analysis_parameters["seeing"] = st.slider(
         "Estimated FWHM (arcsec)",
         min_value=1.0,
@@ -489,7 +489,7 @@ with st.sidebar:
         clear_all_caches()
 
 # Add archived files browser to sidebar
-with st.sidebar.expander("📁 Archived Analysis", expanded=False):
+with st.sidebar.expander("📁 Archive", expanded=False):
     username = sanitize_username(st.session_state.get("username", "anonymous"))
     output_dir = ensure_output_directory(directory=f"{username}_results")
     display_archived_files_browser(output_dir)
@@ -500,7 +500,7 @@ if st.session_state.logged_in:
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"**Logged in as:** _{st.session_state.username}_")
     if st.session_state.username in ("admin", "rsavalle"):
-        if st.sidebar.button("📋 View Pipeline Logs"):
+        if st.sidebar.button("📋 Pipeline Logs"):
             st.switch_page("pages/showlogs.py")
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
