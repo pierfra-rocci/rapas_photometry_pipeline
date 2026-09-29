@@ -3,10 +3,10 @@ Changelog
 
 This document records all notable changes to RAPAS Photometry Pipeline.
 
-Version 1.7.5
+Version 1.8.0
 -------------
 
-**Released: May 19, 2026**
+**Released: September 29, 2026**
 
 **Photometric Calibration**
 
