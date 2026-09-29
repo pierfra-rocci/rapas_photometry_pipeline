@@ -324,9 +324,11 @@ Firefox may have compatibility issues with Aladin Lite v3 due to WebAssembly loa
 - Check the generated log file to see which catalog steps completed, timed out,
   or were skipped.
 
-## Recent changes / Changelog (last update: 2026-05-19)
+## Recent changes / Changelog
 
-### Current Release (1.7.5)
+> The project currently targets version 1.8.0. The notes below summarize the most recent documented improvements in the project history and are retained for reference alongside the current release baseline.
+
+### Current Release (1.8.0)
 
 - **Gaia VizieR fallback**: When the Gaia TAP service is unavailable or returns an error, the pipeline automatically retries the query against the VizieR mirror with a reduced column set, maintaining photometric calibration availability during TAP outages.
 - **Zero-point calibration improvements**:
