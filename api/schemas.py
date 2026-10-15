@@ -16,6 +16,12 @@ class Message(BaseModel):
     message: str
 
 
+class LoginResponse(Message):
+    """Login response carrying the canonical account username."""
+
+    username: Optional[str] = None
+
+
 class RegisterRequest(BaseModel):
     """Registration payload."""
 

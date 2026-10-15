@@ -9,8 +9,10 @@ import json
 import os
 import secrets
 import smtplib
+import ssl
 import string
 import tempfile
+import threading
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -24,6 +26,7 @@ from fastapi import (  # type: ignore[import]
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore[import]
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -38,12 +41,13 @@ from .schemas import (
     FitsFileSummary,
     FitsUploadResponse,
     LoginRequest,
+    LoginResponse,
     Message,
     RecoveryConfirmRequest,
     RecoveryRequest,
     RegisterRequest,
 )
-from .security import get_current_user
+from .security import find_user_by_identifier, get_current_user
 from .storage import build_storage_path
 
 
@@ -91,11 +95,46 @@ def _ensure_password_strength(password: str) -> None:
 RECOVERY_CODE_LENGTH = 6
 RECOVERY_CODE_LIFETIME_MINUTES = 15
 SMTP_TIMEOUT_SECONDS = 15
+RECOVERY_MAX_FAILED_ATTEMPTS = 5
+MAX_CONFIG_BYTES = 256 * 1024
+
+_recovery_failures: dict[str, tuple[int, datetime]] = {}
+_recovery_lock = threading.Lock()
+
+
+def _recovery_is_locked(email: str) -> bool:
+    """Return True when too many wrong codes were submitted for *email*."""
+    with _recovery_lock:
+        entry = _recovery_failures.get(email)
+        if entry is None:
+            return False
+        count, first_seen = entry
+        window = timedelta(minutes=RECOVERY_CODE_LIFETIME_MINUTES)
+        if datetime.utcnow() - first_seen > window:
+            del _recovery_failures[email]
+            return False
+        return count >= RECOVERY_MAX_FAILED_ATTEMPTS
+
+
+def _recovery_register_failure(email: str) -> None:
+    with _recovery_lock:
+        count, first_seen = _recovery_failures.get(email, (0, datetime.utcnow()))
+        _recovery_failures[email] = (count + 1, first_seen)
+
+
+def _recovery_reset(email: str) -> None:
+    with _recovery_lock:
+        _recovery_failures.pop(email, None)
 
 try:  # pragma: no cover - optional SMTP configuration
     import config as smtp_config  # type: ignore[import]
 except ImportError:  # pragma: no cover - optional SMTP configuration
     smtp_config = None
+
+
+def _normalize_email(email: str) -> str:
+    """Return the canonical comparison form of an email address."""
+    return email.strip().lower()
 
 
 def _generate_recovery_code() -> str:
@@ -164,7 +203,7 @@ def _send_recovery_email(to_email: str, code: str) -> None:
         with smtplib.SMTP(
             smtp_server_str, smtp_port_int, timeout=SMTP_TIMEOUT_SECONDS
         ) as server:
-            server.starttls()
+            server.starttls(context=ssl.create_default_context())
             server.login(smtp_user_str, smtp_pass_str)
             server.send_message(message)
     except (smtplib.SMTPException, OSError) as exc:
@@ -226,16 +265,20 @@ def register(
     return Message(message="Registered successfully.")
 
 
-@app.post("/api/login", response_model=Message)
-def login(payload: LoginRequest, db: Session = Depends(get_db)) -> Message:
-    """Validate credentials for downstream HTTP Basic usage."""
-    user = db.query(User).filter(User.username == payload.username).first()
+@app.post("/api/login", response_model=LoginResponse)
+def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
+    """Validate credentials for downstream HTTP Basic usage.
+
+    The submitted identifier may be either the account username or the email
+    address used at registration.
+    """
+    user = find_user_by_identifier(db, payload.username)
     if not user or not check_password_hash(user.password, payload.password):
         raise HTTPException(
             status_code=401,
             detail="Invalid username or password.",
         )
-    return Message(message="Logged in successfully.")
+    return LoginResponse(message="Logged in successfully.", username=user.username)
 
 
 @app.post("/api/recovery/request", response_model=Message)
@@ -246,19 +289,23 @@ def recovery_request(
     """Initiate password recovery by emailing a numeric code."""
     generic_message = "If the email is registered, a recovery code has been sent."
 
-    user = db.query(User).filter(User.email == payload.email).first()
+    account_email = _normalize_email(payload.email)
+    user = db.query(User).filter(func.lower(User.email) == account_email).first()
     if not user:
         # Do not reveal whether the email is registered.
         return Message(message=generic_message)
 
     _cleanup_expired_codes(db)
+    db.query(PasswordRecoveryCode).filter(
+        func.lower(PasswordRecoveryCode.email) == account_email
+    ).delete(synchronize_session=False)
 
     code = _generate_recovery_code()
     hashed_code = generate_password_hash(code)
     expires_at = datetime.utcnow() + timedelta(minutes=RECOVERY_CODE_LIFETIME_MINUTES)
 
     record = PasswordRecoveryCode(
-        email=payload.email,
+        email=user.email,
         code=hashed_code,
         expires_at=expires_at,
     )
@@ -274,7 +321,7 @@ def recovery_request(
         ) from exc
 
     try:
-        _send_recovery_email(payload.email, code)
+        _send_recovery_email(user.email, code)
     except HTTPException:
         db.rollback()
         raise
@@ -286,6 +333,7 @@ def recovery_request(
         ) from exc
 
     db.commit()
+    _recovery_reset(account_email)
     return Message(message=generic_message)
 
 
@@ -299,8 +347,15 @@ def recovery_confirm(
     # a known one by the returned error message.
     _ensure_password_strength(payload.new_password)
 
-    user = db.query(User).filter(User.email == payload.email).first()
+    account_email = _normalize_email(payload.email)
+    user = db.query(User).filter(func.lower(User.email) == account_email).first()
     if not user:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid or expired recovery code.",
+        )
+
+    if _recovery_is_locked(account_email):
         raise HTTPException(
             status_code=400,
             detail="Invalid or expired recovery code.",
@@ -310,7 +365,7 @@ def recovery_confirm(
 
     codes = (
         db.query(PasswordRecoveryCode)
-        .filter(PasswordRecoveryCode.email == payload.email)
+        .filter(func.lower(PasswordRecoveryCode.email) == account_email)
         .all()
     )
 
@@ -324,6 +379,7 @@ def recovery_confirm(
             break
 
     if valid_code is None:
+        _recovery_register_failure(account_email)
         raise HTTPException(
             status_code=400,
             detail="Invalid or expired recovery code.",
@@ -331,7 +387,8 @@ def recovery_confirm(
 
     user.password = generate_password_hash(payload.new_password)
     db.add(user)
-    db.delete(valid_code)
+    for stale in codes:
+        db.delete(stale)
 
     try:
         db.commit()
@@ -342,6 +399,7 @@ def recovery_confirm(
             detail="Unable to reset password.",
         ) from exc
 
+    _recovery_reset(account_email)
     return Message(message="Password updated successfully.")
 
 
@@ -369,7 +427,13 @@ def save_config(
     db: Session = Depends(get_db),
 ) -> Message:
     """Persist configuration blob for the authenticated user."""
-    current_user.config_json = json.dumps(payload.config)
+    serialized = json.dumps(payload.config)
+    if len(serialized.encode("utf-8")) > MAX_CONFIG_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Configuration is too large.",
+        )
+    current_user.config_json = serialized
     db.add(current_user)
     db.commit()
     return Message(message="Config saved.")
@@ -380,7 +444,13 @@ async def _write_temp_file(upload: UploadFile) -> tuple[Path, str, int]:
     sha = hashlib.sha256()
     size = 0
     too_large = False
-    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+    from . import storage as _storage
+
+    tmp_dir = _storage.FITS_STORAGE_ROOT
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        delete=False, dir=tmp_dir, prefix=".upload_"
+    ) as tmp:
         tmp_path = Path(tmp.name)
         try:
             while True:
