@@ -83,7 +83,7 @@ if not st.session_state.logged_in:
 Here is what you need to get started:
 
 1. **Create an account** — go to the *Sign Up* tab below and register with a username, password, and email.
-2. **Login** — use your credentials in the *Login* tab.
+2. **Login** — use your username, or the email you registered with, in the *Login* tab.
 3. **Upload a FITS image** — images must be **16-bit or 32-bit** (8-bit images are not supported).
 4. **Configure your observatory** — fill in your site coordinates in the *Observatory* panel.
 5. **Set analysis parameters** — adjust detection and photometry settings in the *Parameters* panel.
@@ -100,7 +100,7 @@ Need help or want to report a bug? Contact [rpp_support](mailto:rpp_support@saf-
 Voici ce dont vous avez besoin pour commencer :
 
 1. **Créer un compte** — rendez-vous dans l'onglet *Sign Up* ci-dessous et inscrivez-vous avec un nom d'utilisateur, un mot de passe et une adresse e-mail.
-2. **Se connecter** — utilisez vos identifiants dans l'onglet *Login*.
+2. **Se connecter** — utilisez votre nom d'utilisateur, ou l'e-mail utilisé à l'inscription, dans l'onglet *Login*.
 3. **Charger une image FITS** — les images doivent être encodées sur **16 bits ou 32 bits** (les images 8 bits ne sont pas prises en charge).
 4. **Configurer votre observatoire** — renseignez les coordonnées de votre site dans le panneau *Observatory*.
 5. **Régler les paramètres d'analyse** — ajustez les paramètres de détection et de photométrie dans le panneau *Parameters*.
@@ -117,9 +117,10 @@ Besoin d'aide ou vous avez trouvé un bug ? Contactez [rpp_support](mailto:rpp_s
     with tab_login:
         st.subheader("Login to your account")
         login_username = st.text_input(
-            "Username",
+            "Username or email",
             key="login_username",
-            placeholder="Enter your username",
+            placeholder="Enter your username or your email",
+            help="Use your username, or the email address you registered with.",
         )
         login_password = st.text_input(
             "Password",
@@ -127,6 +128,7 @@ Besoin d'aide ou vous avez trouvé un bug ? Contactez [rpp_support](mailto:rpp_s
             type="password",
             placeholder="Enter your password",
         )
+        st.caption("Firefox users: press Enter after typing your password, then click Login.")
         if st.button("Login", key="login_btn", use_container_width=True):
             if st.session_state.backend_mode == "unavailable":
                 st.error(st.session_state.backend_status_message)
@@ -142,7 +144,7 @@ Besoin d'aide ou vous avez trouvé un bug ? Contactez [rpp_support](mailto:rpp_s
                         st.error(f"API error: {exc.message}")
                     else:
                         st.session_state.logged_in = True
-                        st.session_state.username = login_username
+                        st.session_state.username = client.username or login_username
                         st.session_state.backend_mode = "api"
                         st.session_state.api_credentials = {
                             "username": login_username,
@@ -160,7 +162,10 @@ Besoin d'aide ou vous avez trouvé un bug ? Contactez [rpp_support](mailto:rpp_s
                         )
                         if response.status_code == 200:
                             st.session_state.logged_in = True
-                            st.session_state.username = login_username
+                            st.session_state.username = (
+                                response.headers.get("X-RPP-Username")
+                                or login_username
+                            )
                             st.session_state.backend_mode = "legacy"
                             st.session_state.legacy_credentials = {
                                 "username": login_username,

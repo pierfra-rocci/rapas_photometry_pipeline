@@ -60,6 +60,7 @@ class ApiClient:
     def __init__(self, base_url: Optional[str] = None) -> None:
         root = base_url or DEFAULT_API_URL
         self.base_url = root.rstrip("/")
+        self.username: Optional[str] = None
 
     # ------------------------------------------------------------------
     # Authentication helpers
@@ -68,6 +69,11 @@ class ApiClient:
         """Validate credentials against the API."""
         payload = {"username": username, "password": password}
         response = self._post("/api/login", json=payload, auth=None)
+        try:
+            data = response.json()
+        except ValueError:
+            data = None
+        self.username = data.get("username") if isinstance(data, dict) else None
         return self._extract_message(response)
 
     def register(self, username: str, password: str, email: str) -> str:

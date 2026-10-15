@@ -1,5 +1,7 @@
 # Show the contents of app log files on server in real-time
 
+import os
+
 import streamlit as st
 
 
@@ -32,6 +34,10 @@ if not st.session_state.get("logged_in", False):
         )
     st.stop()
 
+if st.session_state.get("username") not in ("admin", "rsavalle"):
+    st.error("Forbidden: this page is restricted to administrators.")
+    st.stop()
+
 st.title("📋 Pipeline Logs")
 
 col_back, col_info = st.columns([1, 5])
@@ -56,8 +62,15 @@ def _show_log(filepath: str) -> None:
     )
 
 
+def _pick_log(*candidates: str) -> str:
+    for name in candidates:
+        if os.path.isfile(name):
+            return name
+    return candidates[0]
+
+
 with tab_backend:
-    _show_log("backend.log")
+    _show_log(_pick_log("fastapi_backend.log", "backend.log"))
 
 with tab_frontend:
-    _show_log("frontend.log")
+    _show_log(_pick_log("streamlit_frontend.log", "frontend.log"))

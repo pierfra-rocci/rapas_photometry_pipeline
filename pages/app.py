@@ -3,6 +3,7 @@ import sys
 import os
 import json
 import tempfile
+import uuid
 import warnings
 from datetime import datetime
 from types import SimpleNamespace
@@ -20,6 +21,7 @@ from src.tools_app import (
     load_fits_data,
     load_tutorial_text,
     plot_magnitude_distribution,
+    plot_photometry_offsets,
     update_observatory_from_fits_header,
     display_catalog_in_aladin,
     display_archived_files_browser,
@@ -44,12 +46,16 @@ from src.tools_pipeline import (
     clean_photometry_table,
     apply_color_term_correction,
     format_filter_mismatch_message,
+    validate_cross_match_results,
 )
 from src.utils import (
     FIGURE_SIZES,
     PIPELINE_PLOT_MIN_HEIGHT,
     get_base_filename,
     ensure_output_directory,
+    session_results_path,
+    session_tmp_directory,
+    cleanup_stale_session_files,
     sanitize_username,
     initialize_log,
     get_pipeline_figure_size,
@@ -66,6 +72,7 @@ from src.pipeline import (
     detection_and_photometry,
     airmass,
     fit_color_term_correction,
+    resolve_systematic_floor,
 )
 
 from src.astrometry import solve_with_astrometrynet
@@ -89,6 +96,32 @@ if getattr(sys, "frozen", False):
         )
 
 warnings.filterwarnings("ignore")
+
+
+def _require_pixel_scale(header):
+    """Return (scale, source); use the sidebar override when the header has no
+    usable pixel scale, otherwise ask the user and stop the run."""
+    scale, source = extract_pixel_scale(header)
+    if np.isfinite(scale) and scale > 0:
+        return scale, source
+    override = _user_pixel_scale()
+    if override is not None:
+        return override, "user-provided"
+    st.error(
+        "Pixel scale could not be determined from the FITS header. Enter it in "
+        "the sidebar (Parameters > Pixel scale override, arcsec/pixel) and run again."
+    )
+    st.stop()
+
+
+def _user_pixel_scale():
+    try:
+        value = float(
+            st.session_state.analysis_parameters.get("pixel_scale_override", 0.0)
+        )
+    except (TypeError, ValueError):
+        return None
+    return value if np.isfinite(value) and value > 0 else None
 
 
 def _build_persisted_upload(temp_path: str, file_name: str) -> SimpleNamespace:
@@ -116,6 +149,9 @@ if "api_mode" not in st.session_state:
     st.session_state.api_mode = False
 if "run_analysis_pipeline" not in st.session_state:
     st.session_state.run_analysis_pipeline = False
+# Private per-session id: keeps temp and result files of concurrent sessions apart.
+if "session_id" not in st.session_state:
+    st.session_state["session_id"] = uuid.uuid4().hex[:12]
 if "backend_mode" not in st.session_state:
     st.session_state.backend_mode = "legacy"
 if "api_base_url" not in st.session_state:
@@ -200,6 +236,17 @@ if not st.session_state.logged_in:
             "Open the login page directly or start the app with frontend.py."
         )
     st.stop()
+
+# Remove abandoned work folders of closed sessions (once per session, after login)
+if not st.session_state.get("stale_files_cleaned", False):
+    st.session_state["stale_files_cleaned"] = True
+    try:
+        cleanup_stale_session_files(
+            st.session_state.get("username", "anonymous"),
+            current_session_id=st.session_state["session_id"],
+        )
+    except Exception as cleanup_error:
+        print(f"Warning: stale file cleanup failed: {cleanup_error}")
 
 # Fire the tracker once per session after successful login
 if "matomo_injected" not in st.session_state:
@@ -329,6 +376,20 @@ with st.sidebar.expander("⚙️ Parameters", expanded=False):
             "arcseconds. Will be refined."
         ),
     )
+    st.session_state.analysis_parameters["pixel_scale_override"] = st.number_input(
+        "Pixel scale override (arcsec/pixel)",
+        min_value=0.0,
+        max_value=100.0,
+        value=float(
+            st.session_state.analysis_parameters.get("pixel_scale_override", 0.0)
+        ),
+        step=0.01,
+        format="%.3f",
+        help=(
+            "Only used when the pixel scale cannot be read from the FITS header "
+            "(0 = automatic)."
+        ),
+    )
     _fwhm_rf = st.slider(
         "FWHM Radius Factor",
         min_value=0.5,
@@ -362,6 +423,42 @@ with st.sidebar.expander("⚙️ Parameters", expanded=False):
         step=5,
         help=(
             "Size of the border region (in pixels) to exclude from source detection."
+        ),
+    )
+    # 0 is a meaningful value here (disable the cut), so it must be preserved
+    # rather than replaced by the default.
+    _stored_mag_err_max = st.session_state.analysis_parameters.get("mag_err_max")
+    st.session_state.analysis_parameters["mag_err_max"] = st.number_input(
+        "Max Magnitude Error (mag)",
+        min_value=0.0,
+        max_value=10.0,
+        value=2.0 if _stored_mag_err_max is None else float(_stored_mag_err_max),
+        step=0.5,
+        format="%.1f",
+        help=(
+            "Last-resort cut on the calibrated magnitude error. A source is "
+            "dropped only when EVERY photometry method reports an error at or "
+            "above this value; 2.0 keeps faint but still usable detections and "
+            "relies on the quality flags. Set 0 to disable the cut entirely."
+        ),
+    )
+    st.session_state.analysis_parameters["effective_gain"] = st.number_input(
+        "Detector Gain (e-/ADU)",
+        min_value=0.0,
+        max_value=1000.0,
+        value=float(
+            st.session_state.analysis_parameters.get("effective_gain", 0.0) or 0.0
+        ),
+        step=0.1,
+        format="%.2f",
+        help=(
+            "Effective gain used for the Poisson term of the error budget. "
+            "0 = automatic. Resolution order: the FITS EGAIN/CCDGAIN keyword "
+            "(e-/ADU) or CVF (a conversion factor, gain = 1/CVF), then a "
+            "non-zero value here, then a photon-transfer estimate from the "
+            "frame. A bare FITS GAIN on a driver-gain camera (QHY/ZWO, where "
+            "GAIN is an abstract driver setting rather than e-/ADU) is "
+            "ignored, so set the true conversion factor here."
         ),
     )
     # Use GAIA_BANDS (list of (label, field)) to present a friendly menu
@@ -535,17 +632,17 @@ if "uploaded_temp_path" not in st.session_state:
     uploaded = st.file_uploader(
         "Before uploading the image, check all the parameters on the sidebar. ",
         type=["fits", "fit", "fts", "fits.gz"],
-        key="science_uploader",
+        key=f"science_uploader_{st.session_state.get('upload_generation', 0)}",
     )
     if uploaded:
         try:
             suffix = os.path.splitext(uploaded.name)[1]
-            system_tmp = tempfile.gettempdir()
             username = sanitize_username(
                 st.session_state.get("username", "anonymous")
             )
-            user_tmp_dir = os.path.join(system_tmp, username)
-            os.makedirs(user_tmp_dir, exist_ok=True)
+            user_tmp_dir = session_tmp_directory(
+                username, st.session_state.get("session_id")
+            )
 
             with tempfile.NamedTemporaryFile(
                 delete=False,
@@ -619,12 +716,15 @@ if science_file is not None:
 
 catalog_name = f"{st.session_state['base_filename']}_catalog.csv"
 username = sanitize_username(st.session_state.get("username", "anonymous"))
-output_dir = ensure_output_directory(directory=f"{username}_results")
+archive_dir = ensure_output_directory(directory=f"{username}_results")
+output_dir = session_results_path(archive_dir, st.session_state.get("session_id"))
 st.session_state["output_dir"] = output_dir
 
 if st.session_state.get("final_phot_table") is not None:
     provide_download_buttons(output_dir)
-    zip_filename, zip_path = zip_results_on_exit(science_file, output_dir)
+    zip_filename, zip_path = zip_results_on_exit(
+        science_file, output_dir, archive_dir=archive_dir
+    )
 
     # Record in database if ZIP was created and we have a stored FITS file
     if zip_filename and st.session_state.get("stored_fits_filename"):
@@ -641,23 +741,26 @@ if st.session_state.get("final_phot_table") is not None:
             # Don't fail the app if database tracking fails
             print(f"Warning: Could not record analysis in database: {db_error}")
 
-# Run the full analysis pipeline only if the button was clicked
-if st.session_state.run_analysis_pipeline and science_file is not None:
+# Run the full analysis pipeline only if the button was clicked. The trigger is
+# consumed immediately so an aborted, failed or st.stop()'d run can never leave
+# a stale True flag that auto-starts the next upload.
+_run_analysis_now = bool(
+    st.session_state.run_analysis_pipeline and science_file is not None
+)
+st.session_state.run_analysis_pipeline = False
+if _run_analysis_now:
     persisted_upload_path = st.session_state.get("uploaded_temp_path")
     if persisted_upload_path and os.path.exists(persisted_upload_path):
         science_file_path = persisted_upload_path
     else:
         suffix = os.path.splitext(science_file.name)[1]
 
-        # Get the system temp directory
-        system_tmp = tempfile.gettempdir()
         username = sanitize_username(
             st.session_state.get("username", "anonymous")
         )
-        user_tmp_dir = os.path.join(system_tmp, username)
-
-        # Create the user-specific temp directory if it doesn't exist
-        os.makedirs(user_tmp_dir, exist_ok=True)
+        user_tmp_dir = session_tmp_directory(
+            username, st.session_state.get("session_id")
+        )
 
         # Now use this directory for the temp file
         with tempfile.NamedTemporaryFile(
@@ -675,7 +778,7 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
     st.session_state["log_summary_written"] = False
     st.session_state["last_saved_log_content"] = None
 
-if st.session_state.run_analysis_pipeline and science_file is not None:
+if _run_analysis_now:
     with st.spinner("Loading FITS data..."):
         raw_data, science_header = load_fits_data(science_file)
         science_data = raw_data
@@ -874,8 +977,15 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
                                 f"ERROR: Could not calculate pixel scale: {e}",
                                 level="ERROR",
                             )
-                            pixel_size_arcsec = 1.0  # Fallback value
-                            pixel_scale_source = "fallback default"
+                            pixel_size_arcsec = _user_pixel_scale()
+                            if pixel_size_arcsec is None:
+                                st.error(
+                                    "Pixel scale could not be determined. Enter it in "
+                                    "the sidebar (Parameters > Pixel scale override) "
+                                    "and run again."
+                                )
+                                st.stop()
+                            pixel_scale_source = "user-provided"
 
                     seeing = st.session_state.analysis_parameters["seeing"]
                     mean_fwhm_pixel = seeing / pixel_size_arcsec
@@ -910,7 +1020,7 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
     elif not use_astrometry:
         # Extract pixel scale from existing header only if we didn't run plate solving
         # (plate solving already updated these values in session state)
-        pixel_size_arcsec, pixel_scale_source = extract_pixel_scale(science_header)
+        pixel_size_arcsec, pixel_scale_source = _require_pixel_scale(science_header)
         seeing = st.session_state.analysis_parameters["seeing"]
         mean_fwhm_pixel = seeing / pixel_size_arcsec
 
@@ -967,7 +1077,7 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
                 if len(data_finite) > 0:
                     vmin, vmax = np.percentile(data_finite, [0.5, 99.5])
                     data_scaled = np.clip(science_data, vmin, vmax)
-                    data_scaled = (data_scaled - vmin) / (vmax - vmin)
+                    data_scaled = (data_scaled - vmin) / (vmax - vmin if vmax > vmin else 1.0)
                     im2 = ax2.imshow(data_scaled, origin="lower", cmap="viridis")
                     fig.colorbar(im2, ax=ax2, label="Normalized Value")
                     ax2.axis("off")
@@ -1045,7 +1155,7 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
             mean_fwhm_pixel = st.session_state["mean_fwhm_pixel"]
             pixel_scale_source = "session_state"
         else:
-            pixel_size_arcsec, pixel_scale_source = extract_pixel_scale(
+            pixel_size_arcsec, pixel_scale_source = _require_pixel_scale(
                 header_for_stats
             )
             seeing = st.session_state.analysis_parameters["seeing"]
@@ -1246,7 +1356,7 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
             pixel_size_arcsec = st.session_state["pixel_size_arcsec"]
             mean_fwhm_pixel = st.session_state["mean_fwhm_pixel"]
         else:
-            pixel_size_arcsec, _ = extract_pixel_scale(header_to_process)
+            pixel_size_arcsec, _ = _require_pixel_scale(header_to_process)
             seeing = st.session_state.analysis_parameters["seeing"]
             mean_fwhm_pixel = seeing / pixel_size_arcsec
 
@@ -1267,6 +1377,10 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
                     ]
                     filter_band = st.session_state.analysis_parameters["filter_band"]
                     filter_max_mag = 21.0
+                    # Last-resort magnitude-error cut (0 disables it).
+                    mag_err_max = st.session_state.analysis_parameters.get(
+                        "mag_err_max", 2.0
+                    )
 
                     result = detection_and_photometry(
                         image_to_process,
@@ -1336,6 +1450,15 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
                         handle_log_messages(log_messages)
 
                     if matched_table is not None:
+                        if not validate_cross_match_results(
+                            phot_table_df, matched_table, header_to_process
+                        ):
+                            st.warning(
+                                "The catalogue cross-match failed its sanity "
+                                "check (clustered matches or a large median "
+                                "separation). Treat the zero point and the "
+                                "calibrated magnitudes with caution."
+                            )
                         st.subheader("Cross-matched Catalog (first 10 rows)")
                         st.dataframe(matched_table.head(10))
                         color_term_result = None
@@ -1421,6 +1544,9 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
                                             zero_point=zero_point_value,
                                             airmass=air,
                                             filter_band=filter_band,
+                                            zero_point_std=zero_point_std,
+                                            systematic_floor=resolve_systematic_floor(),
+                                            mag_err_max=mag_err_max,
                                         )
 
                                         # Add metadata
@@ -1460,6 +1586,9 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
                                             zero_point=zero_point_value,
                                             airmass=air,
                                             filter_band=filter_band,
+                                            zero_point_std=zero_point_std,
+                                            systematic_floor=resolve_systematic_floor(),
+                                            mag_err_max=mag_err_max,
                                         )
 
                                         # Add metadata
@@ -1516,8 +1645,11 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
                                             "username", "anonymous"
                                         )
                                     )
-                                    output_dir = ensure_output_directory(
-                                        directory=f"{username}_results"
+                                    output_dir = session_results_path(
+                                        ensure_output_directory(
+                                            directory=f"{username}_results"
+                                        ),
+                                        st.session_state.get("session_id"),
                                     )
                                     hist_filename = f"{base_filename}_histogram_mag.png"
                                     hist_filepath = os.path.join(
@@ -1539,6 +1671,67 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
 
                                 # Clean up the figure
                                 plt.close(fig_mag)
+
+                                # PSF-minus-aperture offset diagnostic. Both
+                                # methods share the total-flux scale, so the offset
+                                # should be centred on zero; this makes an ePSF
+                                # shape/normalisation problem visible per source.
+                                if any(
+                                    "psf_minus_aperture_mag_" in col
+                                    for col in display_table.columns
+                                ):
+                                    st.subheader(
+                                        "PSF vs Aperture Magnitude Offsets"
+                                    )
+                                    fig_offset = None
+                                    try:
+                                        fig_offset = plot_photometry_offsets(
+                                            display_table, log_buffer
+                                        )
+                                        st.pyplot(fig_offset)
+                                        try:
+                                            _offset_base = st.session_state.get(
+                                                "base_filename", "photometry"
+                                            )
+                                            _offset_user = sanitize_username(
+                                                st.session_state.get(
+                                                    "username", "anonymous"
+                                                )
+                                            )
+                                            _offset_dir = session_results_path(
+                                                ensure_output_directory(
+                                                    directory=f"{_offset_user}_results"
+                                                ),
+                                                st.session_state.get("session_id"),
+                                            )
+                                            offset_filename = (
+                                                f"{_offset_base}_psf_aperture_offset.png"
+                                            )
+                                            offset_filepath = os.path.join(
+                                                _offset_dir, offset_filename
+                                            )
+                                            fig_offset.savefig(
+                                                offset_filepath,
+                                                dpi=120,
+                                                bbox_inches="tight",
+                                            )
+                                            write_to_log(
+                                                log_buffer,
+                                                "Saved PSF/aperture offset plot: "
+                                                f"{offset_filename}",
+                                            )
+                                        except Exception as e:
+                                            st.warning(
+                                                "Could not save PSF/aperture "
+                                                f"offset plot: {e}"
+                                            )
+                                    except Exception as e:
+                                        st.warning(
+                                            "Could not create PSF/aperture "
+                                            f"offset plot: {e}"
+                                        )
+                                    if fig_offset is not None:
+                                        plt.close(fig_offset)
 
                                 # Calculate search radius for both catalog enhancement and transient finding
                                 try:
@@ -1931,7 +2124,9 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
                 if final_phot_table is not None:
                     provide_download_buttons(output_dir)
                     cleanup_temp_files()
-                    zip_filename, zip_path = zip_results_on_exit(science_file, output_dir)
+                    zip_filename, zip_path = zip_results_on_exit(
+                        science_file, output_dir, archive_dir=archive_dir
+                    )
                     
                     # Record in database if ZIP was created and we have a stored FITS file
                     if zip_filename and st.session_state.get("stored_fits_filename"):
@@ -1952,8 +2147,6 @@ if st.session_state.run_analysis_pipeline and science_file is not None:
                     "Could not determine coordinates from image header. Cannot display ESASky or Aladin Viewer."
                 )
 
-            # Reset the button flag at the end of successful pipeline execution
-            st.session_state.run_analysis_pipeline = False
 else:
     # Try connecting to GAIA server once per session.
     if not st.session_state.get("gaia_server_checked", False):
