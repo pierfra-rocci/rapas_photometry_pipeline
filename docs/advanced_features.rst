@@ -61,19 +61,88 @@ The helper functions in ``src/db_tracking.py`` expose the recorded history:
     archives = get_zip_archives_for_user("alice")
     related_zips = get_zips_for_fits(wcs_fits_id=1)
 
+Configuration Persistence
+-------------------------
+
+The frontend saves user settings as a single JSON blob and reloads it on the
+next login. The blob carries ``analysis_parameters`` (every sidebar control,
+including *Max Magnitude Error* ``mag_err_max`` and *Detector Gain*
+``effective_gain``), ``observatory_data`` and ``colibri_api_key``.
+
+- **Save**: the **Save Settings** button in ``pages/app.py`` serializes the
+  current dictionaries into the blob.
+- **Load**: ``pages/login.py`` restores the dictionaries into session state on
+  login; any missing keys are filled from ``default_analysis_params`` in
+  ``src/tools_app.py`` (both new controls are seeded there).
+- **Backends**: FastAPI (``GET``/``POST /api/config``) or the legacy Flask
+  backend (``GET /get_config`` / ``POST /save_config``). See :doc:`api` for the
+  full comparison, payload shapes and storage columns.
+
+Because the whole ``analysis_parameters`` dictionary is persisted verbatim, new
+sidebar controls round-trip automatically and require no database migration.
+
+Development and Testing
+-----------------------
+
+Tests live in ``tests/`` and are run with ``pytest`` from the project root
+(install the dev extras first with ``pip install -e ".[dev]"``):
+
+.. code-block:: bash
+
+   pytest
+
+The configuration-persistence behaviour is covered by
+``tests/test_config_persistence.py``:
+
+- the FastAPI ``/api/config`` save/reload round-trip, including the ``0``
+  "disable the cut" / "automatic gain" values;
+- the legacy Flask ``/save_config`` / ``/get_config`` round-trip (skipped when
+  Flask is unavailable, and run with a stub ``flask-cors`` when only the CORS
+  extension is missing);
+- seeding of ``mag_err_max`` / ``effective_gain`` in
+  ``default_analysis_params``; and
+- structural checks that ``pages/app.py`` writes both controls into the saved
+  dictionary and that ``pages/login.py`` restores ``analysis_parameters``.
+
+Both backend suites use an isolated SQLite database in a temporary directory, so
+running the tests never touches the developer's ``users.db``.
+
 Transient Detection
 -------------------
 
 The transient workflow is optional and runs after the main photometry and
 catalog-enhancement steps.
 
-Current behavior:
+Candidate finding (``src.transient.find_candidates``) works as follows:
 
-- The user enables it from the **Transient Candidates** sidebar section.
-- The reference filter is selected in the UI.
-- The code chooses PanSTARRS or SkyMapper based on field declination.
-- Additional filtering removes known sources and Solar System objects.
-- SkyBoT filtering is handled explicitly in ``src/transient.py`` with a 120-second timeout.
+- The user enables it from the **Transient Candidates** sidebar section and
+  selects the reference filter.
+- The reference survey is chosen from the field declination: PanSTARRS in the
+  north, SkyMapper in the south.
+- Sources are detected with SEP and cross-matched against the pipeline
+  photometry catalog, taking the *nearest* counterpart within a seeing-based
+  radius (the FWHM in arcsec, clamped to 1-4 arcsec).  Matched detections
+  receive the calibrated PSF magnitudes already measured by the pipeline.
+- Detections flagged by SEP as unreliable (object/aperture truncated at the
+  frame boundary, deblending overflow, degenerate centroid, or an all-masked /
+  non-positive aperture) are discarded.  These are SEP flag bits, so the mask
+  passed to stdpipe is ``SEP_REJECT_FLAGS`` rather than stdpipe's
+  SExtractor-style default (``0x7F00``), which never matches raw SEP flags.
+- ``stdpipe.pipeline.filter_transient_candidates`` rejects detections that
+  coincide with reference-survey or Vizier sources.  The positional matching
+  radius is half the seeing FWHM (set from ``fwhm`` and ``pixscale``), and a
+  coincident source is kept only when it is brighter than its catalog
+  counterpart by more than ``mag_threshold`` (default 2.0 mag, after removing
+  the median zero-point offset), i.e. when there is a genuine brightness
+  excess.
+- Solar System objects are rejected separately through the SkyBoT service
+  (120-second timeout), and candidates whose magnitude error is not finite are
+  dropped.
+- No minimum S/N cutoff is applied to transient candidates. Low-S/N detections
+  remain eligible if they pass the other catalog, known-source, and Solar
+  System-object filters.
+- Cutouts (science and HiPS template) are displayed and saved for the top 20
+  candidates, ranked by signal-to-noise ratio.
 
 This workflow should be treated as best-effort. Reference data, remote catalog
 services, and transient filtering may degrade gracefully when an external
@@ -103,7 +172,25 @@ PSF photometry complements the aperture measurements and is useful when:
 
 The pipeline builds an empirical PSF model from suitable stars and then reports
 PSF-derived fluxes and magnitudes alongside the aperture results when the fit is
-successful.
+successful. Candidate stars are filtered on flux, S/N, shape, isolation and
+local-background flatness; the PSF is fitted in a compact region around each
+source while the ePSF itself is extracted from a larger cutout so its wings are
+preserved, and the aperture correction is derived from the exact model used for
+the fits.
+
+After photometry the pipeline cross-checks the two methods: PSF and aperture
+sources are matched by position and the median ``psf_mag − aperture_mag`` is
+reported for each aperture. Because the aperture fluxes are placed on the same
+total-flux scale as the PSF (see ``docs/PHOTOMETRY_FORMULAS.md``), the offset
+should be near zero; a median larger than
+``PSF_APERTURE_CONSISTENCY_THRESHOLD`` (0.15 mag) raises a warning and the
+per-aperture diagnostics are stored in
+``st.session_state["psf_aperture_consistency"]``.
+
+The results view plots these offsets with ``plot_photometry_offsets``: one
+panel shows the offset against the calibrated PSF magnitude with per-aperture
+median and zero lines, the other the offset histogram, and the figure is saved
+as ``<base>_psf_aperture_offset.png``.
 
 Custom Post-Processing
 ----------------------

@@ -35,8 +35,11 @@ Step 1: Sign In
 ---------------
 
 1. Open the login page.
-2. Register a new account or log in with an existing one.
-3. Use password recovery if needed. Recovery codes are emailed when SMTP is configured.
+2. Register a new account, or log in with an existing one using either the
+   username or the email address given at registration.
+3. Use password recovery if needed. Recovery codes are emailed when SMTP is
+   configured, and the submitted address is matched regardless of its
+   capitalisation.
 
 Step 2: Upload a FITS File
 --------------------------
@@ -52,6 +55,7 @@ Use the sidebar to review or change:
 
 - Observatory name, latitude, longitude, and elevation
 - Estimated seeing, detection threshold, FWHM radius factor, and border mask size
+- **Pixel scale override** (arcsec/pixel), only needed when the FITS header and WCS give no pixel scale; ``0`` means automatic
 - Calibration filter band (the maximum calibration magnitude is fixed at 21, the GAIA catalogue limit)
 - **Astrometry check** to force solving or refining the WCS workflow
 - **Transient Candidates** options to enable the transient finder and choose a reference filter
@@ -76,6 +80,31 @@ Depending on the file and selected options, this can include:
 - Catalog enhancement through external services
 - Optional transient-candidate search
 - Packaging of outputs into downloadable files
+
+PSF Photometry
+--------------
+
+PSF photometry builds an empirical PSF (ePSF) from suitable field stars and
+reports PSF-derived fluxes and magnitudes alongside the aperture measurements.
+Candidate stars are filtered for shape, isolation and a flat local background;
+the PSF is fitted in a compact region around each source while the ePSF itself
+is extracted from a larger cutout so its wings are preserved, and the aperture
+correction is derived from the exact model used for the fits.
+
+To help verify that the two methods agree, each run reports the median
+``psf_mag - aperture_mag`` offset per aperture and raises a warning when it
+exceeds 0.15 mag. Because the aperture fluxes are corrected to the same
+total-flux scale as the PSF, the offset should be near zero; a large value
+points to an ePSF shape/normalisation or local-background problem.
+
+The per-source difference is also written to the catalog for every aperture as
+``psf_minus_aperture_mag_X_X`` (with filter-prefixed aliases). It is NaN for
+sources measured by only one of the two methods.
+
+The results view plots this offset as well: per aperture it shows the offset
+against the calibrated PSF magnitude (with the median and zero lines) next to
+the offset histogram, and saves the figure as ``<base>_psf_aperture_offset.png``
+in your results folder.
 
 Astrometry Behavior
 -------------------
@@ -105,13 +134,27 @@ Transient Candidates
 --------------------
 
 If enabled, the transient workflow runs after the main photometry and catalog
-steps. It uses reference-survey data and then applies additional filtering,
-including Solar System object rejection through SkyBoT.
+steps. It compares the detected sources against reference-survey data and then
+applies additional filtering, including Solar System object rejection through
+SkyBoT.
 
 Survey selection is based on the field declination in the current code path:
 
 - Northern fields use PanSTARRS references
 - Southern fields use SkyMapper references
+
+Candidate finding detects sources with SEP and matches them to the pipeline
+photometry catalog within a seeing-based radius (the FWHM, clamped to
+1-4 arcsec), then rejects detections that coincide with reference-survey or
+Vizier sources. The catalog matching radius is half the seeing FWHM, and a
+source that coincides with a catalog entry is kept only when it is a genuine
+brightness excess - more than ``mag_threshold`` (default 2.0 magnitudes)
+brighter than that entry. Unreliable SEP detections (edge-truncated, deblended,
+or with a bad aperture) are discarded.
+
+The transient workflow applies no minimum S/N cutoff. Low-S/N detections remain
+eligible if they pass the other catalog, known-source, and Solar System-object
+filters.
 
 Results and Downloads
 ---------------------
@@ -145,7 +188,7 @@ them. The catalog may also include trace columns such as ``source_color``,
 Saved Settings and Archives
 ---------------------------
 
-- Use **Save Settings** to persist observatory and analysis parameters when the API backend is active.
+- Use **Save Settings** to persist observatory and analysis parameters to your account; the FastAPI and legacy backends both store the values, which are restored automatically the next time you log in.
 - Use the archived-results area to review previously stored FITS uploads and ZIP outputs tied to your account.
 - In the archived-results sidebar browser, ZIP content is loaded only when you click to download a specific archive, reducing rerun overhead while keeping the full archive list visible.
 

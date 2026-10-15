@@ -28,30 +28,48 @@ Science and Processing Modules
 
 ``src/pipeline.py``
    Core photometry helpers including masking, cosmic-ray handling, and other
-   lower-level processing helpers.
+   lower-level processing helpers. It also owns the effective-gain resolution
+   (``resolve_effective_gain`` / ``instrument_uses_driver_gain``) shared by the
+   error model, the cosmic-ray mask and SEP detection: explicit ``EGAIN``,
+   ``CCDGAIN`` and ``CVF`` (``gain = 1/CVF``) keywords take precedence over the
+   conventional ``GAIN``, which is ignored on recognised driver-gain cameras
+   (QHY/ZWO) because it is an abstract driver setting rather than e-/ADU.
 
 ``src/astrometry.py``
    Plate solving and WCS-related utilities using ``stdpipe`` and local
    Astrometry.net tooling.
 
 ``src/psf.py``
-   PSF photometry helpers and PSF model construction.
+   PSF photometry helpers and PSF model construction, including the empirical
+   PSF (ePSF) builder and ``compute_encircled_energy`` for the aperture
+   correction.
 
 ``src/xmatch_catalogs.py``
    Catalog cross-matching and catalog enhancement, including GAIA, SIMBAD,
    SkyBoT, and related services.
 
 ``src/transient.py``
-   Transient candidate search, template comparison, and extra filtering such as
-   Solar System object rejection.
+   Transient candidate search, reference-survey/catalog comparison, and extra
+   filtering such as Solar System object rejection.
 
 ``src/tools_pipeline.py``
    Shared photometry and WCS utilities such as filter mapping, pixel scale
    extraction, background estimation, and calibrated magnitude helpers.
 
+``src/pipeline.py`` also exposes ``check_psf_aperture_consistency()``, which
+matches PSF and aperture sources by position and reports the median
+``psf_mag - aperture_mag`` per aperture, warning when the offset exceeds
+``PSF_APERTURE_CONSISTENCY_THRESHOLD`` (0.15 mag). Diagnostics are stored in
+``st.session_state["psf_aperture_consistency"]``, and ``add_calibrated_magnitudes``
+exports the per-source difference as ``psf_minus_aperture_mag_X_X`` (with
+filter-prefixed aliases, NaN where only one method measured the source).
+
 ``src/tools_app.py``
    Streamlit-side helper functions including FITS loading, cache reset, and UI
-   support routines.
+   support routines. ``plot_photometry_offsets()`` renders the per-source
+   ``psf_mag - aperture_mag`` offset (scatter against calibrated PSF magnitude
+   with per-aperture median/zero lines, plus the histogram) shown in the
+   results view.
 
 Database and API Modules
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -107,8 +125,7 @@ Useful Functions
    unavailable or no trails are found.
 
 ``src.pipeline.show_subtracted_image(image_sub)``
-   Display the residual image produced by the transient-detection image
-   subtraction step inside the Streamlit interface.
+   Display the background-subtracted image inside the Streamlit interface.
 
 ``src.astrometry.solve_with_astrometrynet(file_path)``
    Run local astrometric solving with the configured Astrometry.net/stdpipe
@@ -124,16 +141,110 @@ Useful Functions
 
 ``src.transient.find_candidates(...)``
    Run the transient candidate workflow after photometry and catalog
-   preparation.
+   preparation. Sources are detected with SEP, unreliable detections are
+   dropped using the SEP flag mask (``SEP_REJECT_FLAGS``) and matched to the
+   photometry catalog within a seeing-based radius, and reference-survey /
+   Vizier matches are rejected unless the detection is a genuine brightness
+   excess (``mag_threshold``, default 2.0 mag). No minimum S/N cutoff is
+   applied; low-S/N detections can remain candidates if they pass the other
+   catalog and known-object filters.
 
 Photometric Formula Conventions
 -------------------------------
 
 The project documentation and code use the following formulas consistently:
 
-- ``S/N = flux / flux_error``
-- ``σ_mag = 1.0857 × (σ_flux / flux)``
-- ``σ_mag_calib = √(σ_mag_inst² + σ_zp²)``
+- ``σ_flux² = σ_aperture² + σ_total_bkg² + σ_centroid²`` (aperture-sum error,
+  the local-background error from the sigma-clipped annulus, and the
+  centroid-position term)
+- ``σ_bkg_pixel = ApertureStats.median_err`` = ``√(π/2) · s / √A_ann`` (standard
+  error of the median annulus level)
+- ``S/N = flux / flux_error`` (computed from the background-subtracted,
+  aperture-corrected flux)
+- ``σ_mag = 1.0857 × (σ_flux / flux)``, combined in quadrature with the
+  aperture-correction systematic
+  ``σ_apcorr = 1.0857 · f_apcorr · |apcorr − 1| / apcorr``
+- ``flux_total = flux_aperture / EE(r)`` (encircled-energy aperture correction)
+- ``σ_mag_calib = √(σ_mag_inst² + σ_zp² + σ_sys²)``, where ``σ_zp`` uses the
+  sigma-clipped, untrimmed residual scatter and the ``√(π/2)`` median factor
+
+Photometry Error Columns
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The exported photometry catalog exposes the error budget explicitly so it can
+be inspected or recombined downstream:
+
+- ``background_rms_per_pixel_X_X`` — local-background ``median_err`` per pixel
+- ``centroid_flux_err_X_X`` — centroid-position term
+- ``apcorr_X_X`` / ``ee_fraction_X_X`` — aperture correction and its
+  encircled-energy fraction
+- ``apcorr_mag_err_X_X`` — aperture-correction magnitude systematic
+- ``aperture_mag_err_X_X`` / ``psf_mag_err`` — total calibrated magnitude error
+  (after zero-point propagation)
+- ``aperture_mag_err_X_X_random`` / ``..._correlated`` and
+  ``psf_mag_err_random`` / ``psf_mag_err_correlated`` — the per-source and
+  field-common components of the calibrated magnitude error
+- ``aperture_mag_X_X_colorcorr_err`` / ``psf_mag_colorcorr_err`` — errors of the
+  color-term-corrected magnitudes
+- ``zero_point_std`` — field-level formal zero-point uncertainty
+
+The total aperture flux error (aperture + local background + centroid) is
+computed as the ``aperture_sum_bkg_corr_err_X_X`` column by
+``detection_and_photometry``; it is an intermediate quantity that
+``add_calibrated_magnitudes`` does not retain in the exported catalog. The
+calibrator scatter and count diagnostics (``zero_point_scatter``,
+``zero_point_scatter_kept``, ``zero_point_n``) are stored on the matched
+calibration table used for zero-point diagnostics, not on the exported source
+catalog.
+
+Analysis Result Files
+---------------------
+
+The Streamlit workflow writes files to a per-user ``*_results/`` directory.
+Both ZIP builders include files matching the input base name except files with
+the ``.fits`` extension. FITS products therefore remain on disk and are not
+part of the downloadable archive.
+
+.. list-table:: Generated analysis artifacts
+    :header-rows: 1
+    :widths: 25 35 25 15
+
+    * - File pattern
+       - Contents
+       - Generation / writer
+       - In ZIP
+    * - ``*_catalog.csv`` and ``*_catalog.vot``
+       - Final source photometry and catalog matches in CSV and VOTable formats
+       - After photometry and catalog enrichment; ``src.utils.save_catalog_files``
+       - Yes
+    * - ``*_header.txt``
+       - Input FITS header
+       - When a science header is available; ``src.utils.save_header_to_txt``
+       - Yes
+    * - ``*_wcs_header.txt``
+       - Header containing the available astrometric solution
+       - When a WCS solution is available; ``src.utils.save_header_to_txt``
+       - Yes
+    * - ``*.log``
+       - Processing log
+       - At the end of analysis; ``pages/app.py``
+       - Yes
+    * - ``*_*.png``
+       - Image and diagnostic plots (for example magnitude and PSF/aperture-offset plots)
+       - Depending on the plots produced; ``pages/app.py``
+       - Yes
+    * - ``*_transients.csv``
+       - Transient candidate table
+       - When transient candidates are returned; ``pages/app.py``
+       - Yes
+    * - ``*_psf.fits``
+       - Empirical PSF model
+       - When the ePSF model is saved; ``src/psf.py``
+       - No
+    * - ``*_wcs.fits``
+       - Original image with the updated WCS header
+       - When WCS solving succeeds; ``src.utils.save_fits_with_wcs``. Also copied to ``rpp_data/fits/``.
+       - No
 
 HTTP API Endpoints
 ------------------
@@ -150,6 +261,17 @@ The FastAPI backend in ``api/main.py`` currently exposes these primary routes:
 - ``POST /api/upload/fits``
 - ``GET /api/fits``
 
+The optional legacy Flask backend in ``backend.py`` exposes an equivalent
+configuration surface for older deployments (see ``api.rst`` for the full
+persistence comparison):
+
+- ``POST /register``
+- ``POST /login``
+- ``POST /recover_request``
+- ``POST /recover_confirm``
+- ``POST /save_config``
+- ``GET /get_config``
+
 Maintenance and Migration Scripts
 ---------------------------------
 
@@ -161,3 +283,24 @@ The repository also contains command-line helpers in ``scripts/``:
 
 These are maintenance or standalone utilities and are not all part of the main
 interactive Streamlit workflow.
+
+Test Suite
+----------
+
+Tests live in ``tests/`` and run with ``pytest`` from the project root. The
+modules most relevant to backend and settings behaviour are:
+
+- ``tests/test_config_persistence.py`` — FastAPI and legacy Flask
+  configuration round-trips, default seeding of ``mag_err_max`` /
+  ``effective_gain``, and the save/load wiring in ``pages/app.py`` and
+  ``pages/login.py``
+- ``tests/test_robustness_ingestion.py`` — FastAPI FITS ingestion and listing
+- ``tests/test_database.py`` — ORM models and analysis-history tracking
+- ``tests/test_photometry.py`` — photometry and error-budget calculations,
+  including the PSF star-selection regression, the ePSF centring, the
+  PSF-vs-aperture consistency diagnostic and the effective-gain resolution
+  (``CVF`` inversion, keyword precedence, driver-camera detection and the
+  plausible range)
+- ``tests/test_version_consistency.py`` — release-version agreement across
+  ``pyproject.toml``, ``src/__version__.py``, ``docs/conf.py``, the README and
+  the changelog

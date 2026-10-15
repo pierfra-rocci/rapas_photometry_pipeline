@@ -35,7 +35,7 @@ User Authentication & Multi-User Support
    - Backend URLs can be overridden with ``RPP_API_URL`` and ``RPP_LEGACY_URL``
 
 Advanced Image Processing
-------------------------
+-------------------------
 
 **FITS File Support**:
    - Standard FITS formats (.fits, .fit, .fts, .fits.gz)
@@ -55,7 +55,12 @@ Advanced Image Processing
 **Cosmic Ray Removal**:
    - L.A.Cosmic algorithm implementation via `astroscrappy` package
    - Automatic cosmic ray detection and removal enabled by default
-   - Configurable parameters (gain, read noise, sigma clipping thresholds)
+   - Noise model built from the *resolved* effective gain (explicit header
+     `EGAIN`/`CCDGAIN`/`1/CVF` inside a plausible 0.02-100 e-/ADU range, then the
+     user gain, then an empirical estimate; a bare `GAIN` is ignored on
+     driver-gain cameras such as QHY/ZWO) plus `RDNOISE`/`ENOISE` when present
+   - A mask covering an unphysical fraction of the frame (> 20%) is rejected
+     rather than deleting a large part of the science image
    - Before/after comparison for quality assessment
    - Seamless integration into photometry pipeline preprocessing
 
@@ -63,11 +68,19 @@ Advanced Image Processing
    - photutils.Background2D with SExtractor algorithm
    - 2D background modeling with sigma clipping
    - Automatic box size adjustment for image dimensions
+   - MAD-based per-box RMS, so the noise map is not inflated by undetected
+     sources in crowded fields (the plain std over-estimated it by up to ~2x)
+   - Smoothing filter capped for small background meshes to avoid over-smoothing
+     the model and leaving large-scale residuals on sky gradients
+   - Graceful degradation instead of a hard failure: the box-exclusion threshold
+     is relaxed and the box size coarsened if ``Background2D`` would reject every
+     box (crowded fields, large masked areas), with a single sigma-clipped
+     background level as the last resort
    - Background and RMS map visualization
    - FITS output for background and noise models
 
 Astrometric Solutions
---------------------
+---------------------
 
 **Local Plate Solving**:
    - Astrometry.net integration via stdpipe wrapper
@@ -96,6 +109,8 @@ Source Detection & Photometry
 
 **Source Detection**:
    - DAOStarFinder implementation with configurable parameters
+   - MAD-based detection threshold, consistent with the error model and not
+     inflated by undetected sources in crowded fields
    - Border masking to avoid edge artifacts
    - Quality filtering based on shape parameters (roundness, sharpness)
    - Automatic threshold optimization
@@ -113,35 +128,93 @@ Source Detection & Photometry
    - User-configurable third aperture (FWHM Radius Factor, 0.5–2.0× FWHM, default 1.5×); values 1.1 and 1.3 collapse back to two apertures without duplication
    - All three apertures produce the same set of output columns: flux, background-corrected flux, S/N, instrumental magnitude, calibrated magnitude, magnitude error, and quality flag
     - Column naming follows ``aperture_mag_X_X`` / ``snr_X_X`` / ``aperture_mag_err_X_X`` / ``quality_flag_X_X`` (e.g. ``_1_1``, ``_1_3``, ``_1_5``)
-    - Exported calibrated magnitude columns also include filter-prefixed aliases
-       derived from the selected calibration band in ``GAIA_BANDS`` (for example
-       ``rapasg_psf_mag`` or ``rapasg_aperture_mag_1_5``) while preserving the
-       legacy column names
-   - Per-aperture background-corrected and raw flux measurements
-   - Signal-to-noise ratio (S/N) calculation using background-corrected flux
-   - Magnitude error calculation: ``σ_mag = 1.0857 × (σ_flux / flux)``
+   - When the selected calibration band defines a prefix, the exported
+      calibrated magnitude and error columns use the filter-prefixed names
+      (for example ``rapasg_psf_mag`` or ``rapasg_aperture_mag_1_5``) in place of
+      the legacy unprefixed names, which are dropped on export; when no prefix
+      applies the legacy names are exported
+   - Per-aperture background-subtracted flux measurements with a robust
+     sigma-clipped median annulus background (``ApertureStats``)
+   - The pipeline mask (border, cosmic rays, satellite trails, NaNs) is applied
+     to both the source and the annulus photometry, and the exact masked-pixel
+     area is used (``area_overlap``)
+   - Signal-to-noise ratio (S/N) computed from the background-subtracted flux and
+     its full error, including the local-background and centroid uncertainties:
+     ``σ_flux² = σ_aperture² + σ_total_bkg² + σ_centroid²``
+   - Magnitude error calculated from the same flux used for the magnitude:
+     ``σ_mag = 1.0857 × (σ_flux / flux)``
+   - Aperture correction from the empirical-PSF encircled-energy curve (analytic
+     Gaussian fallback) so aperture and PSF photometry share a total-flux scale;
+     the correction factor is exported in ``apcorr_X_X`` and the underlying
+     encircled-energy fraction in ``ee_fraction_X_X``
    - Quality flags: 'good' (S/N>10), 'marginal' (5<S/N≤10), 'poor' (S/N≤5)
     - Magnitude calibration against the fitted catalog zero-point
     - Optional parallel ``*_colorcorr`` magnitude columns when a usable catalog
        color is available for the selected calibration band
-   - Support for aperture correction and PSF comparison
 
 **PSF Photometry**:
    - Empirical PSF model construction using EPSFBuilder
-   - Star selection with quality filtering criteria
+   - Star selection with quality filtering criteria (flux, S/N, shape, crowding
+     and local-background flatness); truly saturated pixels are removed by the
+     mask beforehand, so the saturation check never discards the brightest
+     unsaturated stars and no field is skipped just because too few candidates
+     survived an over-aggressive filter
+   - The PSF is fitted in a compact ≈3× FWHM region while the ePSF is extracted
+     from a larger ≈5× FWHM cutout, so its wings are not truncated and the
+     aperture-correction curve stays meaningful
    - Iterative PSF fitting with IterativePSFPhotometry
+   - Per-source local-background subtraction (sigma-clipped median annulus) so
+     residual sky/nebulosity does not bias the fitted PSF flux, applied both to
+     the ePSF-building star cutouts and to the per-source fits
    - Correct S/N calculation: ``S/N = flux_fit / flux_err``
    - PSF-specific quality flags for reliability assessment
    - PSF model visualization and FITS output
-   - Comparison metrics with aperture photometry
+   - **PSF-vs-aperture consistency check**: the median
+     ``psf_mag − aperture_mag`` offset is reported per aperture, with a warning
+     when it exceeds ``PSF_APERTURE_CONSISTENCY_THRESHOLD`` (0.15 mag) — a
+     direct indicator of an ePSF shape/normalisation problem
+   - Per-source difference columns ``psf_minus_aperture_mag_X_X`` (with
+     filter-prefixed aliases) for every aperture, NaN where only one method
+     measured the source
+   - **Offset diagnostic plot** in the results view: the per-source offset
+     against the calibrated PSF magnitude, with per-aperture median and zero
+     lines, plus the offset histogram (saved as
+     ``<base>_psf_aperture_offset.png``)
 
 **Error Propagation**:
    - Comprehensive photometric error calculation
-   - Poisson noise plus read noise modeling
-   - Background uncertainty propagation
-   - Total error estimation with calc_total_error
-   - Zero-point error propagation: ``σ_mag_calib = √(σ_mag_inst² + σ_zp²)``
-   - Full precision S/N (no rounding) to avoid divide-by-zero
+   - Sky (global) background noise from the MAD-based ``Background2D`` RMS map,
+     plus the local annulus background subtracted per source
+   - Poisson noise plus read noise modeling with ``calc_total_error``; the
+     effective gain is taken from the FITS ``EGAIN``/``CCDGAIN`` keyword or the
+     ``CVF`` conversion factor (``gain = 1/CVF``), then from the user-supplied
+     *Detector Gain* parameter (``RPP_EFFECTIVE_GAIN`` for headless runs), then
+     estimated empirically from the frame's variance-vs-signal statistics
+     (photon transfer), and only then defaults to electrons (``gain = 1``). A
+     conventional ``GAIN`` is accepted only when it is inside 0.02-100 e-/ADU
+     and the instrument is not a driver-gain camera (QHY/ZWO), whose ``GAIN``
+     is an abstract driver setting rather than a conversion factor
+   - Local-background uncertainty propagation using the standard error of the
+     median annulus (``ApertureStats.median_err``):
+     ``σ_flux² = σ_aperture² + σ_total_bkg² + σ_centroid²``
+   - Centroid-position term from re-measuring the aperture shifted by the
+     centroid uncertainty (``σ_centroid = σ_PSF/S/N``), capturing the real PSF
+     asymmetry (``centroid_flux_err_X_X``)
+   - Zero-point and systematic-floor error propagation into every calibrated
+     magnitude error:
+     ``σ_mag_calib = √(σ_mag_inst² + σ_zp² + σ_sys²)``, with the zero point's
+     median standard error ``σ_zp = √(π/2) × scatter/√N`` using the sigma-clipped
+     (untrimmed) residual scatter, so the ±0.5 mag outlier cut does not bias it,
+     and the optional systematic floor ``σ_sys`` resolved by
+     ``resolve_systematic_floor()``
+   - Random and correlated components exposed separately: ``*_mag_err_*_random``
+     (per source) and ``*_mag_err_*_correlated`` (field-common zero-point term),
+     in addition to the total error
+   - Unreliable-photometry cut: a source is dropped only when every photometry
+     method reports a magnitude error ≥ 2 mag (``MAG_ERR_MAX``, configurable
+     through the *Max Magnitude Error* parameter, 0 disables the cut)
+   - Full precision S/N and zero point (no rounding) to avoid divide-by-zero and
+     to preserve the propagated uncertainty
 
 Photometric Calibration
 -----------------------
@@ -155,6 +228,8 @@ Photometric Calibration
    - **VizieR fallback**: when the primary Gaia TAP service is unavailable, the
      query is automatically retried against the VizieR mirror with a reduced
      column set so calibration can proceed during TAP outages
+   - **Match validation**: clustered matches or a large median catalog
+     separation are flagged, so a bad WCS cannot silently bias the zero point
 
 **Zero-Point Calculation**:
    - Robust calibration with sigma clipping outlier rejection
@@ -172,7 +247,9 @@ Photometric Calibration
     - Uses simple catalog colors when available: Gaia ``BP-RP`` and Sloan-style
        ``g-r``, ``r-i``, or ``i-z`` depending on the selected calibration band
     - Writes parallel ``*_colorcorr`` magnitude columns instead of replacing the
-       baseline calibrated magnitudes
+       baseline calibrated magnitudes, together with ``*_colorcorr_err`` errors
+       that combine the baseline calibrated error with the color-term fit
+       uncertainty
     - Automatically skipped when the selected filter is unsupported or when the
        final catalog lacks usable color information for a source
 
@@ -235,16 +312,24 @@ Multi-Catalog Cross-Matching
    - Identification of stars within 10 parsecs
    - G, BP, RP magnitude data
    - Object type classification
+   - Available proper motions propagated to the observation epoch
    - Cross-matching with field sources
 
 Transient Detection (Beta)
--------------------------
+--------------------------
 
 **Transient Finder**:
    - Automated search for transient candidates
-   - Image subtraction and catalog filtering
-   - Integration with PanSTARRS (Northern) and SkyMapper (Southern) surveys
-   - Template image retrieval and masking
+   - Reference-survey and catalog filtering, with integration with PanSTARRS
+     (Northern) and SkyMapper (Southern) surveys
+   - SEP detection flags used to discard unreliable detections
+   - Seeing-based cross-matching with the pipeline photometry catalog (nearest
+     counterpart within the FWHM, clamped to 1-4 arcsec)
+   - Brightness-excess test against catalog counterparts (default 2.0 mag
+     brighter, ``mag_threshold``)
+   - Template (HiPS) image retrieval and masking
+   - No minimum S/N cutoff is applied to transient candidates; low-S/N
+     detections remain eligible if they pass the other filtering steps
    - Candidate visualization with cutouts (Science, Template) for the top 20
      candidates sorted by best signal-to-noise ratio
    - Additional SkyBoT filtering for Solar System object rejection
@@ -301,16 +386,20 @@ User Interface & Workflow
      better readability across a wide dynamic range of photometric precision
 
 **Configuration Management**:
-   - Persistent parameter storage across sessions
-   - Save/load configuration with single click
-   - Default parameter sets for common use cases
+   - Persistent parameter storage across sessions on both the FastAPI and
+     legacy Flask backends
+   - Save/load configuration with a single click, including the *Max Magnitude
+     Error* and *Detector Gain* controls
+   - Default parameter sets for common use cases (missing keys are seeded from
+     ``default_analysis_params``)
    - Parameter validation with helpful error messages
-   - Reset options for troubleshooting
+   - Reset options for troubleshooting (session-local, effective in a single press)
 
 **File Management**:
    - Drag-and-drop file upload interface
    - Automatic file format detection and validation
    - Temporary file handling with automatic cleanup
+   - Per-session ``work_<id>`` folders for temporary uploads and intermediate results
    - Archive browser for previous results
    - Batch download options for result sets
    - User-scoped storage paths under ``rpp_data/fits/`` and ``rpp_results/``
@@ -355,6 +444,7 @@ Output Generation & Export
 **Archive Management**:
    - Automatic result archiving with compression
    - Old file cleanup with configurable retention
+   - Automatic removal of stale session folders and temporary uploads older than 24 hours (archived ZIP files are kept)
    - Browse interface for historical results
    - Bulk download options for research workflows
    - Secure multi-user data isolation
@@ -371,7 +461,8 @@ Performance & Scalability
 
 **Multi-User Support**:
    - Concurrent user session handling
-   - Isolated workspaces for data security
+   - Isolated workspaces for data security: each browser session, even of the same account, has its own work folders
+   - Reset only affects the current session, never other connected users
    - Shared configuration options when appropriate
    - Load balancing for multiple simultaneous analyses
    - Scalable backend architecture

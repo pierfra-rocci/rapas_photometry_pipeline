@@ -1,5 +1,5 @@
 RAPAS Photometry Pipeline (RPP)
-==============================
+===============================
 
 .. image:: _static/rpp_logo.png
    :width: 200px

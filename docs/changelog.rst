@@ -3,6 +3,488 @@ Changelog
 
 This document records all notable changes to RAPAS Photometry Pipeline.
 
+Version 1.8.9
+-------------
+
+**Released: October 15, 2026**
+
+(Version 1.8.8 was not released; 1.8.9 follows 1.8.7 directly.)
+
+**PSF, Transients and Messages**
+
+*   **PSF star minimum lowered from 15 to 10.** A warning about possibly poor
+    PSF quality is shown when fewer than 25 PSF stars are available.
+*   **Transient finder accepts ``uint16`` images.** The image is converted to
+    ``float32`` before SEP background estimation and extraction (SEP rejects
+    ``uint16``).
+*   **SCAMP refinement retries on too few matches.** SCAMP's default
+    ``POSITION_MAXERR`` (1 arcmin) made refinement report "0 reference
+    matches" when the plate solution was slightly off. A second attempt now
+    widens ``POSITION_MAXERR``/``PIXSCALE_MAXERR``/``POSANGLE_MAXERR`` and
+    relaxes ``SN_THRESHOLDS``.
+*   **Cleaner messages.** The ASTRiDE candidate/diagnostic messages were
+    removed, and the zero-point summary now reads
+    ``Zero Point: X ± σ, calibrator scatter = S mag``.
+
+**Session Isolation (concurrent users)**
+
+*   **Per-session work folders.** Every browser session now gets its own
+    ``work_<id>`` folder, both for temporary uploads
+    (``/tmp/<user>/work_<id>/``) and for intermediate results
+    (``rpp_results/<user>_results/work_<id>/``). Two sessions, including two
+    sessions of the same account, can no longer overwrite or pick up each
+    other's FITS files, headers or intermediate products. Final ZIP archives
+    stay in the user-level ``rpp_results/<user>_results/`` folder.
+*   **Reset works in one press.** The uploader widget is re-keyed on every
+    reset, so the previously loaded file is dropped immediately instead of
+    requiring a second click. Reset is now session-local: it only clears the
+    current session's state and folders and no longer calls the global
+    ``st.cache_data.clear()`` that affected every connected user.
+*   **Run trigger consumed at start.** The *Start Analysis* trigger is cleared
+    as soon as a run begins, so a failed or interrupted run cannot silently
+    restart on the next interaction.
+*   **Safer download matching.** Prefix matching of result files only pools
+    files whose name continues with a delimiter (``_``, ``.``, ``-``), so
+    ``image1`` no longer collects the files of ``image10``.
+
+**Stale-File Cleanup**
+
+*   Work folders and loose temporary uploads older than 24 hours (left by
+    closed browsers or abandoned analyses) are removed once per session after
+    login. Archived ZIP files are never touched, and the current session is
+    always preserved.
+
+**Cached FITS Parser and Shared State**
+
+*   The cached FITS parser is now pure: it returns the data, header and a list
+    of messages, and ``load_fits_data`` replays those messages in the calling
+    session, so cached results no longer leak UI messages or state across
+    users.
+*   Matplotlib figures are closed after being displayed and after being saved,
+    avoiding the process-wide figure registry being shared between sessions;
+    the temporary ASTRiDE directory is removed after use.
+*   Shared ``astroquery`` clients (Gaia main table, Skybot raw-response flag)
+    are configured once at import instead of inside each function.
+
+**Tests and Documentation**
+
+*   New ``tests/test_session_isolation.py`` plus UI regression tests covering
+    session folders, cleanup, delimiter matching, the pure parser and the
+    import-time astroquery configuration.
+*   README, features, troubleshooting and tutorial pages (English and French)
+    describe session isolation, Reset and stale-file cleanup.
+
+Version 1.8.7
+-------------
+
+**Released: October 7, 2026**
+
+**Effective-Gain Resolution**
+
+*   **``CVF`` conversion factor supported.** The FITS ``CVF`` keyword is now
+    read and converted with ``gain = 1/CVF``. Explicit conversion keywords
+    (``EGAIN``/``CCDGAIN`` in e-/ADU and ``CVF``) are tried before the
+    conventional ``GAIN``, so a driver setting written to ``GAIN`` can no longer
+    shadow a genuine conversion keyword.
+*   **Driver-gain cameras recognised.** On QHY (abstract 0-100 scale; a QHY268M
+    reaches ≈0.77 e-/ADU at ``GAIN=56``) and ZWO ASI (0.1 dB scale) cameras the
+    bare ``GAIN`` value is a driver setting rather than e-/ADU and is now
+    ignored: the pipeline falls back to ``EGAIN``/``CVF``, the user-supplied
+    gain, or the frame's own photon-transfer estimate. The recognised cameras
+    are listed in the editable ``DRIVER_GAIN_INSTRUMENT_PATTERNS``.
+*   **Plausible gain range widened 0.02-20 → 0.02-100 e-/ADU**, so cameras with
+    a genuinely large conversion factor are no longer rejected; the
+    driver-setting guard, not the range, is what rejects QHY/ZWO values. The
+    *Detector Gain* control accepts up to 1000 e-/ADU.
+*   **One resolver everywhere.** ``src/astrometry.py`` and ``src/transient.py``
+    now call ``resolve_effective_gain()`` instead of the old
+    ``65535 / max(image)`` heuristic, so ``EGAIN``/``CVF``/driver handling is
+    consistent across photometry, cosmic-ray masking and SEP detection.
+*   Tests: ``CVF`` inversion, keyword precedence, driver-camera detection
+    (including a false-positive guard) and the widened range are covered by new
+    cases in ``tests/test_photometry.py``.
+*   **Documentation**: the photometry-formulas, features and tutorial pages
+    (English and French) and the README describe the new gain resolution.
+
+**Pixel Scale and Login**
+
+*   **No silent 1 arcsec/pixel default.** When the pixel scale cannot be read
+    from the header or computed from the solved WCS, the run stops and asks for
+    the new *Pixel scale override* value (sidebar, Parameters).
+*   The CD-matrix pixel scale uses column norms (valid for rotated matrices) and
+    ignores non-numeric keywords.
+*   The login page reminds Firefox users to press Enter after typing the
+    password.
+
+Version 1.8.6
+-------------
+
+**Released: October 4, 2026**
+
+**Transient Candidate Selection**
+
+*   **SEP detection flags are now actually applied.** The candidate filter was
+    called with stdpipe's default flag mask (``0x7F00``), which only matches
+    stdpipe/SExtractor flag bits; raw SEP flags live in the low byte, so the
+    mask never matched and no detection was ever flag-filtered.
+    ``find_candidates()`` now passes ``SEP_REJECT_FLAGS`` (``0xDE``: object or
+    aperture truncated at the frame boundary, deblending overflow, degenerate
+    centroid, all-masked or non-positive aperture), so unreliable detections
+    are discarded.
+*   **Seeing-based cross-match radius.** SEP detections are matched to the
+    pipeline photometry catalog within a seeing-sized radius
+    (``clip(FWHM, 1, 4)`` arcsec) instead of a fixed 10 arcsec. Because
+    ``spherical_match()`` returns *all* pairs inside the radius, the old value
+    produced many-to-many matches in crowded fields, duplicating candidates and
+    attaching the wrong PSF magnitude; only the nearest counterpart is now
+    kept.
+*   **Correct catalogue matching radius in ``filter_transient_candidates()``.**
+    The function was previously given an already arcsec-scaled FWHM and no
+    ``pixscale``, so the radius silently fell back to a fixed 1 arcsec. It now
+    receives the FWHM in pixels and ``pixscale`` in degrees/pixel, giving the
+    intended half-FWHM radius.
+*   **Brightness-excess test documented and configurable.** ``checker_fn()``
+    follows stdpipe's contract (a ``True`` entry is a confirmed catalogue match
+    that removes the detection); the docstring now states this explicitly and
+    the excess threshold was exposed as ``mag_threshold`` (default 2.0 mag).
+    Detections whose magnitude difference cannot be evaluated are kept instead
+    of being silently discarded.
+*   Tests: the SEP flag mask and the candidate-checker semantics are covered by
+    new cases in ``tests/test_new_features.py``.
+
+**Documentation**
+
+*   The user guide, advanced-features and API reference pages, the English and
+    French tutorials, and the README now describe the current transient
+    candidate algorithm (SEP flag filtering, seeing-based cross-matching and
+    the brightness-excess rule).
+
+Version 1.8.5
+-------------
+
+**Released: October 2, 2026**
+
+**Transient Candidate Filtering**
+
+*   Removed the minimum S/N filter from transient-candidate selection so that
+    low-S/N detections remain eligible. The other catalog, known-source,
+    Solar System-object, and magnitude-error validity filters remain in place.
+
+**PSF Photometry Reliability**
+
+*   **Star selection no longer silently skips PSF photometry.** The "adaptive"
+    S/N threshold was computed from ``sqrt(flux)`` when no per-source S/N or
+    ``flux_err`` was available, and then kept only the top half of the
+    candidates. That is not a quality measure, and combined with the
+    median..90th-percentile flux window it left fewer than the minimum 15 stars
+    on clean fields, so the entire PSF step was dropped. The approximate-S/N cut
+    is now skipped (the flux window already keeps the bright half).
+*   **Saturation filter relaxed.** The previous limit
+    ``min(peak_85 * 0.95, img_max * 0.85)`` rejected the brightest unsaturated
+    stars, which are exactly the best ePSF stars. Truly saturated pixels are
+    already flagged by the pipeline mask before detection, so this is now only a
+    last-resort guard that trims peaks within 0.5% of the frame maximum.
+*   On a clean 121-star field that previously produced only 14 candidates (below
+    the 15-star minimum, so PSF photometry was skipped), **49 stars are now
+    selected and PSF photometry runs on all 121 detected sources**.
+
+**PSF Shape and Dimensions**
+
+*   **Fitting region rounded, not truncated.** ``int(3 * fwhm)`` shifted the
+    effective aperture radius by up to half a pixel; it now uses ``round``.
+*   **ePSF extracted from a larger cutout.** The empirical PSF was built from a
+    ``3 x FWHM`` cutout whose radius equals the largest aperture used for the
+    encircled-energy correction, so its wings were truncated and normalised
+    away. It is now extracted from a ``5 x FWHM`` cutout, so both the
+    aperture-correction curve and the fitted fluxes reflect the real PSF wings;
+    the fit itself still uses the compact ``fit_shape``.
+*   **Model-centre convention fixed.** The centre of an ``N``-pixel grid is
+    ``(N - 1) / 2``, not ``N / 2``. The old value reported a spurious
+    half/oversampled-pixel peak offset (and could trigger an unnecessary
+    re-centering that shifted the model off-centre).
+*   **Aperture correction uses the fitted PSF.** After an optional re-centering
+    the returned / ``st.session_state["epsf_model"]`` model is now the exact
+    object used for the fits, so the encircled-energy correction can no longer be
+    derived from a stale (non-re-centred) PSF.
+
+**PSF-vs-Aperture Consistency Diagnostic**
+
+*   A new ``check_psf_aperture_consistency()`` helper matches PSF and aperture
+    sources by position and reports the median ``psf_mag - aperture_mag`` for
+    each aperture. Because both methods share the total-flux scale, a median
+    offset larger than ``PSF_APERTURE_CONSISTENCY_THRESHOLD`` (0.15 mag) is now
+    reported as a warning; the per-aperture counts, offsets and robust scatter
+    are stored in ``st.session_state["psf_aperture_consistency"]``.
+*   **Per-source offset columns**: the same difference is exported for every
+    aperture as ``psf_minus_aperture_mag_X_X`` (with filter-prefixed aliases)
+    and is left NaN where only one method measured the source.
+*   **Plotted diagnostic**: the results view renders the per-source
+    ``psf_mag - aperture_mag`` offset -- a scatter against the calibrated PSF
+    magnitude with the per-aperture median and zero lines, plus the offset
+    histogram -- and saves it next to the other diagnostics as
+    ``<base>_psf_aperture_offset.png``.
+*   **Catalog cross-match robustness**: SkyBoT requests VOTable output and
+    skips malformed service-error responses instead of reporting them as empty
+    fields. The 10 Parsec catalog's proper motions are propagated to the
+    observation epoch when available, and Aladin popups include SkyBoT and
+    nearby-star identifications.
+*   **Gaia DR3 fallback reliability**: the VizieR fallback now queries the Gaia
+    DR3 cone-search catalog and uses its returned results. The direct TAP query
+    no longer orders by an unsupported ``DISTANCE()`` expression.
+*   **Crowded-field local background left unchanged by design**: an empirical
+    check showed that zeroing the per-source local background for sources with
+    overlapping ``fit_shape`` regions biases crowded fluxes ~5-7% high, while
+    keeping it recovers the true flux, so no guard was applied.
+
+**Documentation**
+
+*   ``docs/PHOTOMETRY_FORMULAS.md``, ``docs/features.rst``,
+    ``docs/advanced_features.rst`` and ``docs/api_reference.rst`` document the
+    selection, ePSF-extraction and consistency-diagnostic changes; the English
+    and French tutorials note the new diagnostic.
+*   Regression tests cover the field that previously skipped PSF photometry, the
+    ePSF centring, and the consistency diagnostic.
+
+Version 1.8.4
+-------------
+
+**Released: October 2, 2026**
+
+**Configuration Persistence**
+
+*   **New sidebar parameters are persisted and restored**: the *Max Magnitude
+    Error* (``mag_err_max``) and *Detector Gain* (``effective_gain``) controls
+    are written into ``analysis_parameters``, so they are saved with the rest of
+    the settings and reloaded at the next login. The two keys are now also
+    seeded in ``default_analysis_params`` (``src/tools_app.py``).
+*   **Round-trip coverage**: the full save/reload path is now tested for both
+    the FastAPI (``/api/config``) and legacy Flask (``/save_config`` /
+    ``/get_config``) backends in ``tests/test_config_persistence.py``, alongside
+    structural checks of the save/load wiring in ``pages/app.py`` and
+    ``pages/login.py``.
+*   **Legacy backend dependencies declared**: ``flask`` and ``flask-cors`` are
+    now listed in ``pyproject.toml`` and ``requirements.txt`` so the legacy
+    backend and its tests work in a fresh install.
+
+**Documentation**
+
+*   The English and French tutorials now document the *Max Magnitude Error* and
+    *Detector Gain* parameters.
+*   ``docs/api.rst`` documents the FastAPI versus legacy Flask
+    configuration-persistence paths; ``docs/advanced_features.rst`` adds
+    configuration-persistence and testing sections; ``docs/installation.rst``
+    and ``docs/features.rst`` cover the backend dependencies and the
+    both-backend persistence.
+*   Corrected several RST section underlines that were shorter than their
+    titles.
+
+Version 1.8.3
+-------------
+
+**Released: October 1, 2026**
+
+Follow-up to the error-budget review (``docs/ERROR_BUDGET_REVIEW.md``).
+
+**Photometry Error Budget**
+
+*   **Local-background uncertainty uses the median estimator**: the annulus
+    uncertainty is now ``ApertureStats.median_err`` (``√(π/2)·s/√A_ann``)
+    instead of the mean-based ``std/√A_ann``. Using the mean's standard error
+    for a median under-estimated the local term by ~25% (about 8% of
+    ``σ_flux`` in the background-limited regime). The mean-based value is kept
+    only as a fallback when ``median_err`` is unavailable.
+*   **Aperture-correction systematic**: every aperture magnitude error now
+    includes ``σ_apcorr = 1.0857 · f_apcorr · |apcorr − 1| / apcorr``
+    (``APCORR_SYSTEMATIC_FRACTION``, default 0.20), exported as
+    ``apcorr_mag_err_X_X``. The correction previously shifted the magnitude with
+    no error attached, so the systematic was invisible at high S/N.
+*   **Global systematic floor wired through**: ``SYSTEMATIC_MAG_ERR_FLOOR`` is
+    now passed to ``add_calibrated_magnitudes`` via ``resolve_systematic_floor()``
+    (session state / ``RPP_SYSTEMATIC_MAG_ERR_FLOOR`` / module default).
+*   **Color-term uncertainty propagated**: ``fit_color_term_correction`` returns
+    the fit parameter covariance (plus ``intercept_std`` / ``color_term_std``),
+    and ``apply_color_term_correction`` writes ``color_term_offset_err`` and a
+    ``*_colorcorr_err`` column
+    (``√(σ_mag_calib² + σ_color_term_offset²)``) for every corrected magnitude,
+    with filter-prefixed aliases.
+*   **Random vs correlated components**: calibrated magnitude errors now carry
+    ``*_mag_err_*_random`` (per-source) and ``*_mag_err_*_correlated``
+    (field-common zero-point/systematic) columns in addition to the total error.
+*   **Centroid-position term**: the aperture flux error now includes a centroid
+    contribution. ``σ_pos = σ_PSF / S/N`` (floored, capped at 0.5×FWHM) and the
+    flux change for a one-sigma displacement is measured by re-evaluating the
+    aperture shifted by ``±σ_pos`` along x and y, capturing the real PSF
+    asymmetry (``centroid_flux_err_X_X``).
+*   **Zero-point uncertainty de-biased**: the scatter used for ``σ_zp`` is now
+    taken from the sigma-clipped sample *before* the ``|residual| <= 0.5 mag``
+    hard cut, which truncated the distribution and biased the uncertainty low.
+    Both scatter estimates and ``N`` are stored in
+    ``st.session_state["zero_point_diagnostics"]``.
+
+**Noise Model and Background**
+
+*   The last-resort constant background model (``_constant_background``) now
+    uses the same MAD-based RMS as the normal ``Background2D`` path, so crowded
+    frames that trigger the fallback do not get a source-inflated noise map.
+*   The source-detection threshold is now derived from the MAD-based global
+    scatter (``stdfunc="mad_std"``) instead of the plain sigma-clipped standard
+    deviation, so detection and the error model use the same robust noise
+    estimate and the effective threshold is not raised by undetected sources.
+
+**PSF Photometry**
+
+*   A per-source **local background** (``LocalBackground``, sigma-clipped median
+    annulus, 2×–3× FWHM) is now subtracted before the PSF fits; sources whose
+    annulus is fully masked or off-frame fall back to no subtraction rather than
+    a NaN fit.
+*   The **empirical PSF is built from de-contaminated star cutouts**: the same
+    local background is removed from a copy of the image around each PSF star
+    before ``extract_stars``, so the ePSF is not constructed from
+    sky-contaminated stars. On a synthetic sky-pedestal frame the recovered PSF
+    flux bias drops from ×2.5 (no local background) to ×1.001.
+
+**Observability**
+
+*   ``ee_fraction_X_X`` is exported next to ``apcorr_X_X`` so the aperture
+    correction is auditable.
+*   The misleading ``zero_point_error`` column was renamed to
+    ``zero_point_scatter``; ``zero_point_std`` is now exported as a catalog
+    column, while ``zero_point_scatter``, ``zero_point_scatter_kept`` and
+    ``zero_point_n`` are recorded on the matched calibration table.
+*   **Consistent prefixed error-component export**: ``drop_legacy_magnitude_columns``
+    now also removes the legacy ``psf_mag_err_random`` / ``psf_mag_err_correlated``
+    columns when a filter prefix applies, so the PSF error components are
+    replaced by their prefixed aliases just like the aperture ones
+    (``aperture_mag_err_*_random`` / ``_correlated``) instead of surviving
+    unprefixed alongside them.
+*   **Colour-corrected columns kept consistently**: ``aperture_mag_X_X_colorcorr_err``
+    is no longer mistaken for a legacy aperture magnitude and dropped under a
+    filter prefix; both the legacy and prefixed ``*_colorcorr`` /
+    ``*_colorcorr_err`` columns are exported in parallel.
+
+Version 1.8.1
+-------------
+
+**Released: September 29, 2026**
+
+**Photometry Error Budget**
+
+*   **Consistent flux for S/N, magnitude and error**: the S/N, instrumental
+    magnitude and magnitude error are now all derived from one flux — the
+    background-subtracted, aperture-corrected aperture sum. Previously the
+    magnitude used the background-corrected flux while its error used the raw
+    aperture sum, which diverged whenever the local background was not ~0.
+*   **Local-background error propagation**: the uncertainty of the sigma-clipped
+    annulus background is added to the flux error in quadrature
+    (``σ_flux² = σ_aperture² + σ_total_bkg²``). This removes a systematic
+    under-estimate of the error and over-estimate of the S/N of roughly 20% for
+    the default annulus geometry.
+*   **Robust local background**: the annulus background is now a sigma-clipped
+    median (``ApertureStats``) rather than a plain mean, so neighbours and
+    cosmic rays no longer bias it.
+*   **Masked-pixel handling**: the pipeline mask (border, cosmic rays, satellite
+    trails and NaNs) is now applied to both the source and the annulus
+    photometry, and the exact masked-pixel area (``area_overlap``) is used.
+*   **Aperture correction**: an encircled-energy correction derived from the
+    empirical PSF (analytic Gaussian fallback) puts aperture and PSF photometry
+    on the same total-flux scale. The factor is stored in the ``apcorr_X_X``
+    column.
+*   **Zero-point error propagation**: calibrated magnitude errors now combine
+    the instrumental and zero-point uncertainties in quadrature
+    (``σ_mag_calib = √(σ_mag_inst² + σ_zp²)``), and the zero point is no longer
+    rounded to two decimals.
+*   **Correct zero-point uncertainty for a median estimator**: the zero point is
+    a median, so its formal uncertainty now carries the ``√(π/2)`` median factor
+    (``zero_point_std = 1.2533 × scatter / √N``) instead of the mean-based
+    ``scatter / √N``, which under-estimated it by ~20%. Exported as
+    ``MEDIAN_STD_ERROR_FACTOR`` in ``src.pipeline``.
+*   **Unreliable-photometry cut is now a last resort**: a source is removed only
+    when *every* photometry method reports a magnitude error of 2 mag or more
+    (``MAG_ERR_MAX``, up from 1 mag); a source with one usable method is kept,
+    and sources carrying no error information at all (all NaN) are kept as well.
+    The previous all-columns requirement deleted sources that still had a valid
+    aperture (or PSF) measurement. The threshold is exposed as the *Max
+    Magnitude Error* parameter, and 0 disables the cut entirely.
+
+**Noise Model**
+
+*   The effective gain for ``calc_total_error`` is read from the FITS
+    ``GAIN``/``EGAIN`` keyword; when it is missing or invalid the data are
+    treated as electrons (``effective_gain = 1``) instead of the previous
+    arbitrary ``65535 / max(image)`` heuristic.
+*   **Gain resolution order and empirical estimation**: when the header carries
+    no usable gain, the pipeline now falls back to a user-supplied value (the
+    *Detector Gain* sidebar parameter, ``analysis_parameters["effective_gain"]``
+    or the ``RPP_EFFECTIVE_GAIN`` environment variable) and then to an
+    empirical photon-transfer estimate computed from the frame itself
+    (``1/slope`` of a robust variance-vs-signal fit on source-free sky boxes,
+    accepted only when the sky level constrains it at ≥ 3σ and the result is
+    physically plausible). Assuming ``gain = 1`` for ADU data overestimates the
+    source Poisson variance by the true gain, i.e. the magnitude errors of
+    bright sources by up to ``√gain``; that silent overestimate is now avoided
+    whenever the gain can be measured or supplied.
+
+**Sky Background Model**
+
+*   **Robust noise map**: the per-box background RMS now uses the MAD-based
+    estimator (`MADStdBackgroundRMS`) instead of the plain sigma-clipped standard
+    deviation. Undetected sources in the boxes used to inflate the noise map by
+    x1.11 / x1.38 / x2.03 at 15 / 12 / 10 px source spacing on synthetic frames,
+    and that factor propagated directly into every flux error.
+*   **Adaptive smoothing**: the median filter applied to the background mesh is
+    capped at 3x3 when the mesh is small (< 12 boxes across). A 5x5 filter over
+    an 8x8 mesh over-smoothed the model: on a 300 ADU sky ramp the subtracted
+    frame was x2.24 noisier than the raw frame, vs x1.54 with a 3x3 filter.
+*   **No more aborted runs on hard frames**: `Background2D` rejects any box with
+    more than 10 % masked/clipped pixels (`exclude_percentile`) and raised a
+    `ValueError` when that excluded *every* box, which happens for crowded fields
+    and frames with large bad areas. The estimation is now retried with 50 % and
+    100 % tolerance and with a coarser box, and falls back to a single
+    sigma-clipped background level when no mesh can be built, so photometry still
+    runs. The chosen fallback is reported to the user.
+*   **Background plot failure is no longer fatal**: a missing background figure
+    no longer calls `st.pyplot(None)`.
+
+**Bug Fixes**
+
+*   The local-background-flatness filter used for PSF model star selection
+    compared the local background scatter to the (near-zero) local median of the
+    sky-subtracted image, which could reject every candidate star and silently
+    skip PSF photometry. It now compares the local scatter to the global
+    background scatter.
+*   **Cosmic-ray detection used a non-physical gain**: ``mask_and_remove_cosmic_rays``
+    passed the raw ``GAIN`` value to ``astroscrappy.detect_cosmics``. On a real
+    900 s frame carrying ``GAIN=56`` (a QHY driver setting, not e-/ADU) the
+    predicted sky noise was ~1.8 ADU against a real 13.3 ADU, so **49% of the
+    frame was flagged as cosmic rays** and excluded from detection and
+    photometry. The routine now uses the resolved effective gain (plus a
+    ``RDNOISE``/``READNOIS``/``ENOISE`` value when available) and discards an
+    unphysical mask covering more than ``MAX_CR_MASK_FRACTION`` (20%) of the
+    frame instead of deleting a large part of the science image. On that frame
+    the mask went from 49.0% to 0.011% of the pixels, detections from 236 to
+    312, and the calibrator scatter from 0.235 to 0.050 mag.
+*   **``GAIN`` no longer hides a valid ``EGAIN``**: the keyword scan stopped at
+    the first *present* key, so a frame with ``GAIN=0`` and ``EGAIN=3.12``
+    (Moravian cameras) fell through to ``effective_gain = 1``. Invalid values are
+    now skipped in favour of the next candidate keyword.
+*   **Implausible gains are rejected**: values outside 0.02-20 e-/ADU
+    (``GAIN_PLAUSIBLE_RANGE``) are reported and ignored, because a detector
+    driver setting used as a gain inflates the S/N of bright sources by up to
+    ~7x and corrupts the cosmic-ray mask.
+*   ``validate_cross_match_results()`` read a ``gaia_separation_arcsec`` column
+    that the cross-match never writes (it writes
+    ``catalog_separation_arcsec``), so the median-separation sanity check was a
+    no-op, and the function was never called at all. It now reads the real
+    column (legacy alias accepted), tolerates missing coordinates, and is wired
+    into the calibration workflow, which warns the user when the matches are
+    clustered or show an unusually large median separation.
+
+**New Output Columns**
+
+*   ``aperture_sum_bkg_corr_err_X_X``: error of the background-subtracted flux,
+    including the local-background term.
+*   ``apcorr_X_X``: aperture-correction factor applied to each aperture.
+
 Version 1.8.0
 -------------
 
@@ -249,7 +731,7 @@ Version 1.4.5
     *   Automatic header validation and fixing for problematic WCS keywords
 
 *   **Transient Detection (Beta)**:
-    *   New **Transient Finder** module utilizing image subtraction and catalog filtering
+    *   New **Transient Finder** module utilizing reference-survey comparison and catalog filtering
     *   Integration with PanSTARRS and SkyMapper surveys for template comparison
     *   Automatic candidate filtering against cataloged sources
     *   Hemisphere-based automatic survey selection (PanSTARRS north, SkyMapper south)
@@ -371,7 +853,7 @@ Version 0.9.8
     *   Troubleshooting guide with common issues and solutions
 
 Version 1.0.0 (2023-09-01) - Previous Release
---------------------------------------------
+---------------------------------------------
 
 **Features**:
 - FITS image calibration (bias, dark, flat)
@@ -403,7 +885,7 @@ Version 0.9.0 (2023-07-15) - Beta Release
 - Basic CSV export functionality
 
 Development Roadmap
-------------------
+-------------------
 
 **Planned Features for v1.0**:
 - Enhanced PSF modeling with multiple PSF types

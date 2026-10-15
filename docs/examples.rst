@@ -14,7 +14,7 @@ This example demonstrates how to perform basic photometry on a single FITS image
 2. Upload a science image using the main uploader.
 3. Configure parameters in the sidebar such as seeing, threshold, border mask,
     filter band, and optional Astrometry Check.
-4. Click **Start Analysis Pipeline**.
+4. Click **Start Analysis**.
 5. Review the results (plots, tables, Aladin viewer).
 6. Download the results using the ZIP download controls.
 
@@ -89,15 +89,23 @@ This example shows how to analyze a variable star using RPP outputs:
            #     if not matches.empty:
            #         target_row = matches.iloc[0]
 
-           if target_row is not None and 'aperture_calib_mag' in target_row and pd.notna(target_row['aperture_calib_mag']):
-               mag = target_row['aperture_calib_mag']
-               # Estimate magnitude error from aperture_sum_err (flux error)
-               # mag_err = 1.0857 * flux_err / flux
-               flux = target_row.get('aperture_sum', None)
-               flux_err = target_row.get('aperture_sum_err', None)
-               mag_err = None
-               if flux is not None and flux_err is not None and flux > 0:
-                   mag_err = 1.0857 * (flux_err / flux)
+           # Calibrated magnitudes are exported either with the legacy names
+           # (aperture_mag_1_3) or with a filter prefix (e.g.
+           # rapasg_aperture_mag_1_3); pick whichever column is present.
+           mag_col = next(
+               (c for c in df.columns if c.endswith('aperture_mag_1_3') and 'err' not in c),
+               None,
+           )
+           err_col = next(
+               (c for c in df.columns if c.endswith('aperture_mag_err_1_3')),
+               None,
+           )
+
+           if target_row is not None and mag_col and pd.notna(target_row[mag_col]):
+               mag = target_row[mag_col]
+               # The calibrated magnitude error already includes the flux error
+               # (aperture + local background) and the zero-point uncertainty.
+               mag_err = target_row[err_col] if err_col else None
 
                light_curve_data.append({'jd': obs_time_jd, 'mag': mag, 'mag_err': mag_err})
            else:
@@ -132,11 +140,13 @@ Asteroids and Moving Objects
 This example demonstrates how to identify potential moving objects:
 
 1. Upload an image suspected to contain solar system objects.
-2. Run the analysis with **Start Analysis Pipeline**. The pipeline
+2. Run the analysis with **Start Analysis**. The pipeline
     automatically queries SkyBoT.
 3. Review the "Matched Objects Summary" table or the full catalog (`*_catalog.csv`).
-4. Look for sources with "SkyBoT" listed in the `catalog_matches` column.
-5. The `skybot_NAME` column will contain the identified object's designation.
+4. Look for the SkyBoT identification in the Aladin popup or the `skybot_NAME`
+    column in the exported catalog.
+5. SkyBoT service failures are logged and do not imply that the field contains
+    no moving objects.
 
 Tutorial: Complete Photometry Workflow
 --------------------------------------
@@ -157,7 +167,7 @@ This step-by-step tutorial covers a complete workflow:
    * Click "Save Configuration" to store settings.
 
 3. **Run Pipeline**
-    * Click **Start Analysis Pipeline**.
+    * Click **Start Analysis**.
    * Monitor progress messages in the main panel.
 
 4. **Analysis & Review**

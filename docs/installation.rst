@@ -16,7 +16,7 @@ Minimum Requirements
   temporary processing files
 
 Quick Install (PowerShell)
--------------------------
+--------------------------
 
 .. code-block:: powershell
 
@@ -38,13 +38,38 @@ Quick Install (bash)
    pip install -e .
 
 Optional External Tools
-----------------------
+-----------------------
 
 - Astrometry.net: required for blind plate solving. Ensure ``solve-field`` is
   installed and available on ``PATH``.
 - SCAMP: optional, for astrometric refinement workflows.
 - ASTRiDE: optional, only needed if you want to experiment with the standalone
   satellite trail masking helper in ``scripts/satellite_trail_detector.py``.
+
+Backend Dependencies
+--------------------
+
+``pip install -e .`` installs the dependencies for both backends:
+
+- **FastAPI (recommended):** ``fastapi``, ``uvicorn``, ``sqlalchemy``,
+  ``werkzeug`` and friends.
+- **Legacy Flask compatibility:** ``flask`` and ``flask-cors``, used by
+  ``backend.py``.
+
+The legacy backend creates its SQLite database (``users.db``, or
+``users_dev.db`` when ``APP_ENV=development``) on first run and shares the same
+SMTP configuration as the FastAPI backend.
+
+Running the Tests
+-----------------
+
+Install the development extras to get ``pytest``, then run the suite from the
+project root:
+
+.. code-block:: bash
+
+   pip install -e ".[dev]"
+   pytest
 
 Environment Variables
 ---------------------
@@ -85,7 +110,7 @@ Once the frontend is open:
 
 - upload a FITS file,
 - review the observatory and analysis parameters,
-- then click **Start Analysis Pipeline**.
+- then click **Start Analysis**.
 
 Uploading the file alone does not start the scientific processing phase.
 

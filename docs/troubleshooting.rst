@@ -77,9 +77,23 @@ Login & Registration Issues
 
 **Error: "Invalid username or password."**
 
-*   **Problem**: Incorrect username or password entered.
-*   **Solution**: Verify your credentials. Use the password recovery option if
-    you forgot your password.
+*   **Problem**: Incorrect password, or an identifier that does not match any
+    account.
+*   **Solution**:
+    1.  The *Login* field accepts the account username **or** the email address
+        used at registration. Try the email if you no longer remember the
+        username.
+    2.  Verify the password, and use the password recovery option if you forgot
+        it.
+
+**Error: "Email already registered." while the account cannot be reached**
+
+*   **Problem**: The address is already attached to an account, but the login
+    identifier does not match it.
+*   **Solution**:
+    1.  Log in with the email address itself instead of a username.
+    2.  Reset the password through *Password Recovery*, then log in with the
+        email address and the new password.
 
 **Password Recovery Fails / No Email Received**
 
@@ -92,6 +106,14 @@ Login & Registration Issues
     3.  Check the backend terminal output for email sending errors.
     4.  Check your email spam folder.
     5.  Ensure your email provider allows sending via SMTP.
+
+.. note::
+
+    For privacy, the recovery request always reports success, even when no
+    account uses the submitted address. The address must therefore be exactly
+    the one attached to an account. Matching ignores capitalisation and
+    surrounding spaces, so any spelling of the address that resolves to the
+    registered mailbox works.
 
 Image Loading & Processing Issues
 ---------------------------------
@@ -107,12 +129,27 @@ Image Loading & Processing Issues
     *   If it is a multi-extension FITS, ensure image data exists in at least
         one HDU.
 
+**A wrong image or header appears, or a previous file seems to persist**
+
+*   **Problem**: The preview shows a header or file that is not the one you
+    just uploaded.
+*   **Solution**:
+    *   Click **Reset** once. The uploader is re-created on every reset, so
+        the previous file is dropped immediately; a second press is no longer
+        needed.
+    *   Each browser session now works in its own ``work_<id>`` folder, so
+        files of other users or tabs cannot leak into your analysis. If the
+        problem persists, reload the page and report the file name and time.
+    *   Leftover temporary files from closed browsers or abandoned analyses
+        are removed automatically after 24 hours; archived ZIP results are
+        never deleted by this cleanup.
+
 **The FITS file uploads but nothing starts immediately**
 
 *   **Problem**: This is expected behavior in the current interface.
 *   **Solution**:
     *   Uploading stages the file only.
-    *   Click **Start Analysis Pipeline** to trigger FITS loading, WCS checks,
+    *   Click **Start Analysis** to trigger FITS loading, WCS checks,
         astrometry, and photometry.
 
 **Error: Missing required WCS keywords / WCS creation error**
@@ -126,16 +163,27 @@ Image Loading & Processing Issues
 
 **Astrometry Check / WCS Refinement Fails**
 
-*   **Problem**: The ``stdpipe`` refinement or blind-solving process could not
+*   **Problem**: The SCAMP refinement or blind-solving process could not
     find enough matches, or the initial WCS was too inaccurate.
 *   **Solution**:
     *   Ensure the initial WCS is roughly correct.
+    *   Ensure the ``scamp`` binary is installed and on ``PATH``, or point
+        ``RPP_SCAMP_EXECUTABLE`` at it. The refinement runs SCAMP directly.
     *   Check internet connectivity when catalog access is needed.
     *   Try adjusting the seeing parameter, as it affects detection.
     *   If the field is very sparse or very crowded, refinement may struggle.
     *   If **Astrometry Check** was enabled on an image that already had valid
         WCS, the app may fall back to the original WCS when the forced solve
         fails.
+
+When the local Astrometry.net solve fails, RPP can optionally try the online
+Astrometry.net service using the detected source list (not the FITS image). Set
+``ASTROMETRY_API_KEY`` in the environment of the Streamlit process, or configure
+``api_key`` under ``[astrometry_net]`` in Astroquery's
+``~/.astropy/config/astroquery.cfg``. Online solving is skipped when no key is
+available; the original local-solve failure and WCS fallback behavior remain
+unchanged. Submitted source lists are marked private where supported by the
+service.
 
 **No Sources Found / Few Sources Found**
 
@@ -157,6 +205,26 @@ Image Loading & Processing Issues
     *   Ensure the selected filter band is appropriate for the image filter.
     *   The field may genuinely lack suitable GAIA stars in the specified
         magnitude range.
+
+**Unrealistic S/N or Magnitude Errors / Gain Reported as Ignored**
+
+*   **Problem**: The warning "... is outside the plausible effective-gain
+    range" appears, or bright-source magnitude errors look far too small (and
+    the cosmic-ray mask covers a large part of the frame). On several CMOS
+    cameras the FITS ``GAIN`` keyword stores an abstract *driver* setting
+    rather than an e-/ADU conversion factor: QHY uses a 0-100 scale (a QHY268M
+    at ``GAIN=56`` is ≈0.77 e-/ADU) and ZWO ASI uses a 0.1 dB value.
+*   **Solution**:
+    *   RPP already recognises QHY/ZWO/ASI cameras (see
+        ``DRIVER_GAIN_INSTRUMENT_PATTERNS``) and ignores their bare ``GAIN``,
+        falling back to ``EGAIN``/``CVF``, the frame's photon-transfer estimate,
+        or ``effective_gain = 1``.
+    *   For the most accurate errors, set *Detector Gain* in the sidebar (or
+        ``RPP_EFFECTIVE_GAIN`` for headless runs) to the true e-/ADU conversion
+        factor for the gain setting in use, read from the manufacturer's
+        gain-vs-e-/ADU chart.
+    *   If the header carries a genuine conversion factor, provide it as
+        ``EGAIN``/``CCDGAIN`` (e-/ADU) or ``CVF`` (RPP uses ``gain = 1/CVF``).
 
 Catalog Query Issues (SIMBAD, SkyBoT, etc.)
 -------------------------------------------
@@ -187,8 +255,12 @@ Catalog Query Issues (SIMBAD, SkyBoT, etc.)
     *   The pipeline now treats this as a warning and continues without SkyBoT
         matches.
     *   Re-run later to retry the external service response.
-    *   Check the log preview text to verify the response was malformed rather
-        than a local configuration issue.
+    *   If the preview starts with ``# Flag: -1``, SkyBoT reports a service-side
+        error. Keep the accompanying ticket number and report it to IMCCE if the
+        error persists.
+    *   The pipeline requests VOTable output for Astroquery's parser. A
+        ``No sources found from 10 Parsec catalog`` message is a separate
+        VizieR query result and is not caused by the SkyBoT response.
 
 **Astro-Colibri: No matches or Error**
 
@@ -219,3 +291,17 @@ Database and Migration Issues
     *   Run ``python scripts/migrate_legacy_db.py`` with the appropriate
         arguments.
     *   Prefer a dry run and backup before migrating live data.
+
+**Pixel scale could not be determined**
+
+*   **Problem**: The run stops with "Pixel scale could not be determined from
+    the FITS header".
+*   **Solution**: The header has no usable ``PIXSCALE``/``SECPIX``, CD matrix, or
+    pixel size + focal length, and the WCS could not provide a scale. Enter the
+    value in the sidebar (**Parameters > Pixel scale override**, arcsec/pixel)
+    and start the analysis again.
+
+**Login password not taken into account in Firefox**
+
+*   **Problem**: After typing the password, the value is not taken into account.
+*   **Solution**: Press Enter in the password field before clicking **Login**.
