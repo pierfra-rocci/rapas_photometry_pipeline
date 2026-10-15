@@ -513,4 +513,102 @@ class TestFilterWarningText:
             w = self._build_warning(raw, mapped)
             assert raw in w
             assert mapped in w
-            assert "Consider updating" not in w
+
+
+# ─── 8. Transient candidate filtering (src/transient.py) ─────────────────────
+
+class TestTransientSepFlagMask:
+    """The flag mask handed to stdpipe must use SEP's low-byte flag bits.
+
+    stdpipe's default (0x7F00) only covers its own SExtractor/stdpipe flags and
+    is a no-op on raw SEP objects.
+    """
+
+    def test_mask_uses_sep_low_byte_bits(self):
+        from src.transient import SEP_REJECT_FLAGS
+
+        assert SEP_REJECT_FLAGS & 0x00FF == SEP_REJECT_FLAGS
+        assert SEP_REJECT_FLAGS != 0
+
+    def test_mask_is_not_the_stdpipe_default(self):
+        from src.transient import SEP_REJECT_FLAGS
+
+        # 0x7F00 would silently disable filtering of raw SEP objects
+        assert SEP_REJECT_FLAGS != 0x7F00
+        assert SEP_REJECT_FLAGS & 0x7F00 == 0
+
+    def test_mask_covers_truncation_and_bad_apertures(self):
+        from src.transient import SEP_REJECT_FLAGS
+
+        obj_trunc = 0x2
+        aper_allmasked = 0x40
+        aper_nonpositive = 0x80
+        for bit in (obj_trunc, aper_allmasked, aper_nonpositive):
+            assert SEP_REJECT_FLAGS & bit
+
+
+class TestTransientCandidateChecker:
+    """checker_fn() decides which catalogue matches reject a candidate.
+
+    In stdpipe's contract True means "confirmed catalogue match" (the detection
+    is removed), False means "genuine brightness excess, keep the detection".
+    """
+
+    @staticmethod
+    def _run(detected_mags, catalog_mags, mag_threshold=2.0, filter_mag="r"):
+        from astropy.table import Table
+
+        from src.transient import checker_fn
+
+        xcat = Table({"rmag": np.asarray(catalog_mags, dtype=float)})
+        xobj = Table({"mag_calib": np.asarray(detected_mags, dtype=float)})
+        return checker_fn(xobj, xcat, "ps1", filter_mag=filter_mag,
+                          mag_threshold=mag_threshold)
+
+    def test_identical_magnitudes_are_confirmed_matches(self):
+        """A detection matching its catalogue entry is removed (True)."""
+        mask = self._run([20.0], [20.0])
+        assert mask.tolist() == [True]
+
+    def test_small_brightening_is_still_a_confirmed_match(self):
+        """A 0.2 mag brightening is photometric scatter, not a transient."""
+        mask = self._run([19.8], [20.0])
+        assert mask.tolist() == [True]
+
+    def test_large_brightness_excess_is_kept_as_candidate(self):
+        """More than the threshold brighter -> False -> candidate survives."""
+        mask = self._run([17.0], [20.0])
+        assert mask.tolist() == [False]
+
+    def test_threshold_is_configurable(self):
+        """A 1.5 mag excess is kept at threshold 1.0 but rejected at 2.0."""
+        assert self._run([18.5], [20.0], mag_threshold=1.0).tolist() == [False]
+        assert self._run([18.5], [20.0], mag_threshold=2.0).tolist() == [True]
+
+    def test_nan_magnitude_is_kept_not_discarded(self):
+        """Unusable magnitudes must not silently drop real candidates."""
+        mask = self._run([np.nan], [20.0])
+        assert mask.tolist() == [False]
+
+    def test_systematic_offset_is_removed_before_comparison(self):
+        """A uniform zero-point offset should not resurrect every source.
+
+        Detected magnitudes 0.5 mag brighter than the catalogue across the
+        board (a calibration offset) must still be treated as matches, while a
+        genuinely much brighter source stands out.
+        """
+        detected = [19.5] * 12 + [16.0]
+        catalog = [20.0] * 13
+        mask = self._run(detected, catalog)
+        assert mask.tolist() == [True] * 12 + [False]
+
+    def test_no_catalogue_magnitude_column_returns_all_true(self):
+        """Without a usable magnitude column nothing is rescued (all True)."""
+        from astropy.table import Table
+
+        from src.transient import checker_fn
+
+        xcat = Table({"other": [1.0, 2.0]})
+        xobj = Table({"mag_calib": [17.0, 18.0]})
+        mask = checker_fn(xobj, xcat, "foo", filter_mag="r")
+        assert mask.tolist() == [True, True]

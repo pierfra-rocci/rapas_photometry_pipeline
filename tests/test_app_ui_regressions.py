@@ -166,3 +166,104 @@ def test_key_pipeline_status_messages_use_expected_levels() -> None:
         "Catalog data is available but cannot be displayed in interactive viewer."
         in warning_messages
     )
+
+
+def test_app_renders_psf_aperture_offset_diagnostic() -> None:
+    """The results view must render and save the PSF-minus-aperture offset plot."""
+    tree = _app_tree()
+
+    called_functions = {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert "plot_photometry_offsets" in called_functions
+
+    string_constants = {
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+    assert any("psf_aperture_offset" in value for value in string_constants)
+
+
+def _load_pixel_scale_helpers(extract, override, stops):
+    """Exec the pixel-scale helpers from app.py with stubbed Streamlit."""
+    import types
+
+    import numpy as np
+
+    class _Stop(Exception):
+        pass
+
+    def _stop():
+        stops.append(True)
+        raise _Stop
+
+    st = types.SimpleNamespace(
+        session_state=types.SimpleNamespace(
+            analysis_parameters={"pixel_scale_override": override}
+        ),
+        error=lambda *a, **k: None,
+        stop=_stop,
+    )
+    names = {"_require_pixel_scale", "_user_pixel_scale"}
+    funcs = [
+        n for n in _app_tree().body
+        if isinstance(n, ast.FunctionDef) and n.name in names
+    ]
+    ns = {"np": np, "st": st, "extract_pixel_scale": extract}
+    exec(compile(ast.Module(body=funcs, type_ignores=[]), "app", "exec"), ns)
+    return ns, _Stop
+
+
+class TestPixelScaleOverride:
+    def test_header_value_wins_over_override(self):
+        ns, _ = _load_pixel_scale_helpers(lambda h: (0.5, "hdr"), 2.0, [])
+        assert ns["_require_pixel_scale"]({}) == (0.5, "hdr")
+
+    def test_override_used_when_header_has_no_scale(self):
+        ns, _ = _load_pixel_scale_helpers(lambda h: (0.0, "x"), 2.0, [])
+        assert ns["_require_pixel_scale"]({}) == (2.0, "user-provided")
+
+    def test_stops_when_no_scale_and_no_override(self):
+        import pytest
+
+        stops = []
+        ns, Stop = _load_pixel_scale_helpers(lambda h: (0.0, "x"), 0.0, stops)
+        with pytest.raises(Stop):
+            ns["_require_pixel_scale"]({})
+        assert stops
+
+    def test_no_silent_one_arcsec_default_in_app(self):
+        src = APP_PATH.read_text(encoding="utf-8")
+        assert "pixel_size_arcsec = 1.0" not in src
+
+
+def test_file_uploader_key_rotates_so_reset_works_in_one_press():
+    """A constant uploader key lets Reset leave a ghost file behind."""
+    uploaders = _streamlit_calls("file_uploader")
+    assert uploaders
+    for call in uploaders:
+        key = next((kw.value for kw in call.keywords if kw.arg == "key"), None)
+        assert key is not None and not isinstance(key, ast.Constant), (
+            "file_uploader key must be dynamic (rotating upload_generation)"
+        )
+
+
+def test_reset_never_clears_process_wide_streamlit_caches():
+    """st.cache_data.clear() wipes the caches of every concurrent user."""
+    tree = ast.parse((ROOT_DIR / "src" / "tools_app.py").read_text(encoding="utf-8"))
+    func = next(
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "clear_all_caches"
+    )
+    clears = [
+        n for n in ast.walk(func)
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Attribute)
+        and n.func.attr == "clear"
+        and isinstance(n.func.value, ast.Attribute)
+        and n.func.value.attr in ("cache_data", "cache_resource")
+    ]
+    assert not clears
