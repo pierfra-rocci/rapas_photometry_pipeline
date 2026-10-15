@@ -15,7 +15,47 @@ fi
 
 APP_DIR="/home/$ACTUAL_USER/rpp"
 
-# ...existing code for sections 1-4...
+if [ ! -d "$APP_DIR" ]; then
+    echo "Error: $APP_DIR not found"
+    exit 1
+fi
+
+# 1. Dependencies
+if ! command -v screen >/dev/null 2>&1; then
+    apt-get update && apt-get install -y screen
+fi
+echo "✓ Dependencies checked"
+
+# 2. Weekly reboot (Monday 00:00) in root crontab, idempotent
+REBOOT_CMD="0 0 * * 1 /sbin/shutdown -r now"
+( crontab -l 2>/dev/null | grep -vF "/sbin/shutdown -r now"; echo "$REBOOT_CMD" ) | crontab -
+echo "✓ Weekly reboot scheduled"
+
+# 3. Systemd autostart service (runs manage_streamlit.sh start as the app user)
+SERVICE_FILE="/etc/systemd/system/streamlit-autostart.service"
+cat > "$SERVICE_FILE" << SERVICE_EOF
+[Unit]
+Description=Start RPP (FastAPI + Streamlit) after boot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=$ACTUAL_USER
+WorkingDirectory=$APP_DIR
+ExecStartPre=/bin/sleep 15
+ExecStart=/bin/bash $APP_DIR/manage_streamlit.sh start
+ExecStop=/bin/bash $APP_DIR/manage_streamlit.sh stop
+
+[Install]
+WantedBy=multi-user.target
+SERVICE_EOF
+
+# 4. Enable service
+systemctl daemon-reload
+systemctl enable streamlit-autostart.service
+echo "✓ Auto-start service enabled"
 
 # 5. Create management script
 MGMT_SCRIPT="$APP_DIR/manage_streamlit.sh"

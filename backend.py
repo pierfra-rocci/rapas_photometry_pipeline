@@ -3,6 +3,7 @@ import sqlite3
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 import smtplib
+import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import secrets
@@ -11,6 +12,7 @@ import os
 import base64
 import datetime
 import re
+import threading
 from contextlib import contextmanager
 
 try:
@@ -21,6 +23,37 @@ except ImportError:  # config.py is optional; SMTP features degrade gracefully.
 app = Flask(__name__)
 app.config["PREFERRED_URL_SCHEME"] = "https"
 CORS(app)
+
+RECOVERY_MAX_FAILED_ATTEMPTS = 5
+RECOVERY_WINDOW = datetime.timedelta(minutes=15)
+_recovery_failures = {}
+_recovery_lock = threading.Lock()
+
+
+def _recovery_is_locked(email):
+    key = email.strip().lower()
+    with _recovery_lock:
+        entry = _recovery_failures.get(key)
+        if entry is None:
+            return False
+        count, first_seen = entry
+        if datetime.datetime.now() - first_seen > RECOVERY_WINDOW:
+            del _recovery_failures[key]
+            return False
+        return count >= RECOVERY_MAX_FAILED_ATTEMPTS
+
+
+def _recovery_register_failure(email):
+    key = email.strip().lower()
+    with _recovery_lock:
+        count, first_seen = _recovery_failures.get(key, (0, datetime.datetime.now()))
+        _recovery_failures[key] = (count + 1, first_seen)
+
+
+def _recovery_reset(email):
+    with _recovery_lock:
+        _recovery_failures.pop(email.strip().lower(), None)
+
 
 # Use absolute path for database file
 if os.getenv("APP_ENV") == "development":
@@ -95,6 +128,21 @@ def is_valid_email(email):
     return re.match(pattern, email) is not None
 
 
+def find_user_by_login(cur, identifier):
+    """Return the user row matching a username or an email address.
+
+    The username is matched verbatim. The email is matched case-insensitively
+    and ignoring surrounding whitespace, because the address is stored as it
+    was typed at registration while users rarely retype it with the exact same
+    casing.
+    """
+    cur.execute(
+        "SELECT * FROM users WHERE username = ? OR LOWER(email) = LOWER(?)",
+        (identifier, identifier.strip()),
+    )
+    return cur.fetchone()
+
+
 def cleanup_expired_codes():
     """Remove expired recovery codes from the database"""
     try:
@@ -106,23 +154,23 @@ def cleanup_expired_codes():
 
 
 def authenticate_request():
-    """Return the username for valid HTTP Basic credentials, otherwise None."""
+    """Return the account username for valid HTTP Basic credentials, else None.
+
+    Both the username and the registration email are accepted as the Basic
+    user name; the canonical username is always what gets returned.
+    """
     auth = request.authorization
     if not auth or not auth.username or not auth.password:
         return None
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
-            cur.execute(
-                "SELECT password FROM users WHERE username = ?",
-                (auth.username,),
-            )
-            row = cur.fetchone()
+            row = find_user_by_login(cur, auth.username)
     except Exception as e:
         print(f"Authentication error: {e}")
         return None
     if row and check_password_hash(row["password"], auth.password):
-        return auth.username
+        return row["username"]
     return None
 
 
@@ -151,7 +199,7 @@ def send_email(to_email, subject, body):
         msg.attach(MIMEText(body, "plain"))
 
         with smtplib.SMTP(smtp_server, smtp_port, timeout=15) as server:
-            server.starttls()
+            server.starttls(context=ssl.create_default_context())
             server.login(smtp_user, smtp_pass)
             server.send_message(msg)
         return True, "Email sent successfully."
@@ -233,14 +281,14 @@ def login():
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT * FROM users WHERE username = ?", (username,))
-            user = cur.fetchone()
+            user = find_user_by_login(cur, username)
     except Exception as e:
         print(f"Login error: {e}")
         return "An error occurred during login.", 500
 
     if user and check_password_hash(user["password"], password):
-        return "Logged in successfully.", 200
+        headers = {"X-RPP-Username": user["username"]} if user["username"].isascii() else {}
+        return "Logged in successfully.", 200, headers
     return "Invalid username or password.", 401
 
 
@@ -264,30 +312,38 @@ def recover_request():
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT username FROM users WHERE email = ?", (email,))
+            cur.execute(
+                "SELECT username, email FROM users WHERE LOWER(email) = LOWER(?)",
+                (email.strip(),),
+            )
             user = cur.fetchone()
 
             if not user:
                 # Do not reveal whether the email is registered.
                 return generic_recovery_message, 200
 
+            cur.execute(
+                "DELETE FROM recovery_codes WHERE LOWER(email) = LOWER(?)",
+                (user["email"],),
+            )
             code = "".join(secrets.choice(string.digits) for _ in range(6))
             expires_at = datetime.datetime.now() + datetime.timedelta(minutes=15)
             hashed_code = generate_password_hash(code)
             cur.execute(
                 "INSERT INTO recovery_codes (email, code, expires_at) VALUES (?, ?, ?)",
-                (email, hashed_code, expires_at.strftime("%Y-%m-%d %H:%M:%S")),
+                (user["email"], hashed_code, expires_at.strftime("%Y-%m-%d %H:%M:%S")),
             )
     except Exception as e:
         print(f"Recovery request error: {e}")
         return "An error occurred during recovery request.", 500
 
     success, message = send_email(
-        email, "Password Recovery Code", f"Your recovery code is: {code}"
+        user["email"], "Password Recovery Code", f"Your recovery code is: {code}"
     )
     if not success:
         return message, 500
 
+    _recovery_reset(user["email"])
     return generic_recovery_message, 200
 
 
@@ -307,10 +363,24 @@ def recover_confirm():
     if len(new_password) < 8:
         return "New password must be at least 8 characters long.", 400
 
+    if _recovery_is_locked(email):
+        return "Invalid or expired recovery code.", 400
+
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT * FROM recovery_codes WHERE email = ?", (email,))
+            cur.execute(
+                "SELECT id FROM users WHERE LOWER(email) = LOWER(?)",
+                (email.strip(),),
+            )
+            user = cur.fetchone()
+            if not user:
+                return "Invalid or expired recovery code.", 400
+
+            cur.execute(
+                "SELECT * FROM recovery_codes WHERE LOWER(email) = LOWER(?)",
+                (email.strip(),),
+            )
             recovery_codes = cur.fetchall()
 
             valid_code_found = False
@@ -327,16 +397,22 @@ def recover_confirm():
                     break
 
             if not valid_code_found:
+                _recovery_register_failure(email)
                 return "Invalid or expired recovery code.", 400
 
             hashed_pw = generate_password_hash(new_password)
             cur.execute(
-                "UPDATE users SET password = ? WHERE email = ?", (hashed_pw, email)
+                "UPDATE users SET password = ? WHERE id = ?", (hashed_pw, user["id"])
             )
-            cur.execute("DELETE FROM recovery_codes WHERE id = ?", (recovery_code_id,))
+            cur.execute(
+                "DELETE FROM recovery_codes WHERE LOWER(email) = LOWER(?)",
+                (email.strip(),),
+            )
     except Exception as e:
         print(f"Recovery confirm error: {e}")
         return "An error occurred during password reset.", 500
+
+    _recovery_reset(email)
 
     return "Password updated successfully.", 200
 
@@ -399,4 +475,5 @@ def internal_server_error(e):
 
 
 if __name__ == "__main__":
-    app.run(port=5000, debug=True, use_reloader=True, threaded=True)
+    _debug = os.getenv("APP_ENV") == "development"
+    app.run(port=5000, debug=_debug, use_reloader=_debug, threaded=True)

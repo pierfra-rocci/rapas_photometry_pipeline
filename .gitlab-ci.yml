@@ -31,7 +31,6 @@ build_sonar:
         - sonar-scanner/
         
   script: 
-    - echo SONAR_TOKEN=$SONAR_TOKEN
     - echo SONAR_HOST_URL=$SONAR_HOST_URL
     - sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}"
  

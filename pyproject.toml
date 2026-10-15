@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "RPP"
-version = "1.8.0"
+version = "1.8.9"
 description = "RAPAS Photometry pipeline"
 readme = "README.md"
 requires-python = ">=3.12,<4"
@@ -55,7 +55,11 @@ dependencies = [
     "werkzeug==3.1.8",
     "uvicorn==0.46.0",
     "httptools==0.7.1",
-    
+
+    # Backend (legacy Flask compatibility)
+    "flask==3.1.3",
+    "flask-cors==6.0.5",
+
     # Frontend (Streamlit)
     "streamlit==1.57.0",
     
