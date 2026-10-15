@@ -155,7 +155,7 @@ def get_base_filename(file_obj):
     if file_obj is None:
         return "photometry"
 
-    original_name = file_obj.name
+    original_name = os.path.basename(str(file_obj.name).replace("\\", "/"))
     base_name = os.path.splitext(original_name)[0]
     base_name = os.path.splitext(base_name)[0]
 
@@ -323,6 +323,106 @@ def ensure_output_directory(directory=""):
     return final_path
 
 
+def _session_dir_name(session_id):
+    """Return a safe single-component folder name for a session id, or None."""
+    token = sanitize_username(session_id, fallback="")
+    return f"work_{token}" if token else None
+
+
+def session_results_path(user_dir, session_id=None):
+    """Return the per-session working folder inside ``user_dir`` (created).
+
+    Every browser session gets its own folder below the user's results
+    directory, so two sessions of the same account (or an abandoned earlier
+    run) never share intermediate files. Without a session id, or when the
+    user directory is unusable, ``user_dir`` itself is returned.
+    """
+    name = _session_dir_name(session_id)
+    if name is None or user_dir == ".":
+        return user_dir
+    path = os.path.join(user_dir, name)
+    try:
+        os.makedirs(path, exist_ok=True)
+    except Exception:
+        return user_dir
+    return path
+
+
+def ensure_session_output_directory(username, session_id=None):
+    """Return the per-session working directory for a user's intermediate files."""
+    user_dir = ensure_output_directory(
+        directory=f"{sanitize_username(username)}_results"
+    )
+    return session_results_path(user_dir, session_id)
+
+
+def session_tmp_directory(username, session_id=None):
+    """Return (and create) the per-session temp folder for uploaded FITS files."""
+    import tempfile
+
+    path = os.path.join(tempfile.gettempdir(), sanitize_username(username))
+    name = _session_dir_name(session_id)
+    if name is not None:
+        path = os.path.join(path, name)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+STALE_SESSION_MAX_AGE_HOURS = 24
+
+
+def _newest_mtime(path):
+    newest = os.path.getmtime(path)
+    for root, _dirs, files in os.walk(path):
+        for name in files:
+            try:
+                newest = max(newest, os.path.getmtime(os.path.join(root, name)))
+            except OSError:
+                pass
+    return newest
+
+
+def cleanup_stale_session_files(
+    username, max_age_hours=STALE_SESSION_MAX_AGE_HOURS, current_session_id=None
+):
+    """Delete abandoned per-session temp/work folders and legacy loose temp uploads.
+
+    Sessions that were closed without finishing leave ``work_<id>`` folders behind
+    (Streamlit has no reliable session-end hook), so they are removed by age.
+    Archived result zips in the user results directory are never touched.
+    Returns the number of removed entries.
+    """
+    import shutil
+    import tempfile
+    import time
+
+    cutoff = time.time() - max_age_hours * 3600
+    user = sanitize_username(username)
+    keep = _session_dir_name(current_session_id)
+    tmp_root = os.path.join(tempfile.gettempdir(), user)
+    roots = [tmp_root, ensure_output_directory(directory=f"{user}_results")]
+    removed = 0
+    for root in roots:
+        if not root or not os.path.isdir(root):
+            continue
+        in_tmp_root = root == tmp_root
+        for name in os.listdir(root):
+            path = os.path.join(root, name)
+            if name == keep:
+                continue
+            try:
+                if os.path.isdir(path):
+                    if name.startswith("work_") and _newest_mtime(path) < cutoff:
+                        shutil.rmtree(path, ignore_errors=True)
+                        removed += 1
+                elif in_tmp_root and os.path.getmtime(path) < cutoff:
+                    os.remove(path)
+                    removed += 1
+            except OSError:
+                pass
+    return removed
+
+
 def safe_catalog_query(query_func, error_msg, *args, **kwargs):
     """
     Execute an astronomical catalog query function with robust error handling.
@@ -381,9 +481,12 @@ def safe_catalog_query(query_func, error_msg, *args, **kwargs):
         return None, f"{error_msg}: {str(e)}"
 
 
-def zip_results_on_exit(science_file_obj, outputdir):
+def zip_results_on_exit(science_file_obj, outputdir, archive_dir=None):
     """Compresses analysis result files into a timestamped ZIP archive.
-    
+
+    The ZIP is written to ``archive_dir`` (default: ``outputdir``) so that a
+    per-session working directory can feed the user's persistent archive.
+
     Returns:
         tuple (str, str) or (None, None): 
             - (zip_filename, zip_path) if successful
@@ -398,6 +501,7 @@ def zip_results_on_exit(science_file_obj, outputdir):
         for f in os.listdir(output_dir)
         if os.path.isfile(os.path.join(output_dir, f))
         and f.startswith(base_name)
+        and f[len(base_name):len(base_name) + 1] in ("", "_", ".", "-")
         and not f.lower().endswith(".zip")
         and not f.lower().endswith(".fits")
     ]
@@ -405,7 +509,7 @@ def zip_results_on_exit(science_file_obj, outputdir):
         return None, None
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     zip_filename = f"{base_name}_{timestamp}.zip"
-    zip_path = os.path.join(os.path.dirname(output_dir + "/rpp_results"), zip_filename)
+    zip_path = os.path.join(archive_dir or output_dir, zip_filename)
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
         for file in files:
             file_path = os.path.join(output_dir, file)
@@ -546,7 +650,9 @@ def save_fits_with_wcs(original_path, updated_header, output_dir,
 
         # Use original_filename if provided, otherwise extract from path
         if original_filename:
-            base_name = os.path.splitext(original_filename)[0]
+            base_name = os.path.splitext(
+                os.path.basename(str(original_filename).replace("\\", "/"))
+            )[0]
         else:
             base_name = os.path.splitext(os.path.basename(original_path))[0]
 
@@ -571,7 +677,7 @@ def save_fits_with_wcs(original_path, updated_header, output_dir,
 
                 # Build filename with username prefix if provided
                 if username:
-                    data_base_name = f"{username}_{base_name}"
+                    data_base_name = f"{sanitize_username(username)}_{base_name}"
                 else:
                     data_base_name = base_name
 
@@ -663,7 +769,7 @@ def save_catalog_files(final_table, catalog_name, output_dir):
         csv_file_path = os.path.join(output_dir, base_catalog_name)
         with open(csv_file_path, "w", encoding="utf-8") as f:
             f.write(csv_data)
-        success_messages.append(f"CSV and VOT Catalogs saved")
+        success_messages.append("CSV and VOT Catalogs saved")
 
     except Exception as e:
         error_messages.append(f"Error preparing VOTable download: {e}")

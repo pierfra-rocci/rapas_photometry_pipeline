@@ -47,6 +47,7 @@ def get_user_id_by_username(username: str) -> Optional[int]:
     Returns:
         User ID if found, None otherwise.
     """
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.execute(
@@ -58,6 +59,9 @@ def get_user_id_by_username(username: str) -> Optional[int]:
         return row["id"] if row else None
     except Exception:
         return None
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def record_wcs_fits_file(
@@ -80,6 +84,7 @@ def record_wcs_fits_file(
     Returns:
         The wcs_fits_file ID if successful, None on error.
     """
+    conn = None
     try:
         user_id = get_user_id_by_username(username)
         if user_id is None:
@@ -120,6 +125,9 @@ def record_wcs_fits_file(
     except Exception as e:
         print(f"Warning: Could not record WCS FITS file in database: {e}")
         return None
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def record_zip_archive(
@@ -137,6 +145,7 @@ def record_zip_archive(
     Returns:
         The zip_archive ID if successful, None on error.
     """
+    conn = None
     try:
         user_id = get_user_id_by_username(username)
         if user_id is None:
@@ -177,6 +186,9 @@ def record_zip_archive(
     except Exception as e:
         print(f"Warning: Could not record ZIP archive in database: {e}")
         return None
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def link_fits_to_zip(wcs_fits_id: int, zip_archive_id: int) -> bool:
@@ -189,6 +201,7 @@ def link_fits_to_zip(wcs_fits_id: int, zip_archive_id: int) -> bool:
     Returns:
         True if successful or already exists, False on error.
     """
+    conn = None
     try:
         conn = get_db_connection()
         
@@ -222,6 +235,9 @@ def link_fits_to_zip(wcs_fits_id: int, zip_archive_id: int) -> bool:
     except Exception as e:
         print(f"Warning: Could not link FITS to ZIP in database: {e}")
         return False
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def record_analysis_result(
@@ -278,6 +294,7 @@ def get_fits_files_for_user(username: str) -> list:
     Returns:
         List of dicts with FITS file info.
     """
+    conn = None
     try:
         user_id = get_user_id_by_username(username)
         if user_id is None:
@@ -300,6 +317,9 @@ def get_fits_files_for_user(username: str) -> list:
         
     except Exception:
         return []
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def get_zip_archives_for_user(username: str) -> list:
@@ -311,6 +331,7 @@ def get_zip_archives_for_user(username: str) -> list:
     Returns:
         List of dicts with ZIP archive info.
     """
+    conn = None
     try:
         user_id = get_user_id_by_username(username)
         if user_id is None:
@@ -333,6 +354,9 @@ def get_zip_archives_for_user(username: str) -> list:
         
     except Exception:
         return []
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def get_zips_for_fits(wcs_fits_id: int) -> list:
@@ -344,6 +368,7 @@ def get_zips_for_fits(wcs_fits_id: int) -> list:
     Returns:
         List of dicts with ZIP archive info.
     """
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.execute(
@@ -363,6 +388,9 @@ def get_zips_for_fits(wcs_fits_id: int) -> list:
         
     except Exception:
         return []
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def get_fits_for_zip(zip_archive_id: int) -> list:
@@ -374,6 +402,7 @@ def get_fits_for_zip(zip_archive_id: int) -> list:
     Returns:
         List of dicts with FITS file info.
     """
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.execute(
@@ -393,3 +422,8 @@ def get_fits_for_zip(zip_archive_id: int) -> list:
         
     except Exception:
         return []
+    finally:
+        if conn is not None:
+            conn.close()
+
+

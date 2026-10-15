@@ -8,11 +8,15 @@ from astropy import units as u
 
 import streamlit as st
 
-from astropy.stats import SigmaClip
+from astropy.stats import SigmaClip, sigma_clipped_stats
 from astropy.visualization import ZScaleInterval
 from src.utils import get_header_value
 
-from photutils.background import Background2D, SExtractorBackground
+from photutils.background import (
+    Background2D,
+    MADStdBackgroundRMS,
+    SExtractorBackground,
+)
 
 # Constants
 FIGURE_SIZES = {
@@ -24,6 +28,24 @@ FIGURE_SIZES = {
 }
 
 URL = "https://astro-colibri.science/"
+
+# Maximum calibrated magnitude error (mag) accepted for a source to count as
+# usable photometry. A source is kept as soon as ONE method passes this test, so
+# this is a last-resort cut against meaningless values rather than a quality
+# filter: magnitude errors of 1.5-2 mag still carry flux information, and the
+# quality flags already label such sources. Set to 0 (or a negative value) to
+# disable the cut entirely.
+MAG_ERR_MAX = 2.0
+
+# Background estimation settings.
+# photutils.Background2D discards every box with more than `exclude_percentile`
+# percent of masked/clipped pixels; 10.0 is the photutils default, but with a
+# crowded field or a frame with large bad areas it can reject *all* boxes and
+# raise a ValueError, which used to abort photometry completely.
+BACKGROUND_EXCLUDE_PERCENTILE = 10.0
+# Below this many background boxes across the frame, a wide smoothing filter
+# over-smooths the model and leaves large-scale residuals.
+BACKGROUND_SMALL_MESH_THRESHOLD = 12
 
 GAIA_BANDS = [
     ("Rapas G", "phot_g_mean_mag"),
@@ -235,11 +257,37 @@ def apply_color_term_correction(final_table, color_term_result, filter_band: str
     color_offset = intercept + color_term_value * (source_color - color_ref)
     valid_color_mask = np.isfinite(color_offset)
 
+    # Per-source uncertainty of the color correction, propagated from the fit
+    # parameter covariance: for a source at colour offset x,
+    # var(offset) = var(intercept) + 2*x*cov(intercept, slope) + x^2*var(slope).
+    source_color_arr = np.asarray(source_color, dtype=float)
+    parameter_covariance = color_term_result.get("parameter_covariance")
+    try:
+        covariance = np.asarray(parameter_covariance, dtype=float)
+    except (TypeError, ValueError):
+        covariance = None
+    if covariance is not None and covariance.shape == (2, 2):
+        color_centered = source_color_arr - color_ref
+        with np.errstate(invalid="ignore", over="ignore"):
+            offset_variance = (
+                covariance[0, 0]
+                + 2.0 * color_centered * covariance[0, 1]
+                + (color_centered**2) * covariance[1, 1]
+            )
+        offset_variance = np.where(
+            np.isfinite(offset_variance), offset_variance, np.nan
+        )
+        color_offset_err = np.sqrt(np.maximum(offset_variance, 0.0))
+    else:
+        color_offset_err = np.full(source_color_arr.shape, np.nan, dtype=float)
+    color_offset_err = np.where(valid_color_mask, color_offset_err, np.nan)
+
     corrected_table["source_color"] = source_color
     corrected_table["color_term_label"] = color_term_result.get("color_label")
     corrected_table["color_term_value"] = color_term_value
     corrected_table["color_term_ref"] = color_ref
     corrected_table["color_term_offset"] = color_offset
+    corrected_table["color_term_offset_err"] = color_offset_err
     corrected_table["color_term_applied"] = valid_color_mask
     corrected_table["color_term_columns"] = ",".join(color_metadata.get("found_columns", []))
 
@@ -250,11 +298,39 @@ def apply_color_term_correction(final_table, color_term_result, filter_band: str
             corrected_table[f"{column}_colorcorr"] = corrected_table[column] + color_offset
             corrected_table.loc[~valid_color_mask, f"{column}_colorcorr"] = np.nan
 
+            # Error of the corrected magnitude: the baseline calibrated error
+            # (statistical + aperture + zero point) combined in quadrature with
+            # the color-term fit uncertainty at this source's colour.
+            if column == "psf_mag":
+                err_col = "psf_mag_err"
+            else:
+                err_col = column.replace(
+                    "aperture_mag_", "aperture_mag_err_", 1
+                )
+            if err_col in corrected_table.columns:
+                base_err = pd.to_numeric(
+                    corrected_table[err_col], errors="coerce"
+                ).to_numpy(dtype=float)
+            else:
+                base_err = np.zeros(len(corrected_table), dtype=float)
+            with np.errstate(invalid="ignore", over="ignore"):
+                combined_err = np.sqrt(
+                    np.nan_to_num(base_err, nan=0.0, posinf=0.0, neginf=0.0) ** 2
+                    + color_offset_err**2
+                )
+            # A source with no usable colour keeps NaN in every correction column.
+            corrected_table[f"{column}_colorcorr_err"] = np.where(
+                np.isfinite(color_offset_err), combined_err, np.nan
+            )
+
     filter_prefix = get_filter_prefix(filter_band)
     if filter_prefix:
         alias_map = {}
         for column in list(corrected_table.columns):
-            if column.endswith("_colorcorr") and not column.startswith(f"{filter_prefix}_"):
+            if (
+                column.endswith("_colorcorr")
+                or column.endswith("_colorcorr_err")
+            ) and not column.startswith(f"{filter_prefix}_"):
                 alias_name = f"{filter_prefix}_{column}"
                 if alias_name not in corrected_table.columns:
                     alias_map[alias_name] = corrected_table[column]
@@ -281,11 +357,18 @@ def drop_legacy_magnitude_columns(final_table, filter_band=None):
 
     cols_to_drop = []
     for col in list(final_table.columns):
-        is_colorcorr_col = col.endswith("_colorcorr")
+        # Colour-corrected magnitude and error columns are written in parallel
+        # with the baseline magnitudes and are always kept (both the legacy and
+        # the filter-prefixed forms), so they must not be treated as legacy
+        # magnitude columns to drop.
+        is_colorcorr_col = col.endswith(("_colorcorr", "_colorcorr_err"))
         is_legacy_mag_col = (
             col == "psf_mag"
             or col == "psf_mag_err"
+            # Covers the error components psf_mag_err_random / _correlated.
+            or col.startswith("psf_mag_err_")
             or col == "psf_instrumental_mag"
+            or col.startswith("psf_minus_aperture_mag_")
             or (col.startswith("aperture_mag_") and not is_colorcorr_col)
             or col.startswith("aperture_mag_err_")
             or col.startswith("instrumental_mag_bkg_corr_")
@@ -579,7 +662,6 @@ def fix_header(header):
                 if (
                     abs(determinant) < 1e-15
                     or any(not np.isfinite(val) for val in [cd11, cd12, cd21, cd22])
-                    or any(val == 0 for val in [cd11, cd22])
                 ):
                     log_messages.append(
                         "WARNING: Detected problematic CD matrix - removing all WCS keywords"
@@ -712,23 +794,40 @@ def fix_header(header):
 
         else:
             # If WCS seems valid, apply minor fixes
+            has_sip_distortion = all(
+                key in fixed_header for key in ("A_ORDER", "B_ORDER")
+            )
 
             # Fix CTYPE formatting
             if "CTYPE1" in fixed_header:
                 ctype1 = str(fixed_header["CTYPE1"]).strip()
-                if ctype1 and not ctype1.endswith("---"):
+                if (
+                    ctype1
+                    and not ctype1.endswith("---")
+                    and not ctype1.upper().endswith("-SIP")
+                ):
                     if "RA" in ctype1.upper():
-                        fixed_header["CTYPE1"] = "RA---TAN"
+                        ctype1 = "RA---TAN"
                     elif "GLON" in ctype1.upper():
-                        fixed_header["CTYPE1"] = "GLON-TAN"
+                        ctype1 = "GLON-TAN"
+                if has_sip_distortion and ctype1.upper() == "RA---TAN":
+                    ctype1 += "-SIP"
+                fixed_header["CTYPE1"] = ctype1
 
             if "CTYPE2" in fixed_header:
                 ctype2 = str(fixed_header["CTYPE2"]).strip()
-                if ctype2 and not ctype2.endswith("---"):
+                if (
+                    ctype2
+                    and not ctype2.endswith("---")
+                    and not ctype2.upper().endswith("-SIP")
+                ):
                     if "DEC" in ctype2.upper():
-                        fixed_header["CTYPE2"] = "DEC--TAN"
+                        ctype2 = "DEC--TAN"
                     elif "GLAT" in ctype2.upper():
-                        fixed_header["CTYPE2"] = "GLAT-TAN"
+                        ctype2 = "GLAT-TAN"
+                if has_sip_distortion and ctype2.upper() == "DEC--TAN":
+                    ctype2 += "-SIP"
+                fixed_header["CTYPE2"] = ctype2
 
             # Fix missing EQUINOX/EPOCH
             if "EQUINOX" not in fixed_header and "EPOCH" in fixed_header:
@@ -866,23 +965,31 @@ def extract_pixel_scale(header):
     # Method 1: Direct pixel scale keywords (these should be in arcsec/pixel)
     for key in ["PIXSIZE", "PIXSCALE", "PIXELSCAL", "SECPIX"]:
         if key in header:
-            value = float(header[key])
+            try:
+                value = float(header[key])
+            except (TypeError, ValueError):
+                continue
             # Sanity check: pixel scale should be reasonable (0.01 to 100 arcsec/pixel)
             if 0.01 <= value <= 100:
                 return value, f"from {key}"
 
     # Method 2: CD matrix elements (most common after plate solving)
     if "CD1_1" in header and "CD2_2" in header:
-        cd1_1 = abs(float(header["CD1_1"]))
-        cd2_2 = abs(float(header["CD2_2"]))
+        try:
+            cd1_1 = float(header["CD1_1"])
+            cd2_2 = float(header["CD2_2"])
+            cd1_2 = float(header.get("CD1_2", 0.0))
+            cd2_1 = float(header.get("CD2_1", 0.0))
+        except (TypeError, ValueError):
+            cd1_1 = cd2_2 = cd1_2 = cd2_1 = float("nan")
 
-        # Take average of both diagonal elements and convert from degrees to arcsec
-        avg_cd = (cd1_1 + cd2_2) / 2.0
+        # Column norms stay valid for rotated matrices (off-diagonal terms)
+        avg_cd = (np.hypot(cd1_1, cd2_1) + np.hypot(cd1_2, cd2_2)) / 2.0
         scale = avg_cd * 3600.0
 
         # Sanity check: CD matrix values should result in reasonable pixel scales
-        if 0.01 <= scale <= 100:
-            return scale, f"from CD matrix (CD1_1={cd1_1:.2e}, CD2_2={cd2_2:.2e})"
+        if np.isfinite(scale) and 0.01 <= scale <= 100:
+            return scale, f"from CD matrix (CD1_1={abs(cd1_1):.2e}, CD2_2={abs(cd2_2):.2e})"
 
     # Method 3: Calculate from pixel size and focal length using simple formula
     focal_length = None
@@ -929,29 +1036,78 @@ def extract_pixel_scale(header):
     return 0.0, "default fallback value"
 
 
-def validate_cross_match_results(phot_table, matched_table, header):
+def validate_cross_match_results(
+    phot_table, matched_table, header, max_median_separation_arcsec=10.0
+):
     """
-    Validate that cross-matching results make sense
+    Validate that cross-matching results make sense.
+
+    Checks that the matched sources are spread over the field (rather than
+    clustered on a few pixels, which points at a coordinate problem) and that
+    the typical catalog separation is small. The separation column written by
+    ``src.xmatch_catalogs.cross_match_with_gaia`` is
+    ``catalog_separation_arcsec``; ``gaia_separation_arcsec`` is accepted as a
+    legacy alias.
+
+    Parameters
+    ----------
+    phot_table : astropy.table.Table or pandas.DataFrame
+        Photometry table that was cross-matched (used for the field extent).
+    matched_table : pandas.DataFrame
+        Cross-matched subset returned by the catalog query.
+    header : dict or astropy.io.fits.Header
+        FITS header of the science frame.
+    max_median_separation_arcsec : float, optional
+        Median catalog separation above which the match is flagged.
+
+    Returns
+    -------
+    bool
+        True when the cross-match looks sane, False otherwise.
     """
-    if len(matched_table) == 0:
+    if matched_table is None or len(matched_table) == 0:
         return False
 
-    # Check if matched sources are distributed across the field
-    ra_range = matched_table["ra"].max() - matched_table["ra"].min()
-    dec_range = matched_table["dec"].max() - matched_table["dec"].min()
+    # The matched sources must be spread across the field rather than clustered
+    # on a few pixels, which would indicate a coordinate problem. Fall back to
+    # the full photometry table when the matched subset has no coordinates.
+    for table in (matched_table, phot_table):
+        if table is None or not hasattr(table, "columns"):
+            continue
+        if "ra" in table.columns and "dec" in table.columns:
+            try:
+                ra_range = float(np.nanmax(table["ra"]) - np.nanmin(table["ra"]))
+                dec_range = float(
+                    np.nanmax(table["dec"]) - np.nanmin(table["dec"])
+                )
+            except (TypeError, ValueError):
+                continue
+            if np.isfinite(ra_range) and np.isfinite(dec_range):
+                if ra_range < 0.001 or dec_range < 0.001:  # less than ~4 arcsec
+                    st.warning(
+                        "Matched sources seem too clustered - possible "
+                        "coordinate issue"
+                    )
+                    return False
+            break
 
-    # Expect some reasonable spread for a real field
-    if ra_range < 0.001 or dec_range < 0.001:  # Less than ~4 arcsec
-        st.warning("Matched sources seem too clustered - possible coordinate issue")
-        return False
+    # Check the separation distribution against the matching radius used by the
+    # cross-match (2.5 x FWHM), so that a systematic pointing/WCS offset is
+    # visible instead of silently biasing the zero point.
+    separations = None
+    for column in ("catalog_separation_arcsec", "gaia_separation_arcsec"):
+        if column in getattr(matched_table, "columns", []):
+            separations = pd.to_numeric(
+                matched_table[column], errors="coerce"
+            ).to_numpy(dtype=float)
+            break
 
-    # Check separation distribution
-    separations = matched_table.get("gaia_separation_arcsec", [])
-    if len(separations) > 0:
-        median_sep = np.median(separations)
-        if median_sep > 10:  # More than 10 arcsec median separation
+    if separations is not None and np.isfinite(separations).any():
+        median_sep = float(np.nanmedian(separations))
+        if median_sep > max_median_separation_arcsec:
             st.warning(
-                f"Large median separation ({median_sep:.1f}) suggests coordinate problems"
+                f"Large median separation ({median_sep:.1f} arcsec) suggests "
+                "coordinate problems"
             )
             return False
 
@@ -1194,12 +1350,21 @@ def merge_photometry_catalogs(aperture_table, psf_table, tolerance_pixels=1.0):
     return final_table, log_messages
 
 
-def add_calibrated_magnitudes(final_table, zero_point, airmass, filter_band=None):
+def add_calibrated_magnitudes(
+    final_table,
+    zero_point,
+    airmass,
+    filter_band=None,
+    zero_point_std=None,
+    systematic_floor=0.0,
+    mag_err_max=None,
+):
     """
     Add calibrated magnitudes for both aperture and PSF.
     Handle cases where only one method is available.
     Dynamically handles different aperture radius suffixes.
-    Filters out sources with magnitude errors > 1.5.
+    Drops, as a last resort, sources whose magnitude error is meaningless in
+    every photometry method (see ``mag_err_max``).
 
     Parameters
     ----------
@@ -1212,6 +1377,18 @@ def add_calibrated_magnitudes(final_table, zero_point, airmass, filter_band=None
     filter_band : str, optional
         Selected calibration filter band used to create prefixed alias columns
         such as ``rapasg_psf_mag`` while preserving the existing column names.
+    zero_point_std : float, optional
+        Formal uncertainty of the zero point. When provided it is added in
+        quadrature to every calibrated magnitude error.
+    systematic_floor : float, optional
+        Optional additive systematic error floor (mag) combined in quadrature
+        with the zero-point uncertainty.
+    mag_err_max : float, optional
+        Magnitude-error cut (mag). A source is dropped only when EVERY
+        photometry method reports an error >= this value; sources without any
+        error information are always kept. Defaults to ``MAG_ERR_MAX`` (2 mag);
+        a value of 0 or less disables the cut, so the catalog keeps every
+        detected source and relies on the quality flags instead.
 
     Returns
     -------
@@ -1223,17 +1400,22 @@ def add_calibrated_magnitudes(final_table, zero_point, airmass, filter_band=None
     Calibrated Magnitude:
         mag_calib = mag_inst + zero_point
 
-    Magnitude Error:
-        σ_mag = 1.0857 × (σ_flux / flux)
+    Instrumental Magnitude Error:
+        sigma_mag = 1.0857 * (sigma_flux / flux)
 
-        Derived from error propagation of mag = -2.5 × log10(flux)
+        Derived from error propagation of mag = -2.5 * log10(flux)
         where 1.0857 = 2.5 / ln(10)
+
+    Calibrated Magnitude Error:
+        sigma_mag_calib = sqrt(sigma_mag_inst^2 + sigma_zp^2 + sigma_sys^2)
 
     Notes
     -----
+    - Prefers the corrected ``instrumental_mag_*`` column (background-subtracted
+      and aperture-corrected) so the magnitude and its error use one flux
     - If instrumental magnitude error doesn't exist, it's computed from flux
     - Handles multiple aperture radii dynamically
-    - Removes sources with magnitude errors > 1.5 (unreliable photometry)
+    - Removes sources with magnitude errors > 1.0 (unreliable photometry)
     """
     if final_table is None or len(final_table) == 0:
         return final_table
@@ -1242,10 +1424,13 @@ def add_calibrated_magnitudes(final_table, zero_point, airmass, filter_band=None
 
     # Helper to compute aperture magnitude for a given radius label
     def _compute_aperture_mag_for_radius(tbl, radius_label):
-        # candidate instrumental mag column names in preference order
+        # Candidate instrumental mag column names in preference order. The
+        # corrected ``instrumental_mag_*`` (background-subtracted AND
+        # aperture-corrected) is used first so that the magnitude, its error and
+        # the S/N are all derived from a single flux.
         candidates = [
-            f"instrumental_mag_bkg_corr_{radius_label}",
             f"instrumental_mag_{radius_label}",
+            f"instrumental_mag_bkg_corr_{radius_label}",
         ]
         inst_col = next((c for c in candidates if c in tbl.columns), None)
         mag_col = f"aperture_mag_{radius_label}"
@@ -1289,6 +1474,73 @@ def add_calibrated_magnitudes(final_table, zero_point, airmass, filter_band=None
             final_table["psf_instrumental_mag"] + zero_point  # - 0.09 * airmass
         )
 
+    # Per-source PSF-minus-aperture magnitudes. The zero point is common to both
+    # methods and cancels in the difference, so these columns are the per-source
+    # form of the PSF/aperture consistency diagnostic
+    # (``check_psf_aperture_consistency``). Rows measured by only one method
+    # (PSF-only or aperture-only) stay NaN.
+    if "psf_mag" in final_table.columns:
+        psf_mag_values = pd.to_numeric(final_table["psf_mag"], errors="coerce")
+        for radius_label in sorted(aperture_radii):
+            aperture_mag_col = f"aperture_mag_{radius_label}"
+            if aperture_mag_col not in final_table.columns:
+                continue
+            final_table[f"psf_minus_aperture_mag_{radius_label}"] = (
+                psf_mag_values
+                - pd.to_numeric(final_table[aperture_mag_col], errors="coerce")
+            )
+
+    # Propagate the zero-point (and optional systematic) uncertainty into every
+    # calibrated magnitude error: sigma_calib = sqrt(sigma_inst^2 + sigma_zp^2).
+    zp_terms = []
+    if zero_point_std is not None:
+        try:
+            _zp = float(zero_point_std)
+            if np.isfinite(_zp):
+                zp_terms.append(_zp**2)
+        except (TypeError, ValueError):
+            pass
+    if systematic_floor:
+        try:
+            _floor = float(systematic_floor)
+            if np.isfinite(_floor):
+                zp_terms.append(_floor**2)
+        except (TypeError, ValueError):
+            pass
+
+    if zp_terms:
+        zp_variance = float(np.sum(zp_terms))
+        zp_sigma = float(np.sqrt(zp_variance))
+        for col in list(final_table.columns):
+            # Never re-propagate into the component columns of a previous call.
+            if col.endswith(("_random", "_correlated")):
+                continue
+            if col == "psf_mag_err" or col.startswith("aperture_mag_err_"):
+                if col.startswith("apcorr_mag_err"):
+                    continue
+                # Re-use the stored per-source part so a repeated call does not
+                # add the zero-point term twice.
+                _base_col = (
+                    f"{col}_random" if f"{col}_random" in final_table.columns else col
+                )
+                col_values = np.abs(
+                    pd.to_numeric(final_table[_base_col], errors="coerce").to_numpy(
+                        dtype=float
+                    )
+                )
+                # Keep the total for compatibility, and expose its two parts:
+                # * ``_random``     - the per-source error already in the column
+                #                     before the zero-point term (statistical +
+                #                     aperture-correction systematic);
+                # * ``_correlated`` - the field-common zero-point / systematic
+                #                     floor, which does not average down across
+                #                     sources and is shared by the whole field.
+                final_table[col] = np.sqrt(col_values**2 + zp_variance)
+                final_table[f"{col}_random"] = col_values
+                final_table[f"{col}_correlated"] = np.full(
+                    len(final_table), zp_sigma, dtype=float
+                )
+
     if filter_prefix:
         alias_map = {}
         for col in list(final_table.columns):
@@ -1297,8 +1549,15 @@ def add_calibrated_magnitudes(final_table, zero_point, airmass, filter_band=None
                 alias_name = f"{filter_prefix}_psf_mag"
             elif col == "psf_mag_err":
                 alias_name = f"{filter_prefix}_psf_mag_err"
+            elif col in (
+                "psf_mag_err_random",
+                "psf_mag_err_correlated",
+            ):
+                alias_name = f"{filter_prefix}_{col}"
             elif col == "psf_instrumental_mag":
                 alias_name = f"{filter_prefix}_psf_instrumental_mag"
+            elif col.startswith("psf_minus_aperture_mag_"):
+                alias_name = f"{filter_prefix}_{col}"
             elif col.startswith("aperture_mag_err_"):
                 alias_name = f"{filter_prefix}_{col}"
             elif col.startswith("aperture_mag_"):
@@ -1336,21 +1595,54 @@ def add_calibrated_magnitudes(final_table, zero_point, airmass, filter_band=None
         columns=[col for col in cols_to_remove if col in final_table.columns]
     )
 
-    final_table["id"] = final_table["id"].astype("Int64")
+    if "id" in final_table.columns:
+        final_table["id"] = final_table["id"].astype("Int64")
 
-    # Filter out sources with magnitude errors > 1. (unreliable photometry)
-    # Use abs() to handle occasional negative errors from numerical issues
+    # Drop only sources whose photometry is unusable in EVERY method. Keeping a
+    # source as soon as one method (aperture or PSF) has a finite magnitude
+    # error below the cut avoids deleting sources that still have a perfectly
+    # usable measurement in the other method. Rows without any error
+    # information at all (all NaN) are kept: missing is not the same as bad.
+    # abs() handles the rare negative errors coming from numerical noise.
+    try:
+        max_mag_err = MAG_ERR_MAX if mag_err_max is None else float(mag_err_max)
+    except (TypeError, ValueError):
+        max_mag_err = MAG_ERR_MAX
+
     initial_count = len(final_table)
-    mag_err_cols = [col for col in final_table.columns if "mag_err" in col]
+    # Only genuine per-method magnitude errors count for the cut. The
+    # ``apcorr_mag_err_*`` columns are small aperture-correction systematics
+    # (always << the cut), so treating them as a photometry method would keep
+    # every source and silently disable the cut.
+    # Only the canonical per-method error columns count for the cut. The
+    # ``apcorr_mag_err_*`` and ``*_random`` / ``*_correlated`` columns are
+    # systematics/components (always well below the cut), so treating them as a
+    # photometry method would silently disable the cut.
+    mag_err_cols = [
+        col
+        for col in final_table.columns
+        if (col == "psf_mag_err" or col.startswith("aperture_mag_err_"))
+        and not col.endswith(("_random", "_correlated"))
+    ]
 
-    if mag_err_cols:
-        # Create mask: keep rows where ALL magnitude errors are < 1. (or NaN)
-        keep_mask = np.ones(len(final_table), dtype=bool)
-        for col in mag_err_cols:
-            col_values = np.abs(final_table[col])  # Use absolute values
-            # Keep if error < 1. or is NaN (missing data is ok)
-            col_mask = (col_values < 1.) | pd.isna(col_values)
-            keep_mask &= col_mask
+    if not np.isfinite(max_mag_err) or max_mag_err <= 0:
+        # Cut disabled: every detected source is exported and the quality flags
+        # are the only reliability indicator.
+        pass
+    elif mag_err_cols and len(final_table) > 0:
+        errors = np.column_stack(
+            [
+                np.abs(
+                    pd.to_numeric(final_table[col], errors="coerce").to_numpy(
+                        dtype=float
+                    )
+                )
+                for col in mag_err_cols
+            ]
+        )
+        has_error = np.isfinite(errors)
+        usable = has_error & (errors < max_mag_err)
+        keep_mask = usable.any(axis=1) | ~has_error.any(axis=1)
 
         final_table = final_table[keep_mask].reset_index(drop=True)
         removed_count = initial_count - len(final_table)
@@ -1358,7 +1650,10 @@ def add_calibrated_magnitudes(final_table, zero_point, airmass, filter_band=None
         if removed_count > 0:
             import streamlit as st
 
-            st.warning(f"Removed {removed_count} sources with magnitude error >= 1.")
+            st.warning(
+                f"Removed {removed_count} sources with magnitude error "
+                f">= {max_mag_err:g} mag in all photometry methods."
+            )
 
     return final_table
 
@@ -1417,6 +1712,65 @@ def clean_photometry_table(df, require_magnitude=True):
     return df, log_messages
 
 
+def _notify_background_fallback(message):
+    """Report a degraded background estimation without ever raising."""
+    try:
+        st.warning(message)
+    except Exception:
+        pass
+
+
+def _safe_zscale_limits(array):
+    """ZScale limits that stay usable for (nearly) constant arrays."""
+    try:
+        vmin, vmax = ZScaleInterval().get_limits(array)
+    except Exception:
+        vmin, vmax = float(np.nanmin(array)), float(np.nanmax(array))
+    if not np.isfinite(vmin) or not np.isfinite(vmax):
+        vmin, vmax = float(np.nanmin(array)), float(np.nanmax(array))
+    if vmin == vmax:
+        vmin, vmax = vmin - 0.5, vmax + 0.5
+    return vmin, vmax
+
+
+def _constant_background(image_data):
+    """Last-resort background model: one sigma-clipped value everywhere.
+
+    Used only when ``Background2D`` cannot produce a mesh (for example when
+    almost every box is excluded because the frame is extremely crowded or
+    heavily masked). It exposes the same ``background`` and ``background_rms``
+    arrays as ``Background2D`` so the rest of the pipeline is unaffected. The
+    RMS uses the same MAD-based estimator as the normal path.
+    """
+    data = np.asarray(image_data, dtype=float)
+    finite = np.isfinite(data)
+    if not finite.any():
+        return None
+
+    # MAD-based RMS, consistent with the normal Background2D path: the plain
+    # std is inflated by undetected sources on the crowded frames that trigger
+    # this fallback, which would inflate every flux error by up to ~2x.
+    _, median, std = sigma_clipped_stats(
+        data[finite], sigma=3.0, maxiters=10, stdfunc="mad_std"
+    )
+    if not np.isfinite(median):
+        return None
+    if not np.isfinite(std) or std <= 0:
+        std = 0.0
+
+    class _ConstantBackground:
+        """Minimal stand-in for a ``Background2D`` result."""
+
+        is_constant = True
+
+    model = _ConstantBackground()
+    model.background = np.full(data.shape, float(median), dtype=float)
+    model.background_rms = np.full(data.shape, float(std), dtype=float)
+    model.background_mesh = np.asarray([[float(median)]])
+    model.background_rms_mesh = np.asarray([[float(std)]])
+    return model
+
+
 def estimate_background(image_data, box_size=64, filter_size=5, figure=True):
     """
     Estimate the background and background RMS of an astronomical image.
@@ -1434,6 +1788,7 @@ def estimate_background(image_data, box_size=64, filter_size=5, figure=True):
         Will be automatically adjusted if the image is small.
     filter_size : int, optional
         Size of the filter for smoothing the background.
+        Automatically reduced for small background meshes.
 
     Returns
     -------
@@ -1445,9 +1800,21 @@ def estimate_background(image_data, box_size=64, filter_size=5, figure=True):
 
     Notes
     -----
-    The function automatically adjusts the box_size and filter_size parameters
-    if the image is too small, and handles various edge cases to ensure robust
-    background estimation.
+    Three robustness measures keep the background model accurate and the run
+    alive on hard frames:
+
+    * the background RMS uses the MAD-based estimator, which is not inflated by
+      undetected sources in the boxes (the plain std overestimates the noise by
+      up to ~2x in crowded fields, which propagates straight into the flux
+      errors of every source);
+    * the smoothing filter is capped at 3x3 for small background meshes, where a
+      wide median filter over-smooths the model and leaves large-scale residuals
+      (up to several sigma on a sky gradient);
+    * if ``Background2D`` rejects every box (its default ``exclude_percentile``
+      drops any box with more than 10% masked/clipped pixels, which happens for
+      crowded fields and frames with large bad areas) the estimation is retried
+      with progressively more permissive settings and finally falls back to a
+      single sigma-clipped background level.
     """
     if image_data is None:
         return None, None, "No image data provided"
@@ -1460,7 +1827,16 @@ def estimate_background(image_data, box_size=64, filter_size=5, figure=True):
 
     height, width = image_data.shape
     adjusted_box_size = max(box_size, min(height // 10, width // 10, 128))
+    mesh = max(min(height, width) // adjusted_box_size, 1)
     adjusted_filter_size = min(filter_size, adjusted_box_size // 2)
+    if mesh < BACKGROUND_SMALL_MESH_THRESHOLD:
+        adjusted_filter_size = min(adjusted_filter_size, 3)
+    max_filter_size = mesh if mesh % 2 == 1 else max(mesh - 1, 1)
+    adjusted_filter_size = max(
+        1, min(adjusted_filter_size, max_filter_size)
+    )
+    if adjusted_filter_size % 2 == 0:
+        adjusted_filter_size = max(1, adjusted_filter_size - 1)
 
     if adjusted_box_size < 10:
         return (
@@ -1469,56 +1845,96 @@ def estimate_background(image_data, box_size=64, filter_size=5, figure=True):
             f"Image too small ({height}x{width}) for background estimation",
         )
 
-    try:
-        sigma_clip = SigmaClip(sigma=3)
-        bkg_estimator = SExtractorBackground()
+    # Most permissive allowed box size: any larger box cannot be formed.
+    largest_box = min(height, width)
+    attempt_settings = [
+        (adjusted_box_size, adjusted_filter_size, BACKGROUND_EXCLUDE_PERCENTILE),
+        (adjusted_box_size, adjusted_filter_size, 50.0),
+        (adjusted_box_size, adjusted_filter_size, 100.0),
+        (min(2 * adjusted_box_size, largest_box), adjusted_filter_size, 100.0),
+    ]
 
-        bkg = Background2D(
-            data=image_data,
-            box_size=adjusted_box_size,
-            filter_size=adjusted_filter_size,
-            sigma_clip=sigma_clip,
-            bkg_estimator=bkg_estimator,
+    bkg = None
+    bkg_estimator = SExtractorBackground()
+    used_settings = None
+    last_error = None
+    for attempt_box, attempt_filter, exclude_percentile in attempt_settings:
+        if attempt_box < 1 or attempt_box > largest_box:
+            continue
+        try:
+            bkg = Background2D(
+                data=image_data,
+                box_size=(attempt_box, attempt_box),
+                filter_size=attempt_filter,
+                sigma_clip=SigmaClip(sigma=3),
+                bkg_estimator=bkg_estimator,
+                # MAD-based RMS: robust against undetected sources in the boxes.
+                bkg_rms_estimator=MADStdBackgroundRMS(),
+                exclude_percentile=exclude_percentile,
+            )
+        except Exception as e:
+            last_error = e
+            bkg = None
+            continue
+        used_settings = (attempt_box, attempt_filter, exclude_percentile)
+        break
+
+    if bkg is not None and used_settings != attempt_settings[0]:
+        _notify_background_fallback(
+            "Background estimation needed more permissive settings for this "
+            f"frame (box={used_settings[0]} px, exclude_percentile="
+            f"{used_settings[2]:g}); the background model is noisier than usual."
         )
 
-        fig_bkg = None
-        # Plot the background model with ZScale and save as FITS
-        if figure:
-            try:
-                # Create a figure with two subplots side by side for background/RMS
-                fig_bkg, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    if bkg is None:
+        bkg = _constant_background(image_data)
+        if bkg is None:
+            return None, None, f"Background estimation error: {last_error}"
+        _notify_background_fallback(
+            "No usable background mesh could be built for this frame "
+            f"({last_error}); using a single sigma-clipped background level. "
+            "Aperture photometry remains usable because each source still has "
+            "its local annulus background subtracted."
+        )
 
-                # Use ZScaleInterval for better visualization
-                zscale = ZScaleInterval()
-                vmin, vmax = zscale.get_limits(bkg.background)
+    fig_bkg = None
+    plot_error = None
+    # Plot the background model with ZScale for the UI.
+    if figure:
+        try:
+            # Create a figure with two subplots side by side for background/RMS
+            fig_bkg, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
-                # Plot the background model
-                im1 = ax1.imshow(
-                    bkg.background, origin="lower", cmap="viridis", vmin=vmin, vmax=vmax
-                )
-                ax1.set_title("Estimated Background")
-                fig_bkg.colorbar(im1, ax=ax1, label="Flux")
+            # ZScale limits, kept usable for (nearly) constant backgrounds
+            vmin, vmax = _safe_zscale_limits(bkg.background)
 
-                # Plot the background RMS
-                vmin_rms, vmax_rms = zscale.get_limits(bkg.background_rms)
-                im2 = ax2.imshow(
-                    bkg.background_rms,
-                    origin="lower",
-                    cmap="viridis",
-                    vmin=vmin_rms,
-                    vmax=vmax_rms,
-                )
-                ax2.set_title("Background RMS")
-                fig_bkg.colorbar(im2, ax=ax2, label="Flux")
+            # Plot the background model
+            im1 = ax1.imshow(
+                bkg.background, origin="lower", cmap="viridis", vmin=vmin, vmax=vmax
+            )
+            ax1.set_title("Estimated Background")
+            fig_bkg.colorbar(im1, ax=ax1, label="Flux")
 
-                fig_bkg.tight_layout()
+            # Plot the background RMS
+            vmin_rms, vmax_rms = _safe_zscale_limits(bkg.background_rms)
+            im2 = ax2.imshow(
+                bkg.background_rms,
+                origin="lower",
+                cmap="viridis",
+                vmin=vmin_rms,
+                vmax=vmax_rms,
+            )
+            ax2.set_title("Background RMS")
+            fig_bkg.colorbar(im2, ax=ax2, label="Flux")
 
-            except Exception as e:
-                return bkg, None, f"Error creating plot: {str(e)}"
+            fig_bkg.tight_layout()
 
-        return bkg, fig_bkg, None
-    except Exception as e:
-        return None, None, f"Background estimation error: {str(e)}"
+        except Exception as e:
+            # A plotting failure must not discard a perfectly good model.
+            fig_bkg = None
+            plot_error = f"Error creating plot: {str(e)}"
+
+    return bkg, fig_bkg, plot_error
 
 
 def extract_filter_from_header(header):

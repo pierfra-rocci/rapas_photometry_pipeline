@@ -18,10 +18,39 @@ from astroquery.imcce import Skybot
 from xml.parsers.expat import ExpatError
 from src.tools_pipeline import get_prefixed_photometry_column
 
+# Shared singleton: configure once at import, never per request.
+Skybot._get_raw_response = False
+
 from src.tools_pipeline import fix_header
+
+from src.pipeline import resolve_effective_gain
 
 
 # Conversion to AB mags, from https://www.astronomy.ohio-state.edu/martini.10/usefuldata.html
+# SEP detection flags that make a detection unreliable as a transient
+# candidate: object/aperture truncated at the image boundary, deblending
+# overflow, a degenerate (fully correlated) centroid, or an all-masked /
+# non-positive aperture.
+#
+# NOTE: these are the *SEP* flag bits (low byte), documented at
+# https://sep.readthedocs.io/en/stable/reference.html and in the STDPipe
+# "Object flags" guide.  stdpipe's default flag mask (0x7F00) only covers
+# its own SExtractor/stdpipe conventions, so passing it to a raw SEP table
+# silently disables flag filtering (the AND is always zero).
+SEP_REJECT_FLAGS = (
+    0x2  # sep.OBJ_TRUNC      - object truncated at image boundary
+    | 0x4  # sep.OBJ_DOVERFLOW  - deblending memory overflow
+    | 0x8  # sep.OBJ_SINGU      - x,y fully correlated
+    | 0x10  # sep.APER_TRUNC     - aperture truncated at image boundary
+    | 0x40  # sep.APER_ALLMASKED - aperture contains only masked pixels
+    | 0x80  # sep.APER_NONPOSITIVE - negative aperture sum
+)
+
+# Magnitude excess (detected - catalogue) above which a source positionally
+# coincident with a reference catalogue entry is still kept as a transient
+# candidate.  Defaults to the long-standing 2.0 mag threshold.
+DEFAULT_TRANSIENT_MAG_THRESHOLD = 2.0
+
 filter_ab_offset = {
     "U": 0.79,
     "B": -0.09,
@@ -91,26 +120,30 @@ def filter_skybot_candidates(
             "-dec": dec0,
             "-rd": _skybot_rad,
             "-ep": str(obs_time.jd),
-            "-loc": "500",
+            "-observer": "500",
             "-filter": 120,
             "-objFilter": "111",
             "-refsys": "EQJ2000",
             "-output": "all",
-            "-mime": "text",
+            "-mime": "votable",
         }
         _skybot_resp = _requests.get(_SKYBOT_URL, params=_skybot_payload, timeout=120)
+        skybot_parse_failed = False
         if _skybot_resp.status_code == 204 or not _skybot_resp.text.strip():
             skybot_results = None
         else:
             try:
-                Skybot._get_raw_response = False
                 skybot_results = Skybot._parse_result(_skybot_resp)
             except (ExpatError, ValueError) as parse_error:
                 st.warning(
                     f"SkyBoT returned an unreadable response ({parse_error}). "
                     "Skipping Solar System object filtering."
                 )
+                skybot_parse_failed = True
                 skybot_results = None
+
+        if skybot_parse_failed:
+            return candidates
 
         if skybot_results is None or len(skybot_results) == 0:
             st.warning("✓ SkyBoT: No Solar System objects found in field")
@@ -192,20 +225,57 @@ def find_candidates(
     filter_name=None,
     mag_limit="<20.0",
     detect_thresh=3.0,
+    mag_threshold=DEFAULT_TRANSIENT_MAG_THRESHOLD,
 ):
     """Find transient candidates in the given image around the specified object.
+
+    The algorithm detects sources with SEP, attaches the calibrated PSF
+    magnitudes measured by the main pipeline, and then asks
+    :func:`stdpipe.pipeline.filter_transient_candidates` to reject objects that
+    are explained by the reference survey or by any of the Vizier catalogues.
+    A positional match is only allowed to reject a source when it is *not*
+    significantly brighter than its catalogue counterpart (see
+    :func:`checker_fn`); genuine brightness excesses are kept as candidates.
+
     Parameters
     ----------
-    obj : dict
-        Dictionary with object information (e.g., coordinates).
+    photometry_table : pandas.DataFrame
+        Calibrated photometry catalog produced by the main pipeline. Must
+        contain ``ra``/``dec`` and PSF magnitude columns.
+    zero_point_value : float
+        Photometric zero point (kept for API compatibility; the calibrated
+        magnitudes are taken from *photometry_table*).
     image : 2D array
         The image data where to search for transients.
-    mask : 2D array
-        The mask data corresponding to the image."""
-    if header.get("GAIN"):
-        gain = header.get("GAIN")
-    else:
-        gain = 65635 / np.max(image)
+    header : astropy.io.fits.Header
+        Header of the science image (must contain WCS information).
+    fwhm : float
+        Seeing FWHM in pixels.
+    pixel_scale : float
+        Pixel scale in arcsec/pixel.
+    ra_center, dec_center : float
+        Field centre in degrees; used to pick the reference survey.
+    sr : float
+        Search radius in degrees.
+    mask : 2D array, optional
+        Mask (True = masked) corresponding to the image.
+    filter_cat : str, optional
+        Calibration filter band (used to locate the prefixed PSF columns).
+    filter_name : str, optional
+        Reference-survey filter for the transient search template.
+    mag_limit : str, optional
+        Reference-survey magnitude limit expression (default ``"<20.0"``).
+    detect_thresh : float, optional
+        SEP detection threshold in sigma (default 3.0).
+    mag_threshold : float, optional
+        Minimum brightness excess, in magnitudes, required for a source that
+        coincides with a reference-catalogue entry to be kept as a candidate.
+    """
+    # Resolve the effective gain (e-/ADU) exactly like the photometry error
+    # model: explicit EGAIN/CCDGAIN/CVF keywords first, driver-gain cameras
+    # (QHY/ZWO) recognised so their abstract GAIN setting is not misused.
+    # Replaces the old 65535 / max(image) heuristic.
+    gain = resolve_effective_gain(header, image)
 
     header, _ = fix_header(header)
     wcs = WCS(header)
@@ -227,7 +297,7 @@ def find_candidates(
         st.info(
             f"🌍 Northern hemisphere detected (Dec={dec_center:.2f}°). Using PanSTARRS catalog."
         )
-    image = image.astype(image.dtype.newbyteorder("="))
+    image = np.ascontiguousarray(image, dtype=np.float32)
     bkg = sep.Background(image, mask=mask, bw=64, bh=64, fw=5, fh=5)
 
     # Subtract spatially-varying background from image
@@ -255,13 +325,26 @@ def find_candidates(
         phot_ra = photometry_table["ra"]
         phot_dec = photometry_table["dec"]
 
-        # Cross-match using spherical matching (10 arcsec radius)
-        match_radius = 10 / 3600  # 10 arcsec in degrees
-        oidx, pidx, _ = stdpipe_astrometry.spherical_match(
+        # Cross-match SEP detections with the photometry table. Both lists come
+        # from the same image and WCS, so a seeing-sized radius is enough.
+        # The previous fixed 10 arcsec radius is several FWHM in typical
+        # seeing and - because spherical_match() returns *all* pairs inside
+        # the radius - produced many-to-many matches in crowded fields, which
+        # duplicated candidates and could attach the wrong PSF magnitude.
+        match_radius_arcsec = float(np.clip(fwhm * pixel_scale, 1.0, 4.0))
+        match_radius = match_radius_arcsec / 3600.0  # arcsec -> degrees
+        oidx, pidx, match_dist = stdpipe_astrometry.spherical_match(
             obj["ra"], obj["dec"], phot_ra, phot_dec, match_radius
         )
 
         if len(oidx) > 0:
+            # Keep only the nearest photometry counterpart for each detection
+            # so that every candidate gets exactly one PSF magnitude.
+            nearest = np.argsort(match_dist)
+            oidx, pidx = oidx[nearest], pidx[nearest]
+            _, first = np.unique(oidx, return_index=True)
+            oidx, pidx = oidx[first], pidx[first]
+
             # Keep only matched objects
             obj = obj[oidx]
 
@@ -285,8 +368,8 @@ def find_candidates(
                 return []
 
             # Get PSF magnitudes from photometry_table for matched sources
-            psf_mag = np.array(photometry_table[psf_mag_col][pidx])
-            psf_mag_err = np.array(photometry_table[psf_mag_err_col][pidx])
+            psf_mag = np.asarray(photometry_table[psf_mag_col])[pidx]
+            psf_mag_err = np.asarray(photometry_table[psf_mag_err_col])[pidx]
 
             # Add PSF photometry as mag_calib (reference magnitude for transients)
             obj = np.lib.recfunctions.append_fields(
@@ -375,16 +458,29 @@ def find_candidates(
         candidates = pipeline.filter_transient_candidates(
             obj,
             cat=cat,
-            fwhm=1.0 * fwhm * pixel_scale,
+            # 'fwhm' is in pixels and 'pixscale' must be in deg/pixel (our
+            # 'pixel_scale' is arcsec/pixel), so stdpipe derives the catalogue
+            # matching radius as half the FWHM.  Previously an already
+            # arcsec-scaled FWHM was passed with no pixscale, and the radius
+            # silently fell back to a fixed 1 arcsec.
+            fwhm=fwhm,
+            pixscale=pixel_scale / 3600.0,
             time=header.get("DATE-OBS", None),
             skybot=False,  # Disable stdpipe's SkyBoT - we'll do our own
             vizier=vizier_catalogs,
             vizier_checker_fn=lambda xobj, xcat, catname: checker_fn(
-                xobj, xcat, catname, filter_mag=filter_cat
+                xobj,
+                xcat,
+                catname,
+                filter_mag=filter_cat,
+                mag_threshold=mag_threshold,
             ),
             ned=False,
             verbose=True,
             flagged=True,
+            # SEP flag bits, not stdpipe/SExtractor ones (see SEP_REJECT_FLAGS):
+            # the stdpipe default (0x7F00) never matches raw SEP flags.
+            flagmask=SEP_REJECT_FLAGS,
         )
     except Exception as e:
         st.error(f"Error during transient filtering: {e}")
@@ -407,16 +503,6 @@ def find_candidates(
     n_invalid = len(candidates) - np.sum(valid_errors)
     if n_invalid > 0:
         candidates = candidates[valid_errors]
-
-    # Remove candidates with low S/N (S/N < 5, i.e., mag_err > 0.217)
-    # S/N ≈ 1.0857 / mag_err for Poisson noise
-    min_snr = 20.0
-    max_mag_err = 1.0857 / min_snr  # ~0.217 mag
-    good_snr = candidates["mag_calib_err"] < max_mag_err
-    n_low_snr = len(candidates) - np.sum(good_snr)
-    if n_low_snr > 0:
-        st.warning(f"Removed {n_low_snr} candidates with low S/N (<{min_snr})")
-        candidates = candidates[good_snr]
 
     st.success(
         f"Candidate filtering complete. Found {len(candidates)} potential transients."
@@ -464,6 +550,7 @@ def find_candidates(
             stretch="linear",
         )
         st.pyplot(fig)
+        plt.close(fig)
 
     return candidates
 
@@ -789,33 +876,52 @@ def plot_cutout(
     return fig
 
 
-def checker_fn(xobj, xcat, catname, filter_mag="r"):
-    """Filter candidates based on magnitude consistency with reference catalog.
+def checker_fn(xobj, xcat, catname, filter_mag="r", mag_threshold=2.0):
+    """Decide which reference-catalogue matches should *reject* a candidate.
 
-    Rejects objects that are significantly fainter than their catalog counterparts,
-    keeping only sources that are brighter or within the tolerance threshold.
-    This filters out most catalog matches while keeping potential transients/variables.
+    This is passed to :func:`stdpipe.pipeline.filter_transient_candidates` as
+    its ``vizier_checker_fn``.  In stdpipe's contract the returned mask selects
+    the catalogue entries that count as genuine matches - i.e. an entry marked
+    ``True`` causes the corresponding detection to be **removed** from the
+    candidate list, while ``False`` means "this is not really the same object,
+    keep the detection as a candidate".
+
+    The rule is therefore: a positional match is treated as the same object
+    (``True``) unless the detected source is brighter than its catalogue
+    counterpart by more than ``mag_threshold`` magnitudes, in which case the
+    flux excess is a possible transient/variable and the detection is kept
+    (``False``).  A common zero-point offset between the detection and the
+    catalogue is removed first (median of the matched differences), so that
+    the comparison reflects a real brightness excess rather than calibration
+    differences.
 
     Parameters
     ----------
     xobj : astropy.table.Table or numpy.ndarray
-        Detected objects with 'mag_calib' column
+        Detected objects with a 'mag_calib' column.
     xcat : astropy.table.Table or numpy.ndarray
-        Reference catalog for comparison
+        Reference catalogue for comparison.
     catname : str
-        Name of the catalog (for informational purposes)
+        Name of the catalogue (for informational purposes).
     filter_mag : str, default 'r'
-        Filter name (e.g., 'r', 'rmag', 'V', 'Vmag', 'phot_g_mean_mag')
+        Filter name (e.g., 'r', 'rmag', 'V', 'Vmag', 'phot_g_mean_mag').
+    mag_threshold : float, default 2.0
+        Minimum brightness excess (in magnitudes) required for a matched
+        detection to remain a candidate.
 
     Returns
     -------
     numpy.ndarray
-        Boolean mask where True keeps sources that are:
-        - Brighter than catalog (diff < 0)
-        - Within 2.0 mag fainter than catalog (-2.0 < diff < 0)
-        False rejects sources much fainter than catalog (diff <= -2.0)
+        Boolean mask over *xcat*: ``True`` = confirmed catalogue match (the
+        detection is rejected), ``False`` = significant brightness excess (the
+        detection is kept).  When no magnitude column can be identified, all
+        entries are marked ``True`` (no brightening evidence, so nothing is
+        rescued by this catalogue); entries with an unusable magnitude
+        difference are kept instead.
     """
-    # Initialize: all objects pass by default if no catalog match found
+    # Default: treat every catalogue entry as a confirmed match (i.e. no
+    # detection is rescued by this catalogue) unless a magnitude comparison
+    # shows a genuine brightness excess below.
     xidx = np.ones_like(xobj, dtype=bool)
 
     # Normalize filter name: extract core filter from various formats
@@ -869,11 +975,13 @@ def checker_fn(xobj, xcat, catname, filter_mag="r"):
             median_diff = np.nanmedian(diff)
             diff -= median_diff
 
-        # Select objects that are BRIGHTER than catalog (potential transients/variables)
-        # Negative diff means detected source is brighter than catalog
-        # Threshold: > -2.0 means reject only if fainter by more than 2.0 mags
-        # This keeps: all brighter sources + sources within 2.0 mag fainter
-        xidx = diff > -2.0
+        # diff = detected - catalogue, so a source brighter than the catalogue
+        # has diff < 0.  Mark a match as confirmed (True -> the detection is
+        # removed) unless the excess is larger than mag_threshold.  Objects
+        # whose difference cannot be evaluated (NaN magnitude) are kept as
+        # candidates rather than being silently discarded.
+        finite = np.isfinite(diff)
+        xidx = np.where(finite, diff > -mag_threshold, False)
 
     return xidx
 

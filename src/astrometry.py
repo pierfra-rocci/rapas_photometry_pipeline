@@ -1,10 +1,20 @@
 import os
+import shutil
+import subprocess
+import tempfile
+
 import streamlit as st
 
 import numpy as np
 
+import astropy.units as u
+from astropy.table import Table
 from astropy.wcs import WCS
 from astropy.io import fits
+from astropy.coordinates import SkyCoord
+from scipy.stats import chi2
+
+from src.pipeline import resolve_effective_gain
 
 # stdpipe imports
 STDPIPE_IMPORT_ERROR = None
@@ -20,6 +30,27 @@ except ModuleNotFoundError as exc:
     catalogs = None
     stdpipe_pipeline = None
     STDPIPE_IMPORT_ERROR = exc
+
+try:
+    # Only used to convert an initial SIP solution to the TPV convention that
+    # SCAMP is able to read; the WCS refinement itself runs the SCAMP binary.
+    import sip_tpv
+except Exception:  # noqa: BLE001 - pkg_resources may raise DistributionNotFound
+    sip_tpv = None
+
+
+def _get_online_astrometry_api_key():
+    """Return the configured Astrometry.net key without exposing it in logs."""
+    api_key = os.environ.get("ASTROMETRY_API_KEY")
+    if api_key:
+        return api_key
+
+    try:
+        from astroquery.astrometry_net import conf
+
+        return conf.api_key or None
+    except Exception:
+        return None
 
 
 def get_adaptive_min_sources(image_shape):
@@ -211,11 +242,11 @@ def _try_source_detection_improved(image, header, min_sources=10):
 
     for fwhm_est, thresh, desc in parameter_grid:
         try:
-            # Get gain value
-            if header.get("GAIN"):
-                gain = header.get("GAIN")
-            else:
-                gain = 65635 / np.max(image)
+            # Resolve the effective gain (e-/ADU) exactly like the photometry
+            # error model: explicit EGAIN/CCDGAIN/CVF keywords first, driver-
+            # gain cameras (QHY/ZWO) recognised so their abstract GAIN setting
+            # is not misused. Replaces the old 65535 / max(image) heuristic.
+            gain = resolve_effective_gain(header, image)
 
             sources = photometry.get_objects_sextractor(
                 image,
@@ -257,13 +288,601 @@ def _try_source_detection_improved(image, header, min_sources=10):
     return None
 
 
+# ---------------------------------------------------------------------------
+# Direct SCAMP-based WCS refinement
+# ---------------------------------------------------------------------------
+#
+# The initial blind solution is refined against a local reference catalogue by
+# running the SCAMP *executable* directly, instead of routing through
+# ``stdpipe.pipeline.refine_astrometry`` (which only wraps the same binary).
+# Driving the binary ourselves lets us inspect its XML report and the header it
+# produces, and to independently re-measure the match residuals before the
+# refined solution is trusted by the rest of the pipeline.
+
+# Explicit path to the SCAMP binary; when unset the executable is looked up on
+# PATH and in the usual Astromatic locations.
+SCAMP_EXECUTABLE_ENV = "RPP_SCAMP_EXECUTABLE"
+SCAMP_COMMON_PATHS = (
+    "/usr/bin",
+    "/usr/local/bin",
+    "/opt/local/bin",
+    "/usr/local/astrometry/bin",
+    "/opt/local/astrometry/bin",
+)
+
+# Validation criteria for a trustworthy SCAMP solution (see
+# :func:`_check_scamp_solution`).
+SCAMP_MIN_MATCHES = 10
+SCAMP_MAX_CHI2_PVALUE = 1e-3  # reject when p(chi2, dof) falls below this
+SCAMP_RMS_TOLERANCE = 1.05  # refined match RMS may not exceed initial by more
+SCAMP_MAX_CENTER_SHIFT_DEG = 0.5  # rejection threshold for a gross mis-solve
+SCAMP_PIXSCALE_TOLERANCE = 0.2  # allowed fractional change of the pixel scale
+SCAMP_TIMEOUT_SECONDS = 300
+# Option sets tried in turn; the first is SCAMP's default behaviour.
+SCAMP_RETRY_OPTIONS = (
+    {},
+    {
+        "POSITION_MAXERR": 10,
+        "PIXSCALE_MAXERR": 1.5,
+        "POSANGLE_MAXERR": 10,
+        "SN_THRESHOLDS": "5.0,50.0",
+    },
+)
+
+# Columns a detection table must carry to be fed to SCAMP.
+SCAMP_SOURCE_COLUMNS = (
+    "x",
+    "y",
+    "xerr",
+    "yerr",
+    "flux",
+    "fluxerr",
+    "mag",
+    "magerr",
+    "flags",
+)
+
+
+def find_scamp_executable(explicit_path=None):
+    """Locate the SCAMP executable, or return ``None`` when unavailable.
+
+    Lookup order: an explicit path, the ``RPP_SCAMP_EXECUTABLE`` environment
+    variable, :func:`shutil.which`, then the standard Astromatic install
+    directories.
+    """
+    candidates = [explicit_path, os.environ.get(SCAMP_EXECUTABLE_ENV)]
+    located = shutil.which("scamp")
+    if located:
+        candidates.append(located)
+    candidates.extend(os.path.join(path, "scamp") for path in SCAMP_COMMON_PATHS)
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
+def _build_scamp_header(wcs, shape):
+    """Return a SCAMP-readable FITS header for the initial WCS solution.
+
+    SCAMP cannot read SIP distortions, so a SIP solution is rewritten in the
+    equivalent TPV convention (via ``sip_tpv``) using an explicit CD matrix.
+    """
+    header = wcs.to_header(relax=True)
+
+    height, width = shape
+    header.setdefault("NAXIS", 2)
+    header.setdefault("NAXIS1", int(width))
+    header.setdefault("NAXIS2", int(height))
+    header.setdefault("BITPIX", -64)
+    header.setdefault("EQUINOX", 2000.0)
+
+    if wcs.sip is not None and sip_tpv is not None:
+        # sip_to_pv needs the linear term as a CD matrix; astropy writes a CD
+        # matrix directly when one was used, otherwise PC + CDELT (and omits an
+        # identity PC), so build CD from whichever representation is present.
+        if "CD1_1" not in header:
+            pc11 = header.pop("PC1_1", 1.0)
+            pc12 = header.pop("PC1_2", 0.0)
+            pc21 = header.pop("PC2_1", 0.0)
+            pc22 = header.pop("PC2_2", 1.0)
+            cdelt1 = header.pop("CDELT1", 1.0)
+            cdelt2 = header.pop("CDELT2", 1.0)
+            header["CD1_1"] = cdelt1 * pc11
+            header["CD1_2"] = cdelt2 * pc12
+            header["CD2_1"] = cdelt1 * pc21
+            header["CD2_2"] = cdelt2 * pc22
+        sip_tpv.sip_to_pv(header)
+
+    return header
+
+
+def _write_scamp_ldac(table, header, filename):
+    """Write ``table`` and ``header`` in the FITS-LDAC format SCAMP reads."""
+    header_string = header.tostring(endcard=True)
+    # astropy strips the trailing blanks of the final END card; SCAMP needs it.
+    header_string += fits.Header().tostring(endcard=True)
+
+    header_column = fits.Column(
+        name="Field Header Card",
+        format=f"{len(header_string)}A",
+        array=[header_string],
+    )
+    header_hdu = fits.BinTableHDU.from_columns(fits.ColDefs([header_column]))
+    header_hdu.header["EXTNAME"] = "LDAC_IMHEAD"
+
+    data_hdu = fits.table_to_hdu(table)
+    data_hdu.header["EXTNAME"] = "LDAC_OBJECTS"
+
+    fits.HDUList([fits.PrimaryHDU(), header_hdu, data_hdu]).writeto(
+        filename, overwrite=True
+    )
+
+
+def _scamp_xml_diagnostics(xml_path):
+    """Parse the SCAMP XML report into a small ``{key: value}`` dict."""
+    try:
+        row = Table.read(xml_path, table_id=0)[0]
+    except (OSError, ValueError, KeyError, IndexError):
+        return {}
+
+    diagnostics = {}
+    for key in ("NDeg_Reference", "Chi2_Reference"):
+        if key not in row.colnames:
+            continue
+        try:
+            diagnostics[key] = float(row[key])
+        except (TypeError, ValueError):
+            continue
+    return diagnostics
+
+
+def _match_rms_arcsec(wcs, sources, cat, sr_deg, cat_col_ra, cat_col_dec):
+    """Return (RMS nearest-neighbour match separation, number of matches).
+
+    Each detection is matched to its closest catalogue counterpart, so the
+    metric measures the actual astrometric residual rather than the density of
+    neighbouring stars inside the matching radius.
+    """
+    ra, dec = wcs.all_pix2world(
+        np.asarray(sources["x"], dtype=float),
+        np.asarray(sources["y"], dtype=float),
+        0,
+    )
+    source_coords = SkyCoord(ra, dec, unit="deg")
+    catalog_coords = SkyCoord(
+        np.asarray(cat[cat_col_ra], dtype=float),
+        np.asarray(cat[cat_col_dec], dtype=float),
+        unit="deg",
+    )
+
+    _, separation, _ = source_coords.match_to_catalog_sky(catalog_coords)
+    within = separation <= sr_deg * u.deg
+    if not np.any(within):
+        return None, 0
+    matched = separation[within].arcsec
+    return float(np.sqrt(np.mean(matched**2))), int(matched.size)
+
+
+def _wcs_pixel_scale_arcsec(wcs):
+    """Return the pixel scale of a WCS in arcsec/pixel."""
+    return float(
+        np.hypot(
+            wcs.pixel_scale_matrix[0, 0], wcs.pixel_scale_matrix[0, 1]
+        )
+        * 3600.0
+    )
+
+
+def _frame_center(wcs, shape):
+    """Return the (RA, Dec) of the frame center in degrees."""
+    height, width = shape
+    ra, dec = wcs.all_pix2world(width / 2.0, height / 2.0, 0)
+    return float(np.asarray(ra)), float(np.asarray(dec))
+
+
+def _check_scamp_solution(initial_wcs, refined_wcs, diagnostics, sources, cat,
+                          sr_deg, shape, cat_col_ra, cat_col_dec,
+                          min_matches=SCAMP_MIN_MATCHES):
+    """Return ``None`` when the refined solution passes, else a reason string.
+
+    The checks combine SCAMP's own report (number of matched references and the
+    chi2 of the fit) with an independent, WCS-only re-measurement of the
+    source-to-catalogue match residuals before and after refinement.
+    """
+    if refined_wcs is None or not refined_wcs.is_celestial:
+        return "SCAMP returned a non-celestial WCS"
+
+    n_matches = diagnostics.get("n_matches")
+    chi2_value = diagnostics.get("chi2")
+    if n_matches is not None and n_matches < min_matches:
+        return (
+            f"only {n_matches:.0f} reference matches (need "
+            f"{min_matches})"
+        )
+    if chi2_value is not None and n_matches and n_matches > 0:
+        try:
+            if chi2.sf(chi2_value, df=n_matches) < SCAMP_MAX_CHI2_PVALUE:
+                return (
+                    f"SCAMP fit rejected (chi2={chi2_value:.1f}, "
+                    f"dof={n_matches:.0f})"
+                )
+        except (TypeError, ValueError, FloatingPointError):
+            diagnostics["chi2_check_error"] = True
+
+    # Independent residual check: the refined WCS must not make the positional
+    # agreement with the catalogue worse than the initial solution did.
+    initial_rms, _ = _match_rms_arcsec(
+        initial_wcs, sources, cat, sr_deg, cat_col_ra, cat_col_dec
+    )
+    refined_rms, refined_matches = _match_rms_arcsec(
+        refined_wcs, sources, cat, sr_deg, cat_col_ra, cat_col_dec
+    )
+    diagnostics["initial_rms_arcsec"] = initial_rms
+    diagnostics["refined_rms_arcsec"] = refined_rms
+    diagnostics["refined_match_count"] = refined_matches
+
+    if refined_rms is None or refined_matches == 0:
+        return "refined WCS no longer matches the catalogue at the given radius"
+    if (
+        initial_rms is not None
+        and refined_rms > initial_rms * SCAMP_RMS_TOLERANCE + 1e-3
+    ):
+        return (
+            f"refined match RMS {refined_rms:.3f}\" is worse than the initial "
+            f"{initial_rms:.3f}\""
+        )
+
+    # Sanity checks on the geometry of the solution.
+    try:
+        initial_ra, initial_dec = _frame_center(initial_wcs, shape)
+        refined_ra, refined_dec = _frame_center(refined_wcs, shape)
+        center_shift = SkyCoord(initial_ra, initial_dec, unit="deg").separation(
+            SkyCoord(refined_ra, refined_dec, unit="deg")
+        ).deg
+        diagnostics["center_shift_deg"] = center_shift
+        if center_shift > SCAMP_MAX_CENTER_SHIFT_DEG:
+            return f"frame center moved by {center_shift:.3f} deg"
+
+        initial_scale = _wcs_pixel_scale_arcsec(initial_wcs)
+        refined_scale = _wcs_pixel_scale_arcsec(refined_wcs)
+        diagnostics["initial_pixel_scale_arcsec"] = initial_scale
+        diagnostics["refined_pixel_scale_arcsec"] = refined_scale
+        if initial_scale > 0:
+            ratio = refined_scale / initial_scale
+            diagnostics["pixel_scale_ratio"] = ratio
+            if abs(ratio - 1.0) > SCAMP_PIXSCALE_TOLERANCE:
+                return f"pixel scale changed by a factor {ratio:.3f}"
+    except (TypeError, ValueError, AttributeError) as exc:
+        # Geometry checks are best-effort; a failure here must not reject an
+        # otherwise valid solution.
+        diagnostics["geometry_check_error"] = str(exc)
+
+    return None
+
+
+def _refine_wcs_with_scamp_once(
+    sources,
+    cat,
+    wcs,
+    sr,
+    order=3,
+    cat_col_ra="RAJ2000",
+    cat_col_dec="DEJ2000",
+    cat_col_mag="rmag",
+    min_matches=SCAMP_MIN_MATCHES,
+    timeout=SCAMP_TIMEOUT_SECONDS,
+    scamp_executable=None,
+    verbose=None,
+    extra_options=None,
+):
+    """Refine an initial WCS by running the SCAMP executable directly.
+
+    The frame detections and the reference catalogue are written as LDAC tables
+    and handed to the ``scamp`` binary, which is invoked with the same options
+    the previous stdpipe wrapper used (TPV projection, no photometric solve, XML
+    report). The returned solution is validated before it is accepted.
+
+    Parameters
+    ----------
+    sources : astropy.table.Table
+        Detections; must contain ``SCAMP_SOURCE_COLUMNS``.
+    cat : astropy.table.Table
+        Reference catalogue with ``cat_col_ra``/``cat_col_dec`` positions.
+    wcs : astropy.wcs.WCS
+        Initial (blind) solution to refine.
+    sr : float
+        Matching radius in degrees.
+    order : int
+        Polynomial order of the PV distortion fitted by SCAMP.
+    cat_col_ra, cat_col_dec : str
+        Catalogue column names for Right Ascension and Declination.
+    cat_col_mag : str
+        Catalogue column name holding the magnitude closest to the frame band.
+    min_matches : int
+        Minimum number of catalogue references SCAMP must fit.
+    timeout : float
+        Maximum runtime of the SCAMP process, in seconds.
+    scamp_executable : str, optional
+        Explicit path to the SCAMP binary.
+    verbose : callable or bool, optional
+        ``print``-like function receiving SCAMP/log messages.
+
+    Returns
+    -------
+    (astropy.wcs.WCS or None, dict)
+        The refined WCS (``None`` on failure) and a diagnostics dictionary.
+    """
+
+    def log(message):
+        if verbose is None or verbose is False:
+            return
+        if callable(verbose):
+            verbose(message)
+        else:
+            print(message)
+
+    diagnostics = {
+        "success": False,
+        "reason": None,
+        "executable": None,
+        "returncode": None,
+        "n_matches": None,
+        "chi2": None,
+        "astrometric_rms_arcsec": None,
+        "initial_rms_arcsec": None,
+        "refined_rms_arcsec": None,
+        "center_shift_deg": None,
+        "pixel_scale_ratio": None,
+    }
+
+    missing_columns = [
+        column for column in SCAMP_SOURCE_COLUMNS if column not in sources.colnames
+    ]
+    if missing_columns:
+        diagnostics["reason"] = (
+            f"detection table is missing columns: {', '.join(missing_columns)}"
+        )
+        log(diagnostics["reason"])
+        return None, diagnostics
+
+    if cat is None or len(cat) == 0:
+        diagnostics["reason"] = "no reference catalogue stars available"
+        return None, diagnostics
+
+    executable = find_scamp_executable(scamp_executable)
+    diagnostics["executable"] = executable
+    if executable is None:
+        diagnostics["reason"] = (
+            "SCAMP executable not found; install SCAMP or set "
+            f"{SCAMP_EXECUTABLE_ENV}"
+        )
+        log(diagnostics["reason"])
+        return None, diagnostics
+
+    workdir = tempfile.mkdtemp(prefix="scamp")
+    keep_workdir = bool(os.environ.get("RPP_SCAMP_KEEP_WORKDIR"))
+    try:
+        shape = (
+            int(np.max(sources["y"])) + 1,
+            int(np.max(sources["x"])) + 1,
+        )
+        header = _build_scamp_header(wcs, shape)
+
+        objects = Table(
+            data={
+                "XWIN_IMAGE": np.asarray(sources["x"], dtype=float) + 1.0,
+                "YWIN_IMAGE": np.asarray(sources["y"], dtype=float) + 1.0,
+                "ERRAWIN_IMAGE": np.asarray(sources["xerr"], dtype=float),
+                "ERRBWIN_IMAGE": np.asarray(sources["yerr"], dtype=float),
+                "FLUX_AUTO": np.asarray(sources["flux"], dtype=float),
+                "FLUXERR_AUTO": np.asarray(sources["fluxerr"], dtype=float),
+                "MAG_AUTO": np.asarray(sources["mag"], dtype=float),
+                "MAGERR_AUTO": np.asarray(sources["magerr"], dtype=float),
+                "FLAGS": np.asarray(sources["flags"], dtype=int),
+            }
+        )
+
+        n_cat = len(cat)
+        catalog = Table(
+            data={
+                "X_WORLD": np.asarray(cat[cat_col_ra], dtype=float),
+                "Y_WORLD": np.asarray(cat[cat_col_dec], dtype=float),
+                "ERRA_WORLD": _default_column(cat, "e_" + cat_col_ra, 1.0 / 3600.0),
+                "ERRB_WORLD": _default_column(
+                    cat, "e_" + cat_col_dec, 1.0 / 3600.0
+                ),
+                "MAG": _default_column(cat, cat_col_mag, 0.0),
+                "MAGERR": _default_column(cat, "e_" + cat_col_mag, 0.01),
+                "OBSDATE": np.full(n_cat, 2000.0),
+                "FLAGS": np.zeros(n_cat, dtype=int),
+            }
+        )
+
+        objects_name = os.path.join(workdir, "objects.cat")
+        catalog_name = os.path.join(workdir, "catalogue.cat")
+        header_name = os.path.join(workdir, "objects.head")
+        xml_name = os.path.join(workdir, "scamp.xml")
+        config_name = os.path.join(workdir, "empty.conf")
+
+        _write_scamp_ldac(objects, header, objects_name)
+        _write_scamp_ldac(catalog, header, catalog_name)
+        if os.path.exists(header_name):
+            os.unlink(header_name)
+        # An empty config keeps SCAMP from picking up a stray scamp.conf.
+        with open(config_name, "w", encoding="ascii") as handle:
+            handle.write("\n")
+
+        options = {
+            "c": config_name,
+            "VERBOSE_TYPE": "QUIET",
+            "SOLVE_PHOTOM": "N",
+            "CHECKPLOT_TYPE": "NONE",
+            "WRITE_XML": "Y",
+            "XML_NAME": xml_name,
+            "PROJECTION_TYPE": "TPV",
+            "CROSSID_RADIUS": sr * 3600.0,
+            "DISTORT_DEGREES": max(1, int(order)),
+            "ASTREF_CATALOG": "FILE",
+            "ASTREFCAT_NAME": catalog_name,
+            "HEADER_NAME": header_name,
+        }
+        options.update(extra_options or {})
+
+        command = [executable, objects_name]
+        for key, value in options.items():
+            command.extend(["-" + key, str(value)])
+
+        log("Will run SCAMP like that:")
+        log(" ".join(command))
+
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=workdir,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            diagnostics["reason"] = f"SCAMP timed out after {timeout:g} s"
+            log(diagnostics["reason"])
+            return None, diagnostics
+        except OSError as exc:
+            diagnostics["reason"] = f"could not run SCAMP: {exc}"
+            log(diagnostics["reason"])
+            return None, diagnostics
+
+        diagnostics["returncode"] = completed.returncode
+        output = "\n".join(
+            part.strip()
+            for part in (completed.stdout, completed.stderr)
+            if part and part.strip()
+        )
+        if output:
+            for line in output.splitlines():
+                log(line)
+
+        if completed.returncode != 0:
+            diagnostics["reason"] = (
+                f"SCAMP invocation returned code {completed.returncode}"
+            )
+            log(diagnostics["reason"])
+            return None, diagnostics
+        if not os.path.exists(header_name):
+            diagnostics["reason"] = "SCAMP did not produce an output header"
+            log(diagnostics["reason"])
+            return None, diagnostics
+        if not os.path.exists(xml_name):
+            diagnostics["reason"] = "SCAMP did not produce an XML report"
+            log(diagnostics["reason"])
+            return None, diagnostics
+
+        report = _scamp_xml_diagnostics(xml_name)
+        diagnostics["n_matches"] = report.get("NDeg_Reference")
+        diagnostics["chi2"] = report.get("Chi2_Reference")
+        if diagnostics["n_matches"] is not None:
+            chi2_display = (
+                diagnostics["chi2"] if diagnostics["chi2"] is not None else -1.0
+            )
+            log(
+                f"SCAMP fit {diagnostics['n_matches']:.0f} references "
+                f"(chi2 {chi2_display:.1f})"
+            )
+
+        with open(header_name, "r") as handle:
+            scamp_header = fits.Header.fromstring(
+                handle.read().encode("ascii", "ignore"), sep="\n"
+            )
+
+        # SCAMP sometimes returns a TAN solution despite the PV keywords, or a
+        # TPV CTYPE without the PV terms; normalise both cases.
+        if scamp_header.get("CTYPE1") != "RA---TPV" and "PV1_0" in scamp_header:
+            scamp_header["CTYPE1"] = "RA---TPV"
+            scamp_header["CTYPE2"] = "DEC--TPV"
+        elif scamp_header.get("CTYPE1") == "RA---TPV" and "PV1_0" not in scamp_header:
+            scamp_header["CTYPE1"] = "RA---TAN"
+            scamp_header["CTYPE2"] = "DEC--TAN"
+            scamp_header = WCS(scamp_header).to_header(relax=True)
+
+        refined_wcs = WCS(scamp_header)
+
+        diagnostics["astrometric_rms_arcsec"] = tuple(
+            float(scamp_header.get(key, 0.0)) * 3600.0
+            for key in ("ASTRRMS1", "ASTRRMS2")
+        )
+
+        reason = _check_scamp_solution(
+            wcs,
+            refined_wcs,
+            diagnostics,
+            sources,
+            cat,
+            sr,
+            shape,
+            cat_col_ra,
+            cat_col_dec,
+            min_matches=min_matches,
+        )
+        if reason is not None:
+            diagnostics["reason"] = reason
+            log(f"SCAMP solution rejected: {reason}")
+            return None, diagnostics
+
+        diagnostics["success"] = True
+        log("SCAMP solution accepted")
+        return refined_wcs, diagnostics
+    finally:
+        if not keep_workdir:
+            shutil.rmtree(workdir, ignore_errors=True)
+
+
+def refine_wcs_with_scamp(sources, cat, wcs, sr, **kwargs):
+    """Run SCAMP, retrying with wider matching tolerances on too few matches.
+
+    SCAMP's default pattern matching only tolerates a ~1 arcmin error on the
+    initial position (``POSITION_MAXERR``); a plate solution that is slightly
+    further off yields 0-few matches although the field is fine. The retry
+    widens the position/scale/angle tolerances and relaxes the S/N cut.
+    """
+    min_matches = kwargs.get("min_matches", SCAMP_MIN_MATCHES)
+    refined, diagnostics = None, {}
+    for attempt, extra in enumerate(SCAMP_RETRY_OPTIONS):
+        refined, diagnostics = _refine_wcs_with_scamp_once(
+            sources, cat, wcs, sr, extra_options=extra, **kwargs
+        )
+        n_matches = diagnostics.get("n_matches")
+        if refined is not None or n_matches is None or n_matches >= min_matches:
+            break
+        verbose = kwargs.get("verbose")
+        if callable(verbose):
+            verbose(
+                f"Only {n_matches:.0f} matches; retrying SCAMP with wider "
+                "matching tolerances"
+            )
+    diagnostics["attempts"] = attempt + 1
+    return refined, diagnostics
+
+
+def _default_column(table, column, default):
+    """Return ``table[column]`` as floats, or a constant column of ``default``."""
+    if column in table.colnames:
+        return np.asarray(table[column], dtype=float)
+    return np.full(len(table), float(default))
+
+
 def solve_with_astrometrynet(file_path):
     """
     Solve astrometric plate using local Astrometry.Net installation via stdpipe.
     This function loads a FITS image, detects objects using photutils, and uses stdpipe's
     blind_match_objects wrapper around Astrometry.Net to determine accurate WCS information.
 
-    Refactored to use stdpipe for detection, measurement, and refinement (Gaia DR2).
+    Object detection and measurement use stdpipe; the WCS refinement runs the
+    SCAMP binary directly against the Pan-STARRS DR1 catalogue (see
+    :func:`refine_wcs_with_scamp`).
 
     Parameters
     ----------
@@ -362,19 +981,9 @@ def solve_with_astrometrynet(file_path):
                 "INFO: No pixel scale estimate available, using broad range"
             )
 
-        # Prepare parameters for stdpipe blind_match_objects
-        kwargs = {
-            "order": 3,  # SIP distortion order
-            "update": False,  # Don't update object list in place
-            "sn": 5,
-            "get_header": False,  # Return WCS object, not header
-            "width": image_data.shape[1],
-            "height": image_data.shape[0],
-            "verbose": True,
-        }
-
-        # Note: Pixel scale constraints and RA/DEC hints are now handled
-        # in the solve_with_enhanced_strategy function
+        # Note: the stdpipe blind-match parameters (SIP order, pixel-scale
+        # constraints and RA/DEC hints) are handled inside
+        # solve_with_enhanced_strategy.
 
         try:
             # Use enhanced multi-stage plate solving strategy
@@ -383,13 +992,95 @@ def solve_with_astrometrynet(file_path):
             )
             log_messages.extend(stage_messages)
 
+            if solved_wcs is None:
+                api_key = _get_online_astrometry_api_key()
+                if api_key:
+                    log_messages.append(
+                        "INFO: Local plate solve failed; trying "
+                        "Astrometry.net "
+                        "online with the detected source list"
+                    )
+                    height, width = image_data.shape
+                    online_kwargs = {
+                        "order": 3,
+                        "sn": 5,
+                        "width": width,
+                        "height": height,
+                        "solve_timeout": 600,
+                        "api_key": api_key,
+                        "publicly_visible": "n",
+                    }
+
+                    try:
+                        hint_wcs = WCS(header)
+                        if hint_wcs.is_celestial:
+                            center_ra, center_dec, center_sr = (
+                                astrometry.get_frame_center(
+                                    wcs=hint_wcs,
+                                    width=width,
+                                    height=height,
+                                )
+                            )
+                            online_kwargs.update(
+                                {
+                                    "center_ra": center_ra,
+                                    "center_dec": center_dec,
+                                    "radius": max(1.0, 2 * center_sr),
+                                }
+                            )
+                            online_scale = (
+                                astrometry.get_pixscale(wcs=hint_wcs) * 3600
+                            )
+                        else:
+                            online_scale = pixel_scale_estimate
+                    except Exception as hint_error:
+                        online_scale = pixel_scale_estimate
+                        log_messages.append(
+                            "WARNING: Could not derive online solver hints: "
+                            f"{hint_error}"
+                        )
+
+                    if online_scale is not None and online_scale > 0:
+                        online_kwargs.update(
+                            {
+                                "scale_lower": 0.7 * online_scale,
+                                "scale_upper": 1.3 * online_scale,
+                                "scale_units": "arcsecperpix",
+                            }
+                        )
+
+                    try:
+                        solved_wcs = astrometry.blind_match_astrometrynet(
+                            sources, **online_kwargs
+                        )
+                        if solved_wcs is not None:
+                            log_messages.append(
+                                "SUCCESS: Online Astrometry.net plate solving "
+                                "successful"
+                            )
+                        else:
+                            log_messages.append(
+                                "WARNING: Online Astrometry.net plate solving "
+                                "returned no solution"
+                            )
+                    except Exception as online_error:
+                        log_messages.append(
+                            "WARNING: Online Astrometry.net solve failed: "
+                            f"{online_error}"
+                        )
+                else:
+                    log_messages.append(
+                        "INFO: Online Astrometry.net fallback skipped; no API "
+                        "key found in ASTROMETRY_API_KEY or Astroquery config"
+                    )
+
             if solved_wcs is not None:
                 log_messages.append("SUCCESS: Plate solving successful")
 
-                # --- Refinement Step (Gaia DR2) ---
+                # --- Refinement Step (Pan-STARRS DR1) ---
                 try:
                     log_messages.append(
-                        "INFO: Attempting WCS refinement using Gaia DR2"
+                        "INFO: Attempting WCS refinement using Pan-STARRS DR1"
                     )
 
                     # 1. Get image parameters from the initial solution
@@ -400,39 +1091,112 @@ def solve_with_astrometrynet(file_path):
                         wcs=solved_wcs, width=width, height=height
                     )
 
-                    # 2. Fetch Gaia DR2 catalog
+                    # 2. Fetch Pan-STARRS DR1 catalog
                     log_messages.append(
-                        f"INFO: Fetching Gaia DR2 catalog around RA={center_ra:.4f}, DEC={center_dec:.4f}, r={center_sr:.2f} deg"
+                        "INFO: Fetching Pan-STARRS DR1 catalog around "
+                        f"RA={center_ra:.4f}, DEC={center_dec:.4f}, "
+                        f"r={center_sr:.2f} deg"
                     )
                     cat = catalogs.get_cat_vizier(
-                        center_ra, center_dec, center_sr, "ps1", filters={"rmag": "<19"}
+                        center_ra,
+                        center_dec,
+                        center_sr,
+                        "ps1",
+                        filters={"rmag": "<19"},
                     )
 
                     if cat is not None and len(cat) > 10:
-                        log_messages.append(f"INFO: Retrieved {len(cat)} catalog stars")
+                        log_messages.append(
+                            f"INFO: Retrieved {len(cat)} catalog stars"
+                        )
 
                         # 3. Refine Astrometry
                         # Get pixel scale from solved WCS for matching radius
                         pixscale_deg = astrometry.get_pixscale(wcs=solved_wcs)
+                        refinement_sr = 7 * pixscale_deg
 
-                        refined_wcs = stdpipe_pipeline.refine_astrometry(
-                            sources,
-                            cat,
-                            sr=7 * pixscale_deg,  # Matching radius ~ 5 pixels
-                            wcs=solved_wcs,
-                            method="scamp",  # Prefer SCAMP as per notebook, falls back if not avail?
-                            cat_col_mag="rmag",
-                            verbose=True,
+                        required_source_columns = {
+                            "x", "y", "xerr", "yerr", "flux", "fluxerr",
+                            "mag", "magerr", "flags",
+                        }
+                        required_catalog_columns = {
+                            "RAJ2000", "DEJ2000", "rmag"
+                        }
+                        missing_source_columns = sorted(
+                            required_source_columns.difference(
+                                sources.colnames
+                            )
+                        )
+                        missing_catalog_columns = sorted(
+                            required_catalog_columns.difference(cat.colnames)
+                        )
+                        log_messages.append(
+                            "INFO: Refinement inputs: "
+                            f"{len(sources)} detections, "
+                            f"{len(cat)} catalog stars, "
+                            f"radius={refinement_sr * 3600:.2f} arcsec, "
+                            "missing source columns="
+                            f"{missing_source_columns or 'none'}, "
+                            "missing catalog columns="
+                            f"{missing_catalog_columns or 'none'}"
                         )
 
-                        if refined_wcs is not None:
+                        def refinement_logger(*parts, **_kwargs):
+                            message = " ".join(
+                                str(part) for part in parts
+                            ).strip()
+                            if message:
+                                log_messages.append(
+                                    f"INFO: SCAMP: {message}"
+                                )
+
+                        # Run the SCAMP binary directly (no stdpipe wrapper) and
+                        # keep the initial solution unless the refined one passes
+                        # the validation checks inside the function.
+                        refined_wcs, scamp_diagnostics = refine_wcs_with_scamp(
+                            sources,
+                            cat,
+                            wcs=solved_wcs,
+                            sr=refinement_sr,
+                            order=3,
+                            cat_col_mag="rmag",
+                            verbose=refinement_logger,
+                        )
+
+                        if scamp_diagnostics.get("executable") is None:
+                            log_messages.append(
+                                "WARNING: SCAMP executable not found; keeping "
+                                "the initial WCS solution"
+                            )
+                        elif refined_wcs is not None:
                             solved_wcs = refined_wcs
                             log_messages.append(
-                                "SUCCESS: Astrometry refined using Gaia DR2"
+                                "SUCCESS: Astrometry refined using "
+                                "Pan-STARRS DR1 and direct SCAMP"
                             )
+                            log_messages.append(
+                                "INFO: SCAMP diagnostics: "
+                                f"matches={scamp_diagnostics.get('n_matches')}, "
+                                f"chi2={scamp_diagnostics.get('chi2')}, "
+                                "astrometric RMS (arcsec)="
+                                f"{scamp_diagnostics.get('astrometric_rms_arcsec')}"
+                            )
+                            initial_rms = scamp_diagnostics.get(
+                                "initial_rms_arcsec"
+                            )
+                            refined_rms = scamp_diagnostics.get(
+                                "refined_rms_arcsec"
+                            )
+                            if initial_rms is not None and refined_rms is not None:
+                                log_messages.append(
+                                    "INFO: SCAMP cross-check: match RMS "
+                                    f"{initial_rms:.3f}\" -> {refined_rms:.3f}\""
+                                )
                         else:
                             log_messages.append(
-                                "WARNING: Astrometric refinement failed, keeping initial solution"
+                                "WARNING: Astrometric refinement failed "
+                                f"({scamp_diagnostics.get('reason')}), keeping "
+                                "initial solution"
                             )
                     else:
                         log_messages.append(
@@ -461,11 +1225,11 @@ def solve_with_astrometrynet(file_path):
 
                 # Add solution metadata
                 updated_header["COMMENT"] = (
-                    "WCS solution from astrometry.net (refined with Gaia DR2)"
+                    "Astrometry.net WCS; PS1 refinement attempted"
                 )
                 updated_header["STDPIPE"] = (
                     True,
-                    "Solved with astrometry.blind_match_objects + refinement",
+                    "Solved with blind matching and refinement",
                 )
 
                 # Display solution information

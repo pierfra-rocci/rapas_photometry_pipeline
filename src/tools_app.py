@@ -1,4 +1,5 @@
 import os
+import shutil
 import zipfile
 import base64
 import json
@@ -15,7 +16,13 @@ from astropy.io import fits
 
 # Local Application Imports
 from src.tools_pipeline import fix_header, get_filter_prefix
-from src.utils import write_to_log, ensure_output_directory
+from src.utils import (
+    write_to_log,
+    ensure_output_directory,
+    ensure_session_output_directory,
+    session_results_path,
+    session_tmp_directory,
+)
 
 warnings.filterwarnings("ignore")
 
@@ -61,46 +68,48 @@ def _safe_unlink_session_path(path_key: str) -> None:
         del st.session_state[path_key]
 
 
+def _remove_session_dirs() -> None:
+    """Delete this session's private temp and work folders (never the user's)."""
+    session_id = st.session_state.get("session_id")
+    if not session_id:
+        return
+    username = st.session_state.get("username") or "anonymous"
+    for getter in (session_tmp_directory, ensure_session_output_directory):
+        try:
+            path = getter(username, session_id)
+            if os.path.basename(path).startswith("work_"):
+                shutil.rmtree(path, ignore_errors=True)
+        except Exception:
+            pass
+
+
 def clear_all_caches():
-    """Clear all Streamlit caches and reset file upload state"""
+    """Reset this session's upload and analysis state.
+
+    Only the calling session is affected: no global Streamlit cache is cleared,
+    so other users' running analyses are left alone.
+    """
     try:
-        st.cache_data.clear()
-        if hasattr(st.cache_resource, "clear"):
-            st.cache_resource.clear()
-
-        # Clear file upload related session state
-        upload_keys = [
-            key for key in st.session_state.keys() if "uploader" in key.lower()
-        ]
-        for key in upload_keys:
-            del st.session_state[key]
-
-        # Also clear persisted uploaded file (if present)
-        if "uploaded" in st.session_state:
-            try:
-                del st.session_state["uploaded"]
-            except Exception:
-                pass
-
-        if "uploaded_bytes" in st.session_state:
-            try:
-                del st.session_state["uploaded_bytes"]
-            except Exception:
-                pass
-        if "uploaded_name" in st.session_state:
-            try:
-                del st.session_state["uploaded_name"]
-            except Exception:
-                pass
-
         _safe_unlink_session_path("uploaded_temp_path")
         _safe_unlink_session_path("science_file_path")
+        _remove_session_dirs()
+
+        # Drop the old uploader widget and rotate the key so a fresh, empty
+        # uploader is created in a single press.
+        for key in [k for k in st.session_state.keys() if k.startswith("science_uploader")]:
+            del st.session_state[key]
+        st.session_state["upload_generation"] = (
+            st.session_state.get("upload_generation", 0) + 1
+        )
 
         if "files_loaded" in st.session_state:
             st.session_state["files_loaded"] = {"science_file": None}
 
-        # Clear analysis results to hide download buttons
-        result_keys = [
+        for key in (
+            "uploaded",
+            "uploaded_bytes",
+            "uploaded_name",
+            "preview_header",
             "calibrated_header",
             "final_phot_table",
             "epsf_model",
@@ -108,21 +117,32 @@ def clear_all_caches():
             "log_buffer",
             "log_summary_written",
             "last_saved_log_content",
-        ]
-        for key in result_keys:
-            if key in st.session_state:
-                del st.session_state[key]
+            "stored_fits_filename",
+            "has_wcs",
+            "wcs_obj",
+            "proceed_without_wcs",
+            "manual_ra",
+            "manual_dec",
+            "valid_ra",
+            "valid_dec",
+            "mean_fwhm_pixel",
+            "pixel_size_arcsec",
+            "archived_selected_zip",
+            "archived_selected_zip_data",
+        ):
+            st.session_state.pop(key, None)
 
-        # Reset base filename to default
+        # A leftover True flag would auto-start an analysis on the next upload.
+        st.session_state["run_analysis_pipeline"] = False
+        if "run_photometry_pipeline" in st.session_state:
+            st.session_state["run_photometry_pipeline"] = False
         st.session_state["base_filename"] = "photometry"
-
-        st.success("All caches cleared successfully!")
-        st.rerun()
     except Exception as e:
-        st.error(f"Error clearing caches: {e}")
+        st.error(f"Error resetting analysis: {e}")
+        return
+    st.rerun()
 
 
-@st.cache_data(show_spinner=False)
 def load_fits_data(_file):
     """
     Load image data and header from a FITS file with robust error handling.
@@ -149,103 +169,132 @@ def load_fits_data(_file):
     - For 3D data (RGB or data cube), extracts the first 2D plane with appropriate warnings.
     - For higher dimensional data, takes the first slice along all extra dimensions.
     """
-    if _file is not None:
-        # Read bytes and guard against empty uploads
+    if _file is None:
+        return None, None
+
+    # Read bytes and guard against empty uploads. Reading happens outside the
+    # cache and the cache key is the file content, so two different uploads can
+    # never share a cached result.
+    try:
         try:
-            file_content = _file.read()
-        except Exception as e:
-            st.error(f"Failed to read uploaded file: {e}")
-            return None, None
+            _file.seek(0)
+        except Exception:
+            pass
+        file_content = _file.read()
+    except Exception as e:
+        st.error(f"Failed to read uploaded file: {e}")
+        return None, None
 
-        if not file_content:
-            st.error("Uploaded FITS file is empty.")
-            return None, None
+    if not file_content:
+        st.error("Uploaded FITS file is empty.")
+        return None, None
 
-        # Try opening the FITS file and handle corrupt/invalid FITS gracefully
-        try:
-            hdul = fits.open(BytesIO(file_content), mode="readonly")
-        except OSError as e:
-            st.error(f"Invalid or corrupt FITS file: {e}")
-            return None, None
-        except Exception as e:
-            st.error(f"Error opening FITS file: {e}")
-            return None, None
+    data, header, messages = _parse_fits_bytes(file_content)
 
-        try:
-            data = hdul[0].data
-            hdul.verify("fix")
-            header = hdul[0].header
+    # UI messages and log writes are replayed here, in the calling session: the
+    # cached parser must stay free of per-session side effects, otherwise only the
+    # first session to see a given file would get them.
+    log_buffer = st.session_state.get("log_buffer")
+    for ui, log_level, text in messages:
+        if log_buffer and log_level:
+            write_to_log(log_buffer, text, level=log_level)
+        if ui == "error":
+            st.error(text)
+        elif ui == "warning":
+            st.warning(text)
+        elif ui == "info":
+            st.info(text)
+    return data, header
 
-            if data is None:
-                for i, hdu in enumerate(hdul[1:], 1):
-                    if hasattr(hdu, "data") and hdu.data is not None:
-                        data = hdu.data
-                        header = hdu.header
-                        if st.session_state.get("log_buffer"):
-                            write_to_log(
-                                st.session_state["log_buffer"],
-                                f"Primary HDU has no data. Using data from HDU #{i}.",
-                            )
-                        break
 
-            if data is None:
-                st.warning("No image data found in the FITS file.")
-                return None, None
+@st.cache_data(show_spinner=False)
+def _parse_fits_bytes(file_content: bytes):
+    """Parse FITS bytes into ``(image_data, header, messages)``; cached by content.
 
-            if len(data.shape) == 3:
-                if data.shape[0] == 3 or data.shape[0] == 4:
-                    st.info("Using first color channel.")
-                    data = data[0]
-                elif data.shape[2] == 3 or data.shape[2] == 4:
-                    st.info("Using first color channel.")
-                    data = data[:, :, 0]
-                else:
-                    data = data[0]
-            elif len(data.shape) > 3:
-                st.warning(
-                    f"Data has {len(data.shape)} dimensions. Using first slice only."
-                )
-                sliced_data = data
-                while len(sliced_data.shape) > 2:
-                    sliced_data = sliced_data[0]
-                data = sliced_data
+    Pure function: ``messages`` is a list of ``(ui, log_level, text)`` for the
+    caller to display (ui: error/warning/info/None) and log (log_level or None).
+    """
+    messages = []
+    if not file_content:
+        return None, None, messages
 
-            # Apply header fixes before returning
-            try:
-                fixed_header, log_messages = fix_header(header)
-                header = fixed_header
-                if st.session_state.get("log_buffer"):
-                    for msg in log_messages:
-                        level, message = msg.split(":", 1)
-                        write_to_log(
-                            st.session_state["log_buffer"],
-                            message.strip(),
-                            level=level.strip(),
-                        )
-                        if level.strip() == "WARNING":
-                            st.warning(message.strip())
+    try:
+        hdul = fits.open(BytesIO(file_content), mode="readonly")
+    except OSError as e:
+        messages.append(("error", None, f"Invalid or corrupt FITS file: {e}"))
+        return None, None, messages
+    except Exception as e:
+        messages.append(("error", None, f"Error opening FITS file: {e}"))
+        return None, None, messages
 
-            except Exception as fix_error:
-                st.warning(f"Header fixing encountered an issue: {str(fix_error)}")
-                if st.session_state.get("log_buffer"):
-                    write_to_log(
-                        st.session_state["log_buffer"],
-                        f"Header fixing failed: {str(fix_error)}",
-                        level="WARNING",
+    try:
+        data = hdul[0].data
+        hdul.verify("fix")
+        header = hdul[0].header
+
+        if data is None:
+            for i, hdu in enumerate(hdul[1:], 1):
+                if hasattr(hdu, "data") and hdu.data is not None:
+                    data = hdu.data
+                    header = hdu.header
+                    messages.append(
+                        (None, "INFO", f"Primary HDU has no data. Using data from HDU #{i}.")
                     )
+                    break
 
-            return data, header
+        if data is None:
+            messages.append(("warning", None, "No image data found in the FITS file."))
+            return None, None, messages
 
-        except Exception as e:
-            st.error(f"Error loading FITS file: {str(e)}")
-            return None, None
-        finally:
-            try:
-                hdul.close()
-            except Exception:
-                pass
+        if len(data.shape) == 3:
+            if data.shape[0] == 3 or data.shape[0] == 4:
+                messages.append(("info", None, "Using first color channel."))
+                data = data[0]
+            elif data.shape[2] == 3 or data.shape[2] == 4:
+                messages.append(("info", None, "Using first color channel."))
+                data = data[:, :, 0]
+            else:
+                data = data[0]
+        elif len(data.shape) > 3:
+            messages.append(
+                (
+                    "warning",
+                    None,
+                    f"Data has {len(data.shape)} dimensions. Using first slice only.",
+                )
+            )
+            sliced_data = data
+            while len(sliced_data.shape) > 2:
+                sliced_data = sliced_data[0]
+            data = sliced_data
 
-    return None, None
+        try:
+            fixed_header, log_messages = fix_header(header)
+            header = fixed_header
+            for msg in log_messages:
+                level, _, message = msg.partition(":")
+                level = level.strip()
+                messages.append(
+                    ("warning" if level == "WARNING" else None, level, message.strip())
+                )
+        except Exception as fix_error:
+            messages.append(
+                ("warning", None, f"Header fixing encountered an issue: {str(fix_error)}")
+            )
+            messages.append(
+                (None, "WARNING", f"Header fixing failed: {str(fix_error)}")
+            )
+
+        return data, header, messages
+
+    except Exception as e:
+        messages.append(("error", None, f"Error loading FITS file: {str(e)}"))
+        return None, None, messages
+    finally:
+        try:
+            hdul.close()
+        except Exception:
+            pass
 
 
 def display_catalog_in_aladin(
@@ -331,7 +380,17 @@ def display_catalog_in_aladin(
 
     catalog_sources = []
     required_cols = {ra_col, dec_col}
-    optional_cols = {mag_col, alt_mag_col, catalog_col}.union(set(id_cols))
+    catalog_id_cols = {
+        "simbad_main_id",
+        "aavso_Name",
+        "astrocolibri_name",
+        "skybot_NAME",
+        "qso_name",
+        "pc10_name",
+    }
+    optional_cols = {mag_col, alt_mag_col, catalog_col}.union(
+        set(id_cols), catalog_id_cols
+    )
     available_cols = set(final_table.columns)
 
     present_optional_cols = optional_cols.intersection(available_cols)
@@ -414,6 +473,22 @@ def display_catalog_in_aladin(
                 qso_name = str(row["qso_name"]).strip()
                 if qso_name and qso_name not in ["", "nan", "None"]:
                     catalog_matches["QSO"] = qso_name
+
+            if (
+                "skybot_NAME" in present_optional_cols
+                and pd.notna(row["skybot_NAME"])
+            ):
+                skybot_name = str(row["skybot_NAME"]).strip()
+                if skybot_name and skybot_name not in ["", "nan", "None"]:
+                    catalog_matches["SkyBoT"] = skybot_name
+
+            if (
+                "pc10_name" in present_optional_cols
+                and pd.notna(row["pc10_name"])
+            ):
+                pc10_name = str(row["pc10_name"]).strip()
+                if pc10_name and pc10_name not in ["", "nan", "None"]:
+                    catalog_matches["10 Parsec"] = pc10_name
 
             # GAIA matches (if calibration star)
             if "gaia_calib_star" in present_optional_cols and row.get(
@@ -510,7 +585,7 @@ def display_catalog_in_aladin(
 
                     // Header with catalog ID if available, otherwise source number
                     if(source.catalog_id) {{
-                        popupContent += '<h4 style="margin:0 0 8px 0; color:#2c5282;">Source ID: ' + source.catalog_id + '</h4>';
+                        popupContent += '<h4 style="margin:0 0 8px 0; color:#2c5282;">Source ID: ' + String(source.catalog_id).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') + '</h4>';
                     }} else if(source.source_number) {{
                         popupContent += '<h4 style="margin:0 0 8px 0; color:#2c5282;">Source #' + source.source_number + '</h4>';
                     }}
@@ -638,6 +713,7 @@ def provide_download_buttons(folder_path):
             for f in os.listdir(folder_path)
             if os.path.isfile(os.path.join(folder_path, f))
             and f.startswith(base_filename)
+            and f[len(base_filename):len(base_filename) + 1] in ("", "_", ".", "-")
             and not f.lower().endswith(".zip")
             and not f.lower().endswith(".fits")
         ]
@@ -829,7 +905,11 @@ def plot_magnitude_distribution(final_table, log_buffer=None):
             for col in final_table.columns
             if col.startswith("aperture_mag_") and "err" not in col
         ]
-    aperture_mag_col = aperture_mag_cols[0] if aperture_mag_cols else None
+    # Plots compare PSF photometry against the 1.1xFWHM aperture when available.
+    _preferred = [c for c in aperture_mag_cols if c.endswith("_1_1")]
+    aperture_mag_col = (
+        _preferred[0] if _preferred else (aperture_mag_cols[0] if aperture_mag_cols else None)
+    )
 
     # Construct the error column name: aperture_mag_1.1 -> aperture_mag_err_1.1
     if aperture_mag_col:
@@ -958,6 +1038,136 @@ def plot_magnitude_distribution(final_table, log_buffer=None):
     return fig_mag
 
 
+def plot_photometry_offsets(final_table, log_buffer=None):
+    """Plot the per-source PSF-minus-aperture magnitude offsets.
+
+    Both photometry methods are placed on the same total-flux scale (aperture
+    fluxes are encircled-energy corrected with the empirical PSF), so the offset
+    ``psf_mag - aperture_mag`` should be centred on zero. The left panel shows
+    the offset against the calibrated PSF magnitude for every aperture (with the
+    zero line and the per-aperture median), the right panel its distribution. A
+    median shifted away from zero is a direct visual counterpart of the
+    ``check_psf_aperture_consistency`` warning.
+
+    Parameters
+    ----------
+    final_table : pandas.DataFrame
+        Final catalog containing ``psf_minus_aperture_mag_X_X`` columns. Both the
+        legacy and filter-prefixed column names are handled.
+    log_buffer : StringIO, optional
+        Log buffer for status messages.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Figure with the offset scatter and histogram, or a placeholder figure
+        when no offset columns are present.
+    """
+    fig_offset, (ax_scatter, ax_hist) = plt.subplots(
+        1, 2, figsize=(14, 5), dpi=100
+    )
+
+    marker = "psf_minus_aperture_mag_"
+    # Prefer one column per radius: if both the legacy and the prefixed form are
+    # present (they hold the same values) keep a single one.
+    by_radius = {}
+    for col in final_table.columns:
+        if marker in col:
+            radius_label = col.split(marker, 1)[1]
+            by_radius.setdefault(radius_label, col)
+    # All apertures are shown; the 1.1xFWHM one comes first (first colour).
+    offset_cols = [by_radius[label] for label in sorted(by_radius)]
+
+    if not offset_cols:
+        for ax in (ax_scatter, ax_hist):
+            ax.text(
+                0.5,
+                0.5,
+                "No PSF/aperture offset data available",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+            )
+        fig_offset.tight_layout()
+        return fig_offset
+
+    colors = plt.cm.tab10.colors
+    plotted = 0
+    for index, col in enumerate(offset_cols):
+        radius_label = col.split(marker, 1)[1]
+        prefix = col.split(marker, 1)[0]  # "" or e.g. "rapasg_"
+        psf_mag_col = f"{prefix}psf_mag"
+
+        offsets = pd.to_numeric(final_table[col], errors="coerce").to_numpy(
+            dtype=float
+        )
+        finite = np.isfinite(offsets)
+        if not finite.any():
+            continue
+
+        color = colors[index % len(colors)]
+        median_offset = float(np.median(offsets[finite]))
+
+        if psf_mag_col in final_table.columns:
+            x_values = pd.to_numeric(
+                final_table[psf_mag_col], errors="coerce"
+            ).to_numpy(dtype=float)
+            valid = finite & np.isfinite(x_values)
+            if valid.any():
+                ax_scatter.scatter(
+                    x_values[valid],
+                    offsets[valid],
+                    alpha=0.6,
+                    s=16,
+                    color=color,
+                    label=f"{radius_label}×FWHM (median {median_offset:+.3f})",
+                )
+
+        ax_scatter.axhline(median_offset, color=color, linestyle="--", linewidth=1)
+        ax_hist.hist(
+            offsets[finite],
+            bins=30,
+            alpha=0.6,
+            color=color,
+            label=f"{radius_label}×FWHM (n={int(finite.sum())})",
+        )
+        plotted += 1
+
+    if plotted == 0:
+        for ax in (ax_scatter, ax_hist):
+            ax.text(
+                0.5,
+                0.5,
+                "No finite PSF/aperture offsets",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+            )
+        fig_offset.tight_layout()
+        return fig_offset
+
+    ax_scatter.axhline(0.0, color="black", linewidth=1)
+    ax_scatter.set_xlabel("Calibrated PSF Magnitude")
+    ax_scatter.set_ylabel("PSF − aperture magnitude")
+    ax_scatter.set_title("PSF-minus-aperture offset vs magnitude")
+    ax_scatter.grid(True, alpha=0.3)
+    ax_scatter.legend(fontsize=8)
+
+    ax_hist.axvline(0.0, color="black", linewidth=1)
+    ax_hist.set_xlabel("PSF − aperture magnitude")
+    ax_hist.set_ylabel("Number of sources")
+    ax_hist.set_title("Distribution of PSF-minus-aperture offsets")
+    ax_hist.grid(True, alpha=0.3)
+    ax_hist.legend(fontsize=8)
+
+    fig_offset.tight_layout()
+
+    if log_buffer:
+        write_to_log(log_buffer, "Created PSF-minus-aperture offset plot")
+
+    return fig_offset
+
+
 def handle_log_messages(log_messages):
     """
     Process and display log messages in the Streamlit interface.
@@ -968,7 +1178,7 @@ def handle_log_messages(log_messages):
         A list of log messages, each formatted as "LEVEL: message"
     """
     for msg in log_messages:
-        level, message = msg.split(":", 1)
+        level, _, message = msg.partition(":")
         write_to_log(
             st.session_state.log_buffer,
             message.strip(),
@@ -1009,9 +1219,10 @@ def initialize_session_state():
 
     # Output directory
     if "output_dir" not in st.session_state:
-        username = st.session_state.get("username", "anonymous")
-        st.session_state.output_dir = ensure_output_directory(
-            directory=f"{username}_results"
+        username = st.session_state.get("username") or "anonymous"
+        st.session_state.output_dir = session_results_path(
+            ensure_output_directory(directory=f"{username}_results"),
+            st.session_state.get("session_id"),
         )
 
     # Analysis Parameters
@@ -1020,6 +1231,8 @@ def initialize_session_state():
         "threshold_sigma": 3.0,
         "fwhm_radius_factor": 1.5,
         "detection_mask": 10,
+        "mag_err_max": 2.0,
+        "effective_gain": 0.0,
         "filter_band": "phot_g_mean_mag",
         "filter_max_mag": 21.0,
         "astrometry_check": True,
@@ -1182,6 +1395,11 @@ def cleanup_temp_files():
                         if os.path.isfile(os.path.join(base_dir, f))
                         and f.lower().endswith(
                             (".fits", ".fit", ".fts", ".log", ".png")
+                        )
+                        and (
+                            not st.session_state.get("base_filename")
+                            or f.startswith(st.session_state["base_filename"])
+                            or f == os.path.basename(temp_file)
                         )
                     ]
                     for file in temp_dir_files:

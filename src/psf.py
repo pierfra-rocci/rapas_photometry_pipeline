@@ -7,13 +7,14 @@ import matplotlib.pyplot as plt
 from astropy.table import Table
 from astropy.nddata import NDData
 from astropy.io import fits
+from astropy.stats import sigma_clipped_stats
 from astropy.visualization import simple_norm
 
 from photutils.psf import EPSFBuilder, extract_stars, PSFPhotometry
 from photutils.psf import SourceGrouper, EPSFStars
 
 from src.tools_pipeline import FIGURE_SIZES
-from src.utils import ensure_output_directory
+from src.utils import ensure_output_directory, sanitize_username, session_results_path
 
 from typing import Any, Optional, Tuple
 
@@ -27,6 +28,9 @@ def perform_psf_photometry(
     error=None,
     max_sources_for_psf: int = 700,
     max_stars_for_epsf: int = 350,
+    local_background_std_factor: float = 3.0,
+    local_bkg_inner_factor: float = 2.0,
+    local_bkg_outer_factor: float = 3.0,
 ) -> Tuple[Optional[Table], Optional[Any]]:
     """
     Perform PSF (Point Spread Function) photometry using an empirically-constructed PSF model.
@@ -55,6 +59,11 @@ def perform_psf_photometry(
     max_stars_for_epsf : int, optional
         Maximum number of stars to use for final EPSF building (default: 200)
         Only the brightest stars are selected if more are available
+    local_background_std_factor : float, optional
+        Maximum allowed ratio between the local background scatter around a
+        star and the global background scatter (default: 3.0). Sources with
+        more variable local backgrounds (nebulosity, gradients, or a nearby
+        bright neighbour) are excluded from the PSF model.
 
     Returns
     -------
@@ -96,10 +105,29 @@ def perform_psf_photometry(
         st.error(f"Error in initial validation: {e}")
         raise
 
-    # Filter photo_table to select only the best stars for PSF model
-    # IMPORTANT: Keep original photo_table for final photometry on ALL sources
-    photo_table_all_sources = photo_table  # Store original table
+    # Local background estimator (sigma-clipped median annulus). It is used both
+    # to de-contaminate the star cutouts that build the empirical PSF and to
+    # subtract a per-source background before the PSF fits, so both stages share
+    # one annulus definition. The annulus radii must sit outside ``fit_shape``.
+    local_bkg_estimator = None
+    if local_bkg_inner_factor > 0 and local_bkg_outer_factor > local_bkg_inner_factor:
+        try:
+            from photutils.background import LocalBackground
 
+            local_bkg_estimator = LocalBackground(
+                local_bkg_inner_factor * fwhm,
+                local_bkg_outer_factor * fwhm,
+            )
+        except Exception as local_bkg_error:
+            local_bkg_estimator = None
+            st.warning(
+                f"Local background estimator unavailable: {local_bkg_error}. "
+                "PSF photometry continues without it."
+            )
+
+    # Filter photo_table to select only the best stars for PSF model.
+    # The original photo_table is intentionally left untouched so the final
+    # photometry is performed on ALL sources.
     try:
         st.write("Filtering stars for PSF model construction...")
         st.write(f"Starting with {len(photo_table)} sources")
@@ -245,18 +273,22 @@ def perform_psf_photometry(
                 #     f"  ⓘ S/N approximated as √flux for {np.sum(valid_snr)} sources (Poisson assumption)"
                 # )
 
-        # S/N threshold: ADAPTIVE based on actual S/N distribution
-        # If S/N is approximated (Poisson), use percentile-based threshold instead of fixed value
+        # S/N threshold: adaptive based on the actual S/N distribution.
+        # When no per-source S/N/flux_err is available it is approximated as
+        # sqrt(flux), which is NOT a quality measure: a percentile cut on it
+        # simply discards half the candidates and, combined with the flux
+        # window, could leave fewer than the minimum number of stars and abort
+        # PSF photometry entirely. In that case the flux window already keeps
+        # the bright (high-S/N) half, so no S/N filtering is applied.
         snr_finite = snr[valid_snr]
         if len(snr_finite) > 0:
             snr_median = np.median(snr_finite)
 
-            if snr_is_approximated or snr_median < 10:
-                # Use adaptive threshold: select top 50% of S/N values
+            if snr_is_approximated:
+                snr_threshold = 0.0
+            elif snr_median < 10:
+                # Real S/N values, but the field is faint: keep the top half.
                 snr_threshold = max(snr_median, np.percentile(snr_finite, 50))
-                # st.write(
-                #     f"  ⓘ Using adaptive S/N threshold (median S/N={snr_median:.1f})"
-                # )
             else:
                 # Use fixed threshold for proper S/N values
                 snr_threshold = 20.0
@@ -314,32 +346,28 @@ def perform_psf_photometry(
         # n_flux_pass = np.sum(flux_criteria)
         # st.write(f"  ✓ Flux range: {n_flux_pass} sources")
 
-        # ========== SATURATION FILTERING (STRICTER) ==========
-        # Reject sources with peak values close to saturation
-        # Use 85th percentile for stricter saturation rejection
+        # ========== SATURATION FILTERING ==========
+        # Last-resort guard against flat-topped (clipped) cores. Truly saturated
+        # pixels are already flagged by the pipeline mask before detection (the
+        # finder does not detect sources whose centroid falls on a masked pixel),
+        # so this must NOT reject the brightest unsaturated stars: the previous
+        # 85th-percentile / 85%-of-image-maximum cut removed exactly the best
+        # PSF stars and, in clean fields, left fewer than the minimum and aborted
+        # PSF photometry entirely. Only peaks at the very top of the frame (where
+        # the detector has clipped) are rejected.
         saturation_criteria = np.ones(n_sources, dtype=bool)
         valid_peak = np.isfinite(peak)
         if np.any(valid_peak):
-            peak_values = peak[valid_peak]
-            # Use 85th percentile as a STRICT saturation limit (was 95th)
-            peak_85 = np.percentile(peak_values, 85)
-            # Also check against image maximum (typical CCD saturation ~65535 for 16-bit)
-            img_max = np.nanmax(img)
-            saturation_limit = min(
-                peak_85 * 0.95, img_max * 0.85
-            )  # 5% below 85th or 85% of max
+            img_max = float(np.nanmax(img))
+            saturation_limit = img_max * 0.995
             saturation_criteria[valid_peak] = peak[valid_peak] < saturation_limit
-            # n_sat_pass = np.sum(saturation_criteria)
-            # st.write(
-            #     f"  ✓ Saturation check (strict): {n_sat_pass} "
-            #     f"unsaturated sources (limit: {saturation_limit:.0f}, img_max: {img_max:.0f})"
-            # )
         else:
-            # No peak data available; use image maximum as fallback
-            img_max = np.nanmax(img)
-            saturation_limit = img_max * 0.80  # 80% of image max
+            # No peak data available; use image maximum as fallback.
+            img_max = float(np.nanmax(img))
+            saturation_limit = img_max * 0.995
             st.warning(
-                f"  ⓘ No peak flux in catalog; using 80% of image max ({saturation_limit:.0f}) as limit"
+                f"  ⓘ No peak flux in catalog; using 99.5% of image max "
+                f"({saturation_limit:.0f}) as saturation limit"
             )
 
         # ========== SIZE/FWHM FILTERING ==========
@@ -402,8 +430,12 @@ def perform_psf_photometry(
         # Convert flux to magnitude for neighbor comparison
         # (simple: -2.5 log10(flux))
         # Avoid log of non-positive values
-        flux_safe = np.where(flux > 0, flux, 1.0)
-        magnitude = -2.5 * np.log10(flux_safe)
+        # Non-positive/NaN flux -> +inf mag (faint): never a "bright neighbour"
+        flux_safe = np.where(np.isfinite(flux) & (flux > 0), flux, np.nan)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            magnitude = np.where(
+                np.isnan(flux_safe), np.inf, -2.5 * np.log10(flux_safe)
+            )
 
         for i in range(n_sources):
             if not (valid_xcentroid[i] and valid_ycentroid[i] and valid_flux[i]):
@@ -460,6 +492,22 @@ def perform_psf_photometry(
         local_box_size = int(max(5 * fwhm, 25))  # Box size for local background check
         half_box = local_box_size // 2
 
+        # Global robust background scatter, used as the reference for the local
+        # flatness test. A ratio to the global scatter is scale-free and stays
+        # valid for background-subtracted images (where the local median is ~0),
+        # unlike the previous median-relative test which rejected every source
+        # once the sky level had been subtracted.
+        try:
+            _, _, global_bkg_std = sigma_clipped_stats(img, sigma=3.0, maxiters=5)
+        except Exception:
+            global_bkg_std = None
+        if (
+            global_bkg_std is None
+            or not np.isfinite(global_bkg_std)
+            or global_bkg_std <= 0
+        ):
+            global_bkg_std = None
+
         n_background_checked = 0
         for i in range(n_sources):
             if not (valid_xcentroid[i] and valid_ycentroid[i]):
@@ -514,16 +562,15 @@ def perform_psf_photometry(
 
             n_background_checked += 1
 
-            # Check background flatness: std should be small relative to median
-            bkg_median = np.median(background_values)
+            # Reject sources whose local background is much more scattered than
+            # the global background (nebulosity, gradients, nearby bright stars).
+            # Comparing scatter-to-scatter is robust to the sign and magnitude of
+            # the (sky-subtracted) local median.
             bkg_std = np.std(background_values)
-
-            # Reject if background is too variable (> 10% of median or > 3σ above typical)
-            # Also check for gradient by comparing quadrants
-            if bkg_median > 0:
-                bkg_variation = bkg_std / bkg_median
-                if bkg_variation > 0.15:  # More than 15% variation
-                    background_criteria[i] = False
+            if global_bkg_std is not None and bkg_std > (
+                local_background_std_factor * global_bkg_std
+            ):
+                background_criteria[i] = False
 
         # n_bkg_pass = np.sum(background_criteria)
         # st.write(
@@ -588,20 +635,26 @@ def perform_psf_photometry(
 
         # Check if we have enough stars for HIGH-QUALITY PSF (target: 100+)
         min_stars_optimal = 100
-        min_stars_acceptable = 15  # Minimum required - below this, PSF is not computed
+        min_stars_acceptable = 10  # Minimum required - below this, PSF is not computed
+        min_stars_good = 25
 
         if len(filtered_photo_table) >= min_stars_optimal:
             st.success(
                 f"✓ {len(filtered_photo_table)} high-quality PSF stars selected "
                 f"(target: ≥{min_stars_optimal})"
             )
-        elif len(filtered_photo_table) >= min_stars_acceptable:
+        elif len(filtered_photo_table) >= min_stars_good:
             st.warning(
                 f"⚠ {len(filtered_photo_table)} PSF stars (acceptable but <{min_stars_optimal}). "
                 f"PSF model may have reduced accuracy."
             )
+        elif len(filtered_photo_table) >= min_stars_acceptable:
+            st.warning(
+                f"⚠ Only {len(filtered_photo_table)} PSF stars (<{min_stars_good}): "
+                f"the PSF model quality may be poor. Interpret PSF photometry with caution."
+            )
         else:
-            # Less than 15 stars: do not compute PSF
+            # Fewer than the minimum number of stars: do not compute PSF
             st.error(
                 f"❌ Only {len(filtered_photo_table)} PSF stars available (minimum: {min_stars_acceptable}). "
                 f"PSF photometry will NOT be performed. Consider using aperture photometry only."
@@ -623,22 +676,85 @@ def perform_psf_photometry(
         raise
 
     try:
-        # Ensure fit_shape accommodates 1.3*FWHM aperture radius
-        fit_shape = int(3 * fwhm)
+        # Fitting region around each source. Rounding (not truncating) keeps the
+        # region centred on the source; a truncating ``int()`` shifted the
+        # effective aperture radius by up to half a pixel.
+        fit_shape = int(round(3 * fwhm))
+        if fit_shape < 3:
+            fit_shape = 3
         if fit_shape % 2 == 0:
             fit_shape += 1
         aperture_radius = fit_shape / 2.0
+
+        # The empirical PSF is extracted from a LARGER cutout than the fitting
+        # region. A cutout of only 3 x FWHM has a radius of 1.5 x FWHM, exactly
+        # the largest aperture used for the encircled-energy correction: the ePSF
+        # wings are truncated and normalised away, which biases the
+        # aperture-correction curve (and the fitted fluxes) for extended PSFs.
+        # Extending the extraction to ~5 x FWHM captures the wings while the fit
+        # itself still uses the compact ``fit_shape``.
+        psf_extraction_size = int(round(5 * fwhm))
+        if psf_extraction_size < fit_shape:
+            psf_extraction_size = fit_shape
+        if psf_extraction_size % 2 == 0:
+            psf_extraction_size += 1
+
         st.write(
             f"Fitting shape: {fit_shape} pixels "
             f"(aperture radius: {aperture_radius:.2f} px = "
-            f"{aperture_radius / fwhm:.2f} × FWHM)."
+            f"{aperture_radius / fwhm:.2f} × FWHM); "
+            f"ePSF extraction: {psf_extraction_size} pixels."
         )
     except Exception as e:
         st.error(f"Error calculating fitting shape: {e}")
         raise
 
+    # De-contaminate the cutouts that build the empirical PSF: subtract the local
+    # sky/nebulosity pedestal (per star) from a copy of the image before
+    # extraction, so the ePSF is not built from background-contaminated stars.
+    # The science image used for the actual fits (``img``) is left untouched.
+    epsf_nddata = nddata
+    if local_bkg_estimator is not None:
+        try:
+            star_x = np.asarray(stars_table["x"], dtype=float)
+            star_y = np.asarray(stars_table["y"], dtype=float)
+            star_bgks = np.asarray(
+                local_bkg_estimator(
+                    img, star_x, star_y, mask=mask if mask is not None else None
+                ),
+                dtype=float,
+            )
+            star_bgks = np.where(np.isfinite(star_bgks), star_bgks, 0.0)
+            if np.any(star_bgks != 0):
+                epsf_image = np.asarray(img, dtype=float).copy()
+                ny, nx = epsf_image.shape
+                half = max(psf_extraction_size // 2, 1)
+                for (x0, y0), bkg in zip(zip(star_x, star_y), star_bgks):
+                    xi, yi = int(round(x0)), int(round(y0))
+                    y_lo, y_hi = max(0, yi - half), min(ny, yi + half + 1)
+                    x_lo, x_hi = max(0, xi - half), min(nx, xi + half + 1)
+                    epsf_image[y_lo:y_hi, x_lo:x_hi] -= bkg
+                try:
+                    from astropy.nddata import StdDevUncertainty
+
+                    epsf_unc = (
+                        StdDevUncertainty(error) if error is not None else None
+                    )
+                except Exception:
+                    epsf_unc = None
+                epsf_nddata = NDData(
+                    data=epsf_image,
+                    mask=mask if mask is not None else None,
+                    uncertainty=epsf_unc,
+                )
+        except Exception as star_bkg_error:
+            epsf_nddata = nddata
+            st.warning(
+                f"Could not de-contaminate ePSF star cutouts: {star_bkg_error}"
+            )
+
     try:
-        stars = extract_stars(nddata, stars_table, size=fit_shape)
+        stars = extract_stars(epsf_nddata, stars_table, size=psf_extraction_size)
 
         if isinstance(stars, list):
             if len(stars) == 0:
@@ -652,7 +768,11 @@ def perform_psf_photometry(
         # basic inspection of cutouts for NaN/all-zero
         if hasattr(stars, "data") and stars.data is not None:
             if isinstance(stars.data, list) and len(stars.data) > 0:
-                has_nan = any(np.isnan(star_data).any() for star_data in stars.data)
+                if any(np.isnan(star_data).any() for star_data in stars.data):
+                    st.warning(
+                        "Some extracted PSF stars contain NaN pixels; they will "
+                        "be filtered out before ePSF building."
+                    )
             else:
                 st.write("Stars data is empty or not a list")
         else:
@@ -829,8 +949,11 @@ def perform_psf_photometry(
             st.warning(f"ImagePSF creation failed: {ipsf_err}")
             psf_for_phot = epsf
 
-        # Verify PSF model center
-        psf_center_y, psf_center_x = np.array(epsf_data.shape) / 2.0
+        # Verify PSF model center. The centre of an N-pixel grid is (N-1)/2
+        # (0-based), not N/2: using N/2 reported a spurious half/oversampled-pixel
+        # offset for a perfectly centred PSF and could trigger an unnecessary
+        # re-centering that shifts the model off-centre.
+        psf_center_y, psf_center_x = (np.array(epsf_data.shape) - 1.0) / 2.0
         st.write(
             f"PSF model center: ({psf_center_x:.2f}, {psf_center_y:.2f}) in oversampled pixels"
         )
@@ -893,6 +1016,14 @@ def perform_psf_photometry(
                 f"✓ PSF peak offset from center: ({offset_x:.2f}, {offset_y:.2f}) pixels (acceptable)"
             )
 
+        # Make the returned / session-state model the very object used for the
+        # fits (``psf_for_phot``). If the PSF was re-centered above, its data now
+        # differs from the original ``epsf``; the downstream encircled-energy
+        # aperture correction reads ``epsf_model.data`` and must see the same PSF
+        # that produced the fluxes.
+        epsf = psf_for_phot
+        st.session_state["epsf_model"] = epsf
+
         # Save / display epsf as FITS and figure (best-effort)
         try:
             hdu = fits.PrimaryHDU(data=epsf_data)
@@ -937,11 +1068,15 @@ def perform_psf_photometry(
             hdu.header["NSTARS"] = (nstars_val, "Number of stars used for PSF model")
 
             psf_filename = (
-                f"{st.session_state.get('base_filename', 'psf_model')}_psf.fits"
+                f"{os.path.basename(str(st.session_state.get('base_filename', 'psf_model')))}_psf.fits"
             )
-            username = st.session_state.get("username", "anonymous")
+            username = sanitize_username(st.session_state.get("username", "anonymous"))
             psf_filepath = os.path.join(
-                ensure_output_directory(directory=f"{username}_results"), psf_filename
+                session_results_path(
+                    ensure_output_directory(directory=f"{username}_results"),
+                    st.session_state.get("session_id"),
+                ),
+                psf_filename,
             )
             hdu.writeto(psf_filepath, overwrite=True)
 
@@ -959,6 +1094,7 @@ def perform_psf_photometry(
             title = f"Fitted PSF Model ({nstars_val} stars)"
             ax_epsf_model.set_title(title)
             st.pyplot(fig_epsf_model)
+            plt.close(fig_epsf_model)
         except Exception as e:
             st.warning(f"Error working with PSF model display/save: {e}")
     except Exception as e:
@@ -984,12 +1120,17 @@ def perform_psf_photometry(
         min_separation = 1.9 * fwhm
         grouper = SourceGrouper(min_separation=min_separation)
 
+        # ``local_bkg_estimator`` was built near the top of the function and is
+        # reused here so the ePSF cutouts and the PSF fits share one annulus
+        # definition; the image is already globally background-subtracted, but
+        # residual sky/nebulosity still biases the fitted flux and its error.
         psfphot = PSFPhotometry(
             psf_model=psf_for_phot,
             fit_shape=fit_shape,
             finder=daostarfind,
             aperture_radius=1.3 * aperture_radius,
             grouper=grouper,
+            local_bkg_estimator=local_bkg_estimator,
         )
 
         initial_params = Table()
@@ -1039,6 +1180,35 @@ def perform_psf_photometry(
 
             initial_params = initial_params_filtered
 
+        # Per-source local backgrounds. Compute them explicitly so that a
+        # source whose annulus is fully masked/off-frame falls back to no local
+        # subtraction instead of producing a NaN fit; the ``local_bkg`` column
+        # overrides the estimator inside PSFPhotometry.
+        if local_bkg_estimator is not None:
+            try:
+                local_bkg_values = np.asarray(
+                    local_bkg_estimator(
+                        img,
+                        np.asarray(initial_params["x"], dtype=float),
+                        np.asarray(initial_params["y"], dtype=float),
+                        mask=mask_bool,
+                    ),
+                    dtype=float,
+                )
+                local_bkg_values = np.where(
+                    np.isfinite(local_bkg_values), local_bkg_values, 0.0
+                )
+                initial_params["local_bkg"] = local_bkg_values
+                st.write(
+                    "Local background subtracted from "
+                    f"{len(local_bkg_values)} PSF fits."
+                )
+            except Exception as local_bkg_error:
+                st.warning(
+                    f"Local background estimation failed: {local_bkg_error}. "
+                    "PSF photometry continues without it."
+                )
+
         st.write("Performing PSF photometry on sources...")
         # call PSFPhotometry: data first
         phot_epsf_result = psfphot(
@@ -1053,3 +1223,68 @@ def perform_psf_photometry(
             f"Error executing PSF photometry: {e}. Continuing without PSF photometry."
         )
         return None, None
+
+
+def compute_encircled_energy(
+    psf_data,
+    oversampling=1,
+    radii_pixels=None,
+) -> np.ndarray:
+    """Encircled-energy fraction of a normalized PSF at given image-pixel radii.
+
+    The empirical PSF is oversampled by ``oversampling`` relative to the science
+    image, so distances on the PSF grid are converted back to image pixels before
+    the aperture is applied. The returned fractions are used as aperture
+    corrections (``flux_total = flux_aperture / EE``), which puts aperture and
+    PSF photometry on the same total-flux scale.
+
+    Parameters
+    ----------
+    psf_data : numpy.ndarray
+        2D (optionally oversampled) PSF image. It does not need to be
+        normalized; the return value is always the enclosed fraction.
+    oversampling : int or sequence, optional
+        Oversampling factor of ``psf_data`` relative to the image. The first
+        element is used if a sequence is given.
+    radii_pixels : sequence of float
+        Aperture radii expressed in image pixels.
+
+    Returns
+    -------
+    numpy.ndarray
+        Encircled-energy fraction (0-1) for each input radius. Radii that are
+        not finite or not positive get a value of 1.0 (no correction).
+    """
+    data = np.asarray(psf_data, dtype=float)
+    radii = np.atleast_1d(np.asarray(radii_pixels, dtype=float))
+
+    try:
+        osamp = float(np.asarray(oversampling).ravel()[0])
+    except Exception:
+        osamp = 1.0
+    if not np.isfinite(osamp) or osamp <= 0:
+        osamp = 1.0
+
+    if data.size == 0 or not np.any(np.isfinite(data)):
+        return np.ones(len(radii), dtype=float)
+
+    total = float(np.nansum(data))
+    if not np.isfinite(total) or total <= 0:
+        return np.ones(len(radii), dtype=float)
+
+    ny, nx = data.shape
+    cy = (ny - 1) / 2.0
+    cx = (nx - 1) / 2.0
+    yy, xx = np.indices(data.shape)
+    # Distance from the PSF centre converted back to image pixels
+    dist_pix = np.hypot(xx - cx, yy - cy) / osamp
+
+    fractions = np.ones(len(radii), dtype=float)
+    for idx, radius in enumerate(radii):
+        if not np.isfinite(radius) or radius <= 0:
+            fractions[idx] = 1.0
+            continue
+        encircled = float(np.nansum(data[dist_pix <= radius])) / total
+        fractions[idx] = encircled if 0.0 < encircled <= 1.0 else 1.0
+
+    return fractions

@@ -23,6 +23,12 @@ from src.utils import safe_catalog_query
 # Timeout (seconds) for outbound HTTP requests so a slow service cannot hang a run
 HTTP_TIMEOUT_SECONDS = 30
 
+# astroquery clients are process-wide singletons shared by every Streamlit session.
+# Their settings are therefore fixed once at import time (never per request), and
+# anything request-specific (columns, row limits) lives on per-call instances.
+Gaia.MAIN_GAIA_TABLE = "gaiadr3.gaia_source"
+Skybot._get_raw_response = False
+
 
 def cross_match_with_gaia(
     _phot_table,
@@ -241,8 +247,6 @@ def cross_match_with_gaia(
         else:
             # For GAIA bands, use GAIA DR3 with synthetic photometry
             # Try Vizier first, then fall back to direct GAIA query
-            Gaia.MAIN_GAIA_TABLE = "gaiadr3.gaia_source"
-
             gaia_radius_query_deg = min(radius_query_deg, 0.3)
             if gaia_radius_query_deg < radius_query_deg:
                 log_messages.append(
@@ -270,9 +274,9 @@ def cross_match_with_gaia(
                         "BP-RP",
                         "VarFlag",
                         "+_r",
-                    ]
+                    ],
+                    row_limit=2000,
                 )
-                gaia_vizier.ROW_LIMIT = -1
                 vizier_result = gaia_vizier.query_region(
                     center_coord,
                     radius=gaia_radius_query_deg * u.deg,
@@ -375,10 +379,6 @@ def cross_match_with_gaia(
                             {gaia_radius_query_deg}
                         )
                     )
-                    ORDER BY DISTANCE(
-                        POINT('ICRS', ra, dec),
-                        POINT('ICRS', {center_coord.ra.deg}, {center_coord.dec.deg})
-                    ) ASC
                     """
                     job = Gaia.launch_job(query=gaia_query)
                     catalog_table = job.get_results()
@@ -745,15 +745,19 @@ def enhance_catalog(
     field_center_dec = None
     field_width_arcmin = 35.0  # fallback default
     if header is not None:
-        if "CRVAL1" in header and "CRVAL2" in header:
-            field_center_ra = float(header["CRVAL1"])
-            field_center_dec = float(header["CRVAL2"])
-        elif "RA" in header and "DEC" in header:
-            field_center_ra = float(header["RA"])
-            field_center_dec = float(header["DEC"])
-        elif "OBJRA" in header and "OBJDEC" in header:
-            field_center_ra = float(header["OBJRA"])
-            field_center_dec = float(header["OBJDEC"])
+        for _ra_key, _dec_key in (
+            ("CRVAL1", "CRVAL2"),
+            ("RA", "DEC"),
+            ("OBJRA", "OBJDEC"),
+        ):
+            if _ra_key in header and _dec_key in header:
+                try:
+                    field_center_ra = float(header[_ra_key])
+                    field_center_dec = float(header[_dec_key])
+                except (TypeError, ValueError):
+                    field_center_ra = field_center_dec = None
+                    continue
+                break
         # Compute field width if possible
         if "NAXIS1" in header and "NAXIS2" in header and pixel_scale_arcsec:
             field_width_arcmin = (
@@ -804,7 +808,11 @@ def enhance_catalog(
                 ]
                 calib_cols.append("match_id")
                 calib_cols = list(dict.fromkeys(calib_cols))
-                gaia_subset = matched_table[calib_cols].copy()
+                gaia_subset = (
+                    matched_table[calib_cols]
+                    .drop_duplicates(subset="match_id")
+                    .copy()
+                )
 
                 rename_dict = {
                     col: (
@@ -826,7 +834,13 @@ def enhance_catalog(
                 )
 
                 # Map back to full table using iloc
-                enhanced_table.iloc[valid_indices_list] = valid_enhanced
+                for _col in valid_enhanced.columns:
+                    if _col in enhanced_table.columns:
+                        continue
+                    _full = pd.Series(
+                        valid_enhanced[_col].values, index=valid_indices_list
+                    ).reindex(range(len(enhanced_table)))
+                    enhanced_table[_col] = _full.values
 
                 # Add gaia_calib_star column
                 enhanced_table["calib_star"] = False
@@ -853,6 +867,9 @@ def enhance_catalog(
 
     log_messages.append("INFO: Querying Astro-Colibri API...")
 
+    response = None
+    events = []
+
     if api_key is None:
         api_key = os.environ.get("ASTROCOLIBRI_API")
         if api_key is None:
@@ -863,6 +880,8 @@ def enhance_catalog(
 
     try:
         try:
+            if api_key is None:
+                raise ValueError("no Astro-Colibri API key available")
             # Base URL of the API
             url = URL + "cone_search"
 
@@ -950,9 +969,9 @@ def enhance_catalog(
                 if "ra" in event and "dec" in event:
                     sources["ra"].append(event["ra"])
                     sources["dec"].append(event["dec"])
-                    sources["source_name"].append(event["source_name"])
-                    sources["type"].append(event["type"])
-                    sources["classification"].append(event["classification"])
+                    sources["source_name"].append(event.get("source_name"))
+                    sources["type"].append(event.get("type"))
+                    sources["classification"].append(event.get("classification"))
             astrostars = pd.DataFrame(sources)
             log_messages.append(
                 f"INFO: Found {len(astrostars)} Astro-Colibri sources in field."
@@ -1085,10 +1104,17 @@ def enhance_catalog(
                             else:
                                 simbad_filtered = simbad_result[simbad_valid_mask]
 
+                                simbad_is_numeric = (
+                                    simbad_filtered["ra"].dtype.kind in "fiu"
+                                )
                                 simbad_coords = SkyCoord(
                                     ra=simbad_filtered["ra"],
                                     dec=simbad_filtered["dec"],
-                                    unit=(u.hourangle, u.deg),
+                                    unit=(
+                                        "deg"
+                                        if simbad_is_numeric
+                                        else (u.hourangle, u.deg)
+                                    ),
                                 )
 
                                 idx, d2d, _ = source_coords.match_to_catalog_sky(
@@ -1181,21 +1207,21 @@ def enhance_catalog(
                     "-dec": field_coord.dec.deg,
                     "-rd": min(float(sr_value), 10.0),
                     "-ep": str(obs_time.jd),
-                    "-loc": "500",
+                    "-observer": "500",
                     "-filter": 120,
                     "-objFilter": "111",
                     "-refsys": "EQJ2000",
                     "-output": "all",
-                    "-mime": "text",
+                    "-mime": "votable",
                 }
                 _skybot_resp = requests.get(
                     _SKYBOT_URL, params=_skybot_payload, timeout=120
                 )
+                skybot_parse_failed = False
                 if _skybot_resp.status_code == 204 or not _skybot_resp.text.strip():
                     skybot_result = None
                 else:
                     try:
-                        Skybot._get_raw_response = False
                         skybot_result = Skybot._parse_result(_skybot_resp)
                     except (ExpatError, ValueError) as parse_error:
                         preview = _skybot_resp.text.strip().replace("\n", " ")[:120]
@@ -1203,9 +1229,12 @@ def enhance_catalog(
                             "WARNING: SkyBoT response could not be parsed "
                             f"({parse_error}). Skipping SkyBoT match. Response preview: {preview}"
                         )
+                        skybot_parse_failed = True
                         skybot_result = None
 
-                if skybot_result is None or len(skybot_result) == 0:
+                if skybot_parse_failed:
+                    pass
+                elif skybot_result is None or len(skybot_result) == 0:
                     log_messages.append(
                         "INFO: No solar system objects found in the field."
                     )
@@ -1330,8 +1359,8 @@ def enhance_catalog(
     log_messages.append("INFO: Querying AAVSO VSX for variable stars...")
     try:
         if field_center_ra is not None and field_center_dec is not None:
-            Vizier.ROW_LIMIT = -1
-            vizier_result = Vizier.query_region(
+            _vsx = Vizier(row_limit=-1)
+            vizier_result = _vsx.query_region(
                 SkyCoord(ra=field_center_ra, dec=field_center_dec, unit=u.deg),
                 radius=field_width_arcmin * u.arcmin,
                 catalog=["B/vsx/vsx"],
@@ -1506,12 +1535,70 @@ def enhance_catalog(
                 # Convert to DataFrame
                 pc10_df = pc10_table.to_pandas()
 
-                # Catalog coordinates
-                pc10_coords = SkyCoord(
-                    ra=pc10_df["RAICRS"].astype(float),
-                    dec=pc10_df["DEICRS"].astype(float),
-                    unit=u.deg,
+                ra_values = pd.to_numeric(
+                    pc10_df["RAICRS"], errors="coerce"
+                ).to_numpy(dtype=float)
+                dec_values = pd.to_numeric(
+                    pc10_df["DEICRS"], errors="coerce"
+                ).to_numpy(dtype=float)
+                valid_pc10_positions = np.isfinite(ra_values) & np.isfinite(dec_values)
+                pc10_df = pc10_df.loc[valid_pc10_positions].reset_index(drop=True)
+                ra_values = ra_values[valid_pc10_positions]
+                dec_values = dec_values[valid_pc10_positions]
+
+                observation_date = None
+                if header is not None:
+                    observation_date = header.get("DATE-OBS", header.get("DATE"))
+                try:
+                    observation_time = (
+                        Time(observation_date) if observation_date else Time.now()
+                    )
+                except (TypeError, ValueError):
+                    observation_time = Time.now()
+
+                epochs = pd.to_numeric(
+                    pc10_df["Epoch"], errors="coerce"
+                ).to_numpy(dtype=float)
+                pm_ra_cosdec = pd.to_numeric(
+                    pc10_df["pmRA"], errors="coerce"
+                ).to_numpy(dtype=float)
+                pm_dec = pd.to_numeric(
+                    pc10_df["pmDE"], errors="coerce"
+                ).to_numpy(dtype=float)
+                parallaxes = pd.to_numeric(
+                    pc10_df["plx"], errors="coerce"
+                ).to_numpy(dtype=float)
+                radial_velocities = pd.to_numeric(
+                    pc10_df["RV"], errors="coerce"
+                ).to_numpy(dtype=float)
+                motion_mask = (
+                    np.isfinite(epochs)
+                    & np.isfinite(pm_ra_cosdec)
+                    & np.isfinite(pm_dec)
+                    & np.isfinite(parallaxes)
+                    & (parallaxes > 0)
                 )
+
+                if motion_mask.any():
+                    radial_velocities = np.nan_to_num(
+                        radial_velocities[motion_mask], nan=0.0
+                    )
+                    moving_coords = SkyCoord(
+                        ra=ra_values[motion_mask] * u.deg,
+                        dec=dec_values[motion_mask] * u.deg,
+                        distance=(1000.0 / parallaxes[motion_mask]) * u.pc,
+                        pm_ra_cosdec=pm_ra_cosdec[motion_mask] * u.mas / u.yr,
+                        pm_dec=pm_dec[motion_mask] * u.mas / u.yr,
+                        radial_velocity=radial_velocities * u.km / u.s,
+                        obstime=Time(epochs[motion_mask], format="jyear"),
+                    )
+                    propagated_coords = moving_coords.apply_space_motion(
+                        new_obstime=observation_time
+                    )
+                    ra_values[motion_mask] = propagated_coords.ra.deg
+                    dec_values[motion_mask] = propagated_coords.dec.deg
+
+                pc10_coords = SkyCoord(ra=ra_values * u.deg, dec=dec_values * u.deg)
 
                 # Filter valid coordinates from enhanced_table
                 valid_final_coords = enhanced_table[valid_coords_mask]
@@ -1647,6 +1734,12 @@ def enhance_catalog(
             psf_cols.append("psf_mag_err")
         if "snr" in enhanced_table.columns:
             psf_cols.append("snr")
+        # Per-source PSF-minus-aperture magnitudes sit next to the PSF block.
+        psf_cols.extend(
+            col
+            for col in enhanced_table.columns
+            if col.startswith("psf_minus_aperture_mag_")
+        )
         
         column_order.extend(psf_cols)
         
@@ -1706,6 +1799,17 @@ def enhance_catalog(
         # Round PSF magnitude and error columns
         psf_mag_cols = ["psf_mag", "psf_mag_err"]
         for col in psf_mag_cols:
+            if col in enhanced_table.columns and pd.api.types.is_numeric_dtype(enhanced_table[col]):
+                enhanced_table[col] = enhanced_table[col].round(3)
+                columns_rounded += 1
+
+        # Round per-source PSF-minus-aperture magnitudes
+        psf_diff_cols = [
+            col
+            for col in enhanced_table.columns
+            if col.startswith("psf_minus_aperture_mag_")
+        ]
+        for col in psf_diff_cols:
             if col in enhanced_table.columns and pd.api.types.is_numeric_dtype(enhanced_table[col]):
                 enhanced_table[col] = enhanced_table[col].round(3)
                 columns_rounded += 1
