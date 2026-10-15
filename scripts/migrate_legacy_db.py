@@ -72,6 +72,19 @@ def parse_args() -> argparse.Namespace:
             "before migrating."
         ),
     )
+    parser.add_argument(
+        "--backup-target",
+        action="store_true",
+        help=(
+            "Create a timestamped backup of the target SQLite database "
+            "before writing to it."
+        ),
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Do not ask for confirmation before writing to the target.",
+    )
     return parser.parse_args()
 
 
@@ -123,6 +136,25 @@ def backup_legacy_db(db_path: str) -> None:
     print(f"Backup created at {backup_path}")
 
 
+def sqlite_path_from_url(url: str) -> str | None:
+    prefix = "sqlite:///"
+    if url.startswith(prefix) and url != prefix + ":memory:":
+        return url[len(prefix):] or None
+    return None
+
+
+def backup_target_db(db_path: str) -> None:
+    if not os.path.isfile(db_path):
+        return
+    timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = f"{db_path}.bak-{timestamp}"
+    with closing(sqlite3.connect(db_path)) as src, closing(
+        sqlite3.connect(backup_path)
+    ) as dst:
+        src.backup(dst)
+    print(f"Target backup created at {backup_path}")
+
+
 def fetch_legacy_rows(
     connection: sqlite3.Connection,
     table_name: str,
@@ -142,7 +174,18 @@ def build_payload(row: sqlite3.Row, table: Table) -> dict[str, object]:
     table_columns = set(table.c.keys())
     for key in row.keys():
         if key in table_columns:
-            payload[key] = row[key]
+            value = row[key]
+            if isinstance(value, str):
+                try:
+                    is_datetime = table.c[key].type.python_type is dt.datetime
+                except NotImplementedError:
+                    is_datetime = False
+                if is_datetime:
+                    try:
+                        value = dt.datetime.fromisoformat(value)
+                    except ValueError:
+                        pass
+            payload[key] = value
     return payload
 
 
@@ -214,6 +257,23 @@ def main() -> None:
 
     if args.backup:
         backup_legacy_db(legacy_path)
+
+    target_path = sqlite_path_from_url(target_url)
+    if not args.dry_run:
+        if args.backup_target and target_path:
+            backup_target_db(target_path)
+        if (
+            not args.yes
+            and not args.target_url
+            and not args.target_db
+            and sys.stdin.isatty()
+        ):
+            answer = input(
+                "No explicit target given: the default application database "
+                "will be modified. Type 'yes' to continue: "
+            )
+            if answer.strip().lower() != "yes":
+                raise SystemExit("Aborted.")
 
     engine = create_engine(target_url, future=True)
     ensure_target_schema(engine)
