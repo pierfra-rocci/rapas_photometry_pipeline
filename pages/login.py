@@ -19,6 +19,7 @@ st.set_page_config(
 # Get the project root directory
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOGO_PATH = os.path.join(PROJECT_ROOT, "rapas_logo.png")
+PADC_LOGO_PATH = os.path.join(PROJECT_ROOT, "padc_logo.jpg")
 
 # Use session state to track login status - Keep these basic initializations
 if "logged_in" not in st.session_state:
@@ -74,9 +75,11 @@ def validate_password(password):
 
 
 if not st.session_state.logged_in:
-    col1, col2 = st.columns([0.7, 4], vertical_alignment="center")
+    col1, col_padc, col2 = st.columns([0.7, 0.5, 3.5], vertical_alignment="center")
     with col1:
         st.image(LOGO_PATH, width="stretch")
+    with col_padc:
+        st.image(PADC_LOGO_PATH, width="stretch")
     with col2:
         st.title("RAPAS Photometry Pipeline")
     st.caption(st.session_state.backend_status_message)

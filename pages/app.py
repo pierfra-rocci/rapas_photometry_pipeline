@@ -223,6 +223,7 @@ st.set_page_config(
 # Get the project root directory for logo path
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOGO_PATH = os.path.join(PROJECT_ROOT, "rapas_logo.png")
+PADC_LOGO_PATH = os.path.join(PROJECT_ROOT, "padc_logo.jpg")
 
 initialize_session_state()
 
@@ -290,13 +291,15 @@ st.markdown(
 )
 
 # Add application version to the sidebar
-col1, col2 = st.columns([0.7, 4], vertical_alignment="center")
+col1, col_padc, col2 = st.columns([0.7, 0.5, 3.5], vertical_alignment="center")
 with col1:
     st.image(LOGO_PATH, width="stretch")
+with col_padc:
+    st.image(PADC_LOGO_PATH, width="stretch")
 with col2:
     st.title("**RAPAS Photometry Pipeline**")
 st.markdown(
-    "| [**RAPAS Home**](https://rapas.imcce.fr/) | [<img src='https://github.githubassets.com/favicons/favicon.svg' width='16' style='vertical-align:middle'/> **GitHub**](https://github.com/pierfra-rocci/rapas_photometry_pipeline) |",
+    "| [**RAPAS Home**](https://rapas.imcce.fr/) | [**PADC**](https://voparis-portal.obspm.fr/?service_url=http://rapas-test.obspm.fr/tap) | [<img src='https://github.githubassets.com/favicons/favicon.svg' width='16' style='vertical-align:middle'/> **GitHub**](https://github.com/pierfra-rocci/rapas_photometry_pipeline) |",
     unsafe_allow_html=True,
 )
 st.caption(st.session_state.backend_status_message)
