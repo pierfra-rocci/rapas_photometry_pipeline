@@ -1,5 +1,7 @@
 # RAPAS Photometry Pipeline
 
+![RAPAS Logo](rapas_logo.png)
+
 A comprehensive astronomical photometry pipeline built with Streamlit, featuring local astrometric plate solving with an optional online fallback, multi-catalog cross-matching, and advanced photometric analysis capabilities.
 
 ## Features
@@ -48,6 +50,7 @@ A comprehensive astronomical photometry pipeline built with Streamlit, featuring
 ### 🖥️ User Interface
 
 - **Interactive web interface**: Streamlit-based GUI with real-time processing
+- **RAPAS branding**: Official RAPAS logo (three circles: white, cyan, red) displayed as favicon in the browser tab and prominently featured next to the title on login and app pages
 - **Parameter configuration**: Adjustable detection and photometry parameters
 - **Progress tracking**: Real-time status updates and logging
 - **Results visualization**: Interactive plots and Aladin Lite v3 sky viewer integration
