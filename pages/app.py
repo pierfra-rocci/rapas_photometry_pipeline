@@ -217,8 +217,12 @@ def inject_matomo_tracking(site_id: str = "83",
 
 
 st.set_page_config(
-    page_title="RAPAS Photometry Pipeline", page_icon=":sparkles:", layout="centered"
+    page_title="RAPAS Photometry Pipeline", page_icon="rapas_logo.png", layout="centered"
 )
+
+# Get the project root directory for logo path
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOGO_PATH = os.path.join(PROJECT_ROOT, "rapas_logo.png")
 
 initialize_session_state()
 
@@ -286,7 +290,11 @@ st.markdown(
 )
 
 # Add application version to the sidebar
-st.title(":sparkles: **RAPAS Photometry Pipeline**")
+col1, col2 = st.columns([1, 4])
+with col1:
+    st.image(LOGO_PATH, width=100)
+with col2:
+    st.title("**RAPAS Photometry Pipeline**")
 st.markdown(
     "| [**RAPAS Home**](https://rapas.imcce.fr/) | [<img src='https://github.githubassets.com/favicons/favicon.svg' width='16' style='vertical-align:middle'/> **GitHub**](https://github.com/pierfra-rocci/rapas_photometry_pipeline) |",
     unsafe_allow_html=True,

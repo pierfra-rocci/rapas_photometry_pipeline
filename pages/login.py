@@ -12,9 +12,13 @@ warnings.filterwarnings("ignore")
 
 st.set_page_config(
     page_title="RAPAS Photometry Pipeline - Login",
-    page_icon=":sparkles:",
+    page_icon="rapas_logo.png",
     layout="centered",
 )
+
+# Get the project root directory
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOGO_PATH = os.path.join(PROJECT_ROOT, "rapas_logo.png")
 
 # Use session state to track login status - Keep these basic initializations
 if "logged_in" not in st.session_state:
@@ -70,7 +74,11 @@ def validate_password(password):
 
 
 if not st.session_state.logged_in:
-    st.title(":sparkles: RAPAS Photometry Pipeline")
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        st.image(LOGO_PATH, width=100)
+    with col2:
+        st.title("RAPAS Photometry Pipeline")
     st.caption(st.session_state.backend_status_message)
 
     with st.expander("👋 First time ? / Première fois ?"):
