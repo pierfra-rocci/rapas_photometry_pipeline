@@ -662,6 +662,10 @@ def cross_match_with_gaia(
         return None, [f"ERROR: Error during cross-matching: {e}"]
 
 
+# Maximum separation between an Astro-Colibri event and a detected source.
+ASTROCOLIBRI_MATCH_RADIUS_ARCSEC = 10.0
+
+
 def enhance_catalog(
     api_key,
     final_table,
@@ -966,7 +970,7 @@ def enhance_catalog(
             enhanced_table["astrocolibri_type"] = None
             enhanced_table["astrocolibri_classification"] = None
             for event in events:
-                if "ra" in event and "dec" in event:
+                if event.get("ra") is not None and event.get("dec") is not None:
                     sources["ra"].append(event["ra"])
                     sources["dec"].append(event["dec"])
                     sources["source_name"].append(event.get("source_name"))
@@ -996,52 +1000,39 @@ def enhance_catalog(
                 if not isinstance(search_radius_arcsec, (int, float)):
                     raise ValueError("Search radius must be a number")
 
-                idx, d2d, _ = source_coords.match_to_catalog_sky(astro_colibri_coords)
-                matches = d2d < (10 * u.arcsec)
+                # Match from each Astro-Colibri event to its nearest detected
+                # source, so that one event labels one source (a bright
+                # neighbour cannot steal the label in a crowded field).
+                idx, d2d, _ = astro_colibri_coords.match_to_catalog_sky(source_coords)
+                matches = d2d < (ASTROCOLIBRI_MATCH_RADIUS_ARCSEC * u.arcsec)
 
-                # Map matches back to the original table indices
                 valid_indices = list(valid_final_coords.index)
+                best_sep = {}
+                n_matched = 0
+                for ac_i, src_i in enumerate(idx):
+                    if not bool(matches[ac_i]):
+                        continue
+                    sep = float(d2d[ac_i].arcsec)
+                    original_idx = valid_indices[int(src_i)]
+                    # Several events may land on the same source: keep closest
+                    if original_idx in best_sep and best_sep[original_idx] <= sep:
+                        continue
+                    if original_idx not in best_sep:
+                        n_matched += 1
+                    best_sep[original_idx] = sep
+                    row = astrostars.iloc[ac_i]
+                    enhanced_table.loc[original_idx, "astrocolibri_name"] = row[
+                        "source_name"
+                    ]
+                    enhanced_table.loc[original_idx, "astrocolibri_type"] = row["type"]
+                    enhanced_table.loc[
+                        original_idx, "astrocolibri_classification"
+                    ] = row["classification"]
 
-                # Use enumerate to iterate indices cleanly and avoid unpacking errors
-                for i, match_idx in enumerate(idx):
-                    try:
-                        if not bool(matches[i]):
-                            continue
-                    except Exception:
-                        # fallback if matches is a masked/quantity array
-                        if getattr(matches[i], "value", False) is False:
-                            continue
-
-                    original_idx = valid_indices[i]
-                    # Use iloc for safe pandas indexing
-                    try:
-                        enhanced_table.loc[original_idx, "astrocolibri_name"] = (
-                            astrostars.iloc[int(match_idx)]["source_name"]
-                        )
-                    except Exception:
-                        enhanced_table.loc[original_idx, "astrocolibri_name"] = (
-                            astrostars["source_name"].iloc[int(match_idx)]
-                        )
-
-                    try:
-                        enhanced_table.loc[original_idx, "astrocolibri_type"] = (
-                            astrostars.iloc[int(match_idx)]["type"]
-                        )
-                    except Exception:
-                        enhanced_table.loc[original_idx, "astrocolibri_type"] = (
-                            astrostars["type"].iloc[int(match_idx)]
-                        )
-
-                    try:
-                        enhanced_table.loc[
-                            original_idx, "astrocolibri_classification"
-                        ] = astrostars.iloc[int(match_idx)]["classification"]
-                    except Exception:
-                        enhanced_table.loc[
-                            original_idx, "astrocolibri_classification"
-                        ] = astrostars["classification"].iloc[int(match_idx)]
-
-                log_messages.append("INFO: Astro-Colibri matched objects in field.")
+                log_messages.append(
+                    f"INFO: Astro-Colibri: {n_matched} source(s) matched within "
+                    f"{ASTROCOLIBRI_MATCH_RADIUS_ARCSEC:g} arcsec."
+                )
             else:
                 log_messages.append(
                     "INFO: No valid coordinates available for Astro-Colibri matching"

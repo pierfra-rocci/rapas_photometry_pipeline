@@ -1192,6 +1192,33 @@ def handle_log_messages(log_messages):
             st.error(message.strip())
 
 
+def show_astrocolibri_status(log_messages, final_table):
+    """Display a visible summary of the Astro-Colibri query and cross-match.
+
+    INFO log lines are not shown by :func:`handle_log_messages`, so without
+    this the user cannot tell whether Astro-Colibri found nothing, was skipped
+    or matched sources. WARNING/ERROR lines are already shown elsewhere.
+    """
+    ac_lines = [
+        m.partition(":")[2].strip()
+        for m in (log_messages or [])
+        if m.startswith("INFO") and "astro-colibri" in m.lower()
+    ]
+    n_match = 0
+    if final_table is not None and "astrocolibri_name" in final_table.columns:
+        n_match = int(final_table["astrocolibri_name"].notna().sum())
+
+    if n_match > 0:
+        names = ", ".join(
+            sorted({str(n) for n in final_table["astrocolibri_name"].dropna()})
+        )
+        st.success(f"Astro-Colibri: {n_match} source(s) matched ({names}).")
+    elif ac_lines:
+        st.info("Astro-Colibri: " + " ".join(ac_lines))
+    else:
+        st.info("Astro-Colibri: query not performed (no API key or no response).")
+
+
 def initialize_session_state():
     """
     Initialize all session state variables for the application.

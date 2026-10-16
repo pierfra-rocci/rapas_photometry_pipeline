@@ -590,19 +590,72 @@ def _first_finite_value(row, columns):
     return None
 
 
+def _with_prefixed_columns(row, legacy_columns):
+    """Expand legacy names with filter-prefixed variants present in *row*.
+
+    The exported table drops ``psf_mag`` & co. in favour of e.g.
+    ``rapasg_psf_mag``, so both forms must be searched.
+    """
+    available = list(getattr(row, "index", row))
+    expanded = []
+    for legacy in legacy_columns:
+        expanded.append(legacy)
+        expanded.extend(
+            c for c in available if c.endswith("_" + legacy) and c not in expanded
+        )
+    return expanded
+
+
 def select_astrocolibri_magnitude(row):
     """Return the best available finite magnitude for an Astro-Colibri row."""
-    return _first_finite_value(row, ASTROCOLIBRI_MAG_COLUMNS)
+    return _first_finite_value(
+        row, _with_prefixed_columns(row, ASTROCOLIBRI_MAG_COLUMNS)
+    )
 
 
 def select_astrocolibri_magnitude_error(row):
     """Return the best available finite magnitude error for a row."""
-    return _first_finite_value(row, ASTROCOLIBRI_MAG_ERR_COLUMNS)
+    return _first_finite_value(
+        row, _with_prefixed_columns(row, ASTROCOLIBRI_MAG_ERR_COLUMNS)
+    )
 
 
 def sanitize_astrocolibri_name(name) -> str:
     """Return a filesystem-safe token derived from an Astro-Colibri name."""
     return "".join(c if c.isalnum() or c in "_-" else "_" for c in str(name))
+
+
+def _hips_survey_candidates(dec_center):
+    """Return HiPS survey prefixes ordered by preference for a declination.
+
+    SkyMapper (south) and PanSTARRS (north) overlap only around the equator,
+    so the other survey is kept as a fallback when the first returns nothing.
+    """
+    if dec_center < 0:
+        return ["SkyMapper/DR4/", "PanSTARRS/DR1/"]
+    return ["PanSTARRS/DR1/", "SkyMapper/DR4/"]
+
+
+def _fetch_hips_template(cutout_header, filter_name, dec_center):
+    """Fetch a HiPS template matching *cutout_header*, trying both surveys.
+
+    Returns ``(template, survey_prefix)``; ``template`` is None when no survey
+    returned usable (finite, non-empty) data.
+    """
+    last_error = None
+    for prefix in _hips_survey_candidates(dec_center):
+        try:
+            template = templates.get_hips_image(
+                prefix + filter_name, header=cutout_header, get_header=False
+            )
+        except Exception as e:
+            last_error = e
+            continue
+        if template is not None and np.isfinite(template).any():
+            return template, prefix
+    if last_error is not None:
+        raise last_error
+    return None, None
 
 
 def plot_astrocolibri_cutouts(
@@ -652,13 +705,8 @@ def plot_astrocolibri_cutouts(
     if len(ac_rows) == 0:
         return
 
-    # Pick survey based on hemisphere
-    if dec_center < 0:
-        cat_cutout = "SkyMapper/DR4/"
-    else:
-        cat_cutout = "PanSTARRS/DR1/"
-
     header, _ = fix_header(header)
+    wcs = WCS(header)
 
     st.subheader("Astro-Colibri Match Cutouts")
 
@@ -678,13 +726,16 @@ def plot_astrocolibri_cutouts(
         ac_type = row.get("astrocolibri_type", "")
         ac_class = row.get("astrocolibri_classification", "")
 
-        cand_dict = {
-            "ra": ra,
-            "dec": dec,
-            # Handle photutils 3.0 column rename: xcenter/ycenter -> x_center/y_center
-            "x": row.get("xcenter") if "xcenter" in row.index else row.get("x_center", 0.0),
-            "y": row.get("ycenter") if "ycenter" in row.index else row.get("y_center", 0.0),
-        }
+        # Derive pixel position from the WCS so the cutout is always centred
+        # on the matched source, whatever the photometry column naming is.
+        try:
+            x, y = wcs.all_world2pix(float(ra), float(dec), 0)
+        except Exception as e:
+            st.warning(f"Could not compute pixel position for {name}: {e}")
+            continue
+        if not (np.isfinite(x) and np.isfinite(y)):
+            continue
+        cand_dict = {"ra": ra, "dec": dec, "x": float(x), "y": float(y)}
 
         try:
             cutout = cutouts.get_cutout(image, cand_dict, 25, header=header)
@@ -692,12 +743,13 @@ def plot_astrocolibri_cutouts(
             st.warning(f"Could not create cutout for {name}: {e}")
             continue
 
+        survey = None
         try:
-            cutout["template"] = templates.get_hips_image(
-                cat_cutout + filter_name,
-                header=cutout.get("header"),
-                get_header=False,
+            cutout["template"], survey = _fetch_hips_template(
+                cutout.get("header"), filter_name, float(dec)
             )
+            if cutout["template"] is None:
+                st.warning(f"No HiPS template coverage for {name}")
         except Exception as e:
             st.warning(f"Could not retrieve HiPS template for {name}: {e}")
             cutout["template"] = None
@@ -713,6 +765,8 @@ def plot_astrocolibri_cutouts(
             if mag_err_val is not None:
                 mag_str += f" ± {mag_err_val:.3f}"
             title_parts.append(mag_str)
+        if survey:
+            title_parts.append(f"ref: {survey.rstrip('/')}/{filter_name}")
         title = " | ".join(title_parts)
 
         fig = plot_cutout(
@@ -721,6 +775,9 @@ def plot_astrocolibri_cutouts(
             qq=[1, 99],
             stretch="linear",
             title=title,
+            mark_ra=ra,
+            mark_dec=dec,
+            mark_r=8,
         )
         st.pyplot(fig)
 
