@@ -28,6 +28,7 @@ from src.tools_app import (
     provide_download_buttons,
     clear_all_caches,
     handle_log_messages,
+    show_astrocolibri_status,
     cleanup_temp_files,
     try_gaia_server,
 )
@@ -1781,6 +1782,9 @@ if _run_analysis_now:
                                             search_radius_arcsec=search_radius,
                                         )
                                         handle_log_messages(log_messages)
+                                        show_astrocolibri_status(
+                                            log_messages, final_table
+                                        )
                                         final_table = apply_color_term_correction(
                                             final_table,
                                             color_term_result,
