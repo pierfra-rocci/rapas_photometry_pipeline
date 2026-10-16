@@ -74,9 +74,9 @@ def validate_password(password):
 
 
 if not st.session_state.logged_in:
-    col1, col2 = st.columns([1, 4])
+    col1, col2 = st.columns([0.7, 4], vertical_alignment="center")
     with col1:
-        st.image(LOGO_PATH, width=100)
+        st.image(LOGO_PATH, width="stretch")
     with col2:
         st.title("RAPAS Photometry Pipeline")
     st.caption(st.session_state.backend_status_message)
