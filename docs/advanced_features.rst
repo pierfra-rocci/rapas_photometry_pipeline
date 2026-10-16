@@ -119,11 +119,11 @@ Candidate finding (``src.transient.find_candidates``) works as follows:
   selects the reference filter.
 - The reference survey is chosen from the field declination: PanSTARRS in the
   north, SkyMapper in the south.
-- Sources are detected with SEP and cross-matched against the pipeline
+- Sources are detected with SExtractor (via ``stdpipe``) and cross-matched against the pipeline
   photometry catalog, taking the *nearest* counterpart within a seeing-based
   radius (the FWHM in arcsec, clamped to 1-4 arcsec).  Matched detections
   receive the calibrated PSF magnitudes already measured by the pipeline.
-- Detections flagged by SEP as unreliable (object/aperture truncated at the
+- Detections flagged as unreliable (object/aperture truncated at the
   frame boundary, deblending overflow, degenerate centroid, or an all-masked /
   non-positive aperture) are discarded.  These are SEP flag bits, so the mask
   passed to stdpipe is ``SEP_REJECT_FLAGS`` rather than stdpipe's

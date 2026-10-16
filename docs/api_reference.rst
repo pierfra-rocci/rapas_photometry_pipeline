@@ -141,7 +141,7 @@ Useful Functions
 
 ``src.transient.find_candidates(...)``
    Run the transient candidate workflow after photometry and catalog
-   preparation. Sources are detected with SEP, unreliable detections are
+   preparation. Sources are detected with SExtractor, unreliable detections are
    dropped using the SEP flag mask (``SEP_REJECT_FLAGS``) and matched to the
    photometry catalog within a seeing-based radius, and reference-survey /
    Vizier matches are rejected unless the detection is a genuine brightness

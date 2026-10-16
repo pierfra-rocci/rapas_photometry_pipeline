@@ -58,7 +58,7 @@ Without a configured key, the online fallback is skipped.
 
 ## 4. (Optional) Astro-Colibri API Key
 
-Enter your Astro-Colibri API key in the sidebar to enable transient and variable source cross-matching.
+Enter your Astro-Colibri API key in the sidebar to enable transient and variable source cross-matching. After the cross-match, the app reports how many pipeline sources matched an Astro-Colibri event (within 10 arcsec), that none matched, or that the service was unavailable. For each match, postage-stamp cutouts (science frame and HiPS template, PanSTARRS in the north, SkyMapper in the south with automatic fallback to the other survey) show the source with its calibrated magnitude.
 
 ## 5. (Optional) Transient Candidates
 
@@ -66,7 +66,7 @@ Expand the "Transient Candidates" section in the sidebar:
 
 - **Enable Transient Finder**: Activates the transient search, which compares detected sources against reference surveys (PanSTARRS1 for north, SkyMapper for south) and rejects known catalog and Solar System objects.
 - **Reference Filter**: Select the filter band for the reference comparison and the HiPS template cutouts.
-- Detections are cross-matched with the reference catalogs within half the seeing FWHM, and a source coincident with a catalog entry is kept only if it is more than 2 magnitudes brighter (a genuine brightness excess). Unreliable SEP detections (edge-truncated, deblended, bad aperture) are discarded.
+- Detections are cross-matched with the reference catalogs within half the seeing FWHM, and a source coincident with a catalog entry is kept only if it is more than 2 magnitudes brighter (a genuine brightness excess). Sources are detected with SExtractor, and unreliable detections (edge-truncated, deblended, bad aperture) are discarded.
 - The transient finder applies no minimum S/N cutoff. Low-S/N detections remain
   eligible if they pass the other catalog, known-source, and Solar System object
   filters.

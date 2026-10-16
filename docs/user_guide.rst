@@ -143,13 +143,13 @@ Survey selection is based on the field declination in the current code path:
 - Northern fields use PanSTARRS references
 - Southern fields use SkyMapper references
 
-Candidate finding detects sources with SEP and matches them to the pipeline
+Candidate finding detects sources with SExtractor and matches them to the pipeline
 photometry catalog within a seeing-based radius (the FWHM, clamped to
 1-4 arcsec), then rejects detections that coincide with reference-survey or
 Vizier sources. The catalog matching radius is half the seeing FWHM, and a
 source that coincides with a catalog entry is kept only when it is a genuine
 brightness excess - more than ``mag_threshold`` (default 2.0 magnitudes)
-brighter than that entry. Unreliable SEP detections (edge-truncated, deblended,
+brighter than that entry. Unreliable detections (edge-truncated, deblended,
 or with a bad aperture) are discarded.
 
 The transient workflow applies no minimum S/N cutoff. Low-S/N detections remain

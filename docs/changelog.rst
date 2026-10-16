@@ -26,6 +26,20 @@ Version 1.8.9
     removed, and the zero-point summary now reads
     ``Zero Point: X ± σ, calibrator scatter = S mag``.
 
+**Astro-Colibri cross-match and cutouts**
+
+*   **Nearest-event matching.** Astro-Colibri events are matched to the
+    closest catalog source within 10 arcsec (``match_to_catalog_sky``); events
+    without coordinates are ignored.
+*   **Visible outcome.** The number of matches (or none, or service
+    unavailable) is displayed in the app instead of only in the log.
+*   **Cutouts with magnitude.** ``plot_astrocolibri_cutouts`` uses the WCS for
+    pixel positions, circles the source, and shows its calibrated magnitude
+    (filter-prefixed columns are now recognised).
+*   **Hemisphere-aware template.** The HiPS template is fetched from
+    PanSTARRS (north) or SkyMapper (south) and falls back to the other survey
+    when the field is not covered.
+
 **Session Isolation (concurrent users)**
 
 *   **Per-session work folders.** Every browser session now gets its own

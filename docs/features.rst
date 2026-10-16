@@ -284,7 +284,12 @@ Multi-Catalog Cross-Matching
    - API key authentication for full access
    - Event classification and discovery information
    - ``plot_astrocolibri_cutouts()``: postage-stamp cutouts of Astro-Colibri
-     candidates extracted from the science frame for rapid visual inspection
+     candidates extracted from the science frame for rapid visual inspection;
+     each stamp shows the HiPS template (PanSTARRS north, SkyMapper south, with
+     automatic fallback to the other survey), the circled source and its
+     calibrated magnitude
+   - Cross-match radius of 10 arcsec (nearest event per source); the match
+     outcome is displayed in the app
 
 **Solar System Objects (SkyBoT)**:
    - Moving object identification and ephemeris
@@ -322,7 +327,8 @@ Transient Detection (Beta)
    - Automated search for transient candidates
    - Reference-survey and catalog filtering, with integration with PanSTARRS
      (Northern) and SkyMapper (Southern) surveys
-   - SEP detection flags used to discard unreliable detections
+   - SExtractor detection (via stdpipe) with flags used to discard unreliable
+     detections
    - Seeing-based cross-matching with the pipeline photometry catalog (nearest
      counterpart within the FWHM, clamped to 1-4 arcsec)
    - Brightness-excess test against catalog counterparts (default 2.0 mag

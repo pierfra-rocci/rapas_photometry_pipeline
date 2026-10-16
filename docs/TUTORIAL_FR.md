@@ -55,7 +55,7 @@ Sans clé configurée, cette tentative en ligne est ignorée.
 
 ## 4. (Optionnel) Clé API Astro-Colibri
 
-Entrez votre clé API dans la section **🔑 Astro-Colibri** de la barre latérale (**UID Key**) pour activer le croisement avec les sources transitoires.
+Entrez votre clé API dans la section **🔑 Astro-Colibri** de la barre latérale (**UID Key**) pour activer le croisement avec les sources transitoires. Après le croisement, l'application indique le nombre de sources du pipeline associées à un événement Astro-Colibri (dans un rayon de 10 secondes d'arc), l'absence d'association, ou l'indisponibilité du service. Pour chaque association, des vignettes (image scientifique et modèle HiPS, PanSTARRS au nord, SkyMapper au sud avec repli automatique sur l'autre relevé) montrent la source avec sa magnitude calibrée.
 
 ## 5. (Optionnel) Candidats Transitoires
 
@@ -63,7 +63,7 @@ Développez la section **Transient Candidates** dans la barre latérale :
 
 - **Enable Transient Finder** : Lance la recherche de transitoires, qui compare les sources détectées aux relevés de référence (PanSTARRS1 au nord, SkyMapper au sud) et rejette les objets connus des catalogues et du Système solaire.
 - **Reference Filter** : Sélectionnez la bande pour la comparaison avec le relevé de référence et les vignettes du gabarit HiPS.
-- Les détections sont croisées avec les catalogues de référence dans un rayon d'une demi-largeur à mi-hauteur (FWHM), et une source confondue avec une entrée de catalogue n'est conservée que si elle est au moins 2 magnitudes plus brillante (excès de brillance réel). Les détections SEP peu fiables (tronquées en bord de champ, issues d'un dédoublement, ou avec une ouverture défectueuse) sont écartées.
+- Les détections sont croisées avec les catalogues de référence dans un rayon d'une demi-largeur à mi-hauteur (FWHM), et une source confondue avec une entrée de catalogue n'est conservée que si elle est au moins 2 magnitudes plus brillante (excès de brillance réel). Les sources sont détectées avec SExtractor, et les détections peu fiables (tronquées en bord de champ, issues d'un dédoublement, ou avec une ouverture défectueuse) sont écartées.
 - Le détecteur de transitoires n'applique aucun seuil minimal de S/N. Les
   détections à faible S/N restent admissibles si elles passent les autres
   filtres de catalogue, de sources connues et d'objets du Système solaire.
