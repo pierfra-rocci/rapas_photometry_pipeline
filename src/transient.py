@@ -1,6 +1,5 @@
 from stdpipe import pipeline, cutouts, templates, catalogs, photometry, plots
 from stdpipe import astrometry as stdpipe_astrometry
-import sep
 from astropy.coordinates import SkyCoord
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
@@ -229,7 +228,7 @@ def find_candidates(
 ):
     """Find transient candidates in the given image around the specified object.
 
-    The algorithm detects sources with SEP, attaches the calibrated PSF
+    The algorithm detects sources with SExtractor, attaches the calibrated PSF
     magnitudes measured by the main pipeline, and then asks
     :func:`stdpipe.pipeline.filter_transient_candidates` to reject objects that
     are explained by the reference survey or by any of the Vizier catalogues.
@@ -298,34 +297,48 @@ def find_candidates(
             f"🌍 Northern hemisphere detected (Dec={dec_center:.2f}°). Using PanSTARRS catalog."
         )
     image = np.ascontiguousarray(image, dtype=np.float32)
-    bkg = sep.Background(image, mask=mask, bw=64, bh=64, fw=5, fh=5)
+    if mask is not None:
+        mask = np.asarray(mask, dtype=bool)
 
-    # Subtract spatially-varying background from image
-    image_sub = image - bkg.back()
+    # Detect objects with SExtractor through stdpipe, as done at the start of
+    # the pipeline for astrometry. SExtractor handles the background itself.
+    try:
+        obj = photometry.get_objects_sextractor(
+            image,
+            mask=mask,
+            thresh=detect_thresh,
+            aper=max(1.5 * fwhm, 2.0),
+            gain=gain,
+            edge=10,
+            bg_size=64,
+            wcs=wcs,
+            sn=3.0,
+            verbose=False,
+        )
+    except Exception as e:
+        st.error(f"SExtractor source detection failed: {e}")
+        return []
 
-    # Detect objects using background-subtracted image
-    obj = sep.extract(image_sub, detect_thresh, gain=gain, mask=mask, err=bkg.globalrms)
-
-    if obj is None:
+    if obj is None or len(obj) == 0:
         st.warning("No objects found in the image.")
         return []
 
     st.success(f"Found {len(obj)} objects in the image.")
 
-    # Add RA, Dec coordinates to the obj table using WCS
-    ra_obj, dec_obj = wcs.all_pix2world(obj["x"], obj["y"], 0)
-    obj = np.lib.recfunctions.append_fields(
-        obj, ["ra", "dec"], [ra_obj, dec_obj], usemask=False
-    )
+    # Make sure sky coordinates are available (normally set via wcs above)
+    if "ra" not in obj.colnames or "dec" not in obj.colnames:
+        ra_obj, dec_obj = wcs.all_pix2world(obj["x"], obj["y"], 0)
+        obj["ra"] = ra_obj
+        obj["dec"] = dec_obj
 
-    # Cross-match SEP detections with photometry_table to get PSF magnitudes
+    # Cross-match detections with photometry_table to get PSF magnitudes
     if photometry_table is not None and len(photometry_table) > 0:
 
         # Get coordinates from photometry_table
         phot_ra = photometry_table["ra"]
         phot_dec = photometry_table["dec"]
 
-        # Cross-match SEP detections with the photometry table. Both lists come
+        # Cross-match detections with the photometry table. Both lists come
         # from the same image and WCS, so a seeing-sized radius is enough.
         # The previous fixed 10 arcsec radius is several FWHM in typical
         # seeing and - because spherical_match() returns *all* pairs inside
@@ -372,15 +385,11 @@ def find_candidates(
             psf_mag_err = np.asarray(photometry_table[psf_mag_err_col])[pidx]
 
             # Add PSF photometry as mag_calib (reference magnitude for transients)
-            obj = np.lib.recfunctions.append_fields(
-                obj,
-                ["mag_calib", "mag_calib_err"],
-                [psf_mag, psf_mag_err],
-                usemask=False,
-            )
+            obj["mag_calib"] = psf_mag
+            obj["mag_calib_err"] = psf_mag_err
         else:
             st.warning(
-                "No matches found between SEP detections and PSF photometry table"
+                "No matches found between detections and PSF photometry table"
             )
             return []
     else:
@@ -447,7 +456,10 @@ def find_candidates(
         return []
 
     obj = Table(obj)
-    obj["flag"].name = "flags"  # Rename to 'flags' for compatibility
+    if "flag" in obj.colnames and "flags" not in obj.colnames:
+        obj["flag"].name = "flags"  # Rename to 'flags' for compatibility
+    elif "flags" not in obj.colnames:
+        obj["flags"] = np.zeros(len(obj), dtype=int)
 
     # Build vizier catalog list - include all useful catalogs
     # Note: 'apass' and 'gsc' excluded due to RA/DEC column naming issues in stdpipe

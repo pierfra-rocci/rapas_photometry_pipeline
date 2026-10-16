@@ -246,7 +246,7 @@ def _try_source_detection_improved(image, header, min_sources=10):
             # error model: explicit EGAIN/CCDGAIN/CVF keywords first, driver-
             # gain cameras (QHY/ZWO) recognised so their abstract GAIN setting
             # is not misused. Replaces the old 65535 / max(image) heuristic.
-            gain = resolve_effective_gain(header, image)
+            gain = resolve_effective_gain(header, image, quiet=True)
 
             sources = photometry.get_objects_sextractor(
                 image,

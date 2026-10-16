@@ -320,7 +320,7 @@ def instrument_uses_driver_gain(header):
     return False
 
 
-def resolve_effective_gain(header, image_data):
+def resolve_effective_gain(header, image_data, quiet=False):
     """Resolve the effective gain (counts per data unit) used for Poisson noise.
 
     ``photutils.calc_total_error`` expects the ratio of countable units
@@ -428,7 +428,7 @@ def resolve_effective_gain(header, image_data):
             "No usable header gain keyword; BUNIT indicates electrons, "
             "using effective_gain = 1."
         )
-    else:
+    elif not quiet:
         st.warning(
             "No usable header gain keyword and the frame does not constrain "
             "it; assuming effective_gain = 1 (data treated as electrons). Set "
