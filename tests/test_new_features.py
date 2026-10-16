@@ -159,7 +159,7 @@ def _run_patched(dec_center, filter_name="r"):
         plot_astrocolibri_cutouts(
             df, image, header, "/tmp", "test", filter_name, dec_center
         )
-        return mock_hips.call_args
+        return mock_hips.call_args_list[0] if mock_hips.call_args_list else None
 
 
 class TestAstrocolibriSurveySelection:
@@ -194,6 +194,23 @@ class TestAstrocolibriSurveySelection:
         survey_arg = call_args.args[0]
         assert "SkyMapper" in survey_arg
         assert survey_arg.endswith("i")
+
+
+class TestAstrocolibriSurveyFallback:
+    """The other survey is tried when the preferred one has no data."""
+
+    def test_falls_back_to_other_survey(self):
+        from src.transient import _fetch_hips_template
+
+        def fake(name, header=None, get_header=False):
+            if name.startswith("SkyMapper"):
+                return np.full((5, 5), np.nan)
+            return np.ones((5, 5))
+
+        with patch("src.transient.templates.get_hips_image", side_effect=fake):
+            tmpl, survey = _fetch_hips_template(None, "r", -10.0)
+        assert survey == "PanSTARRS/DR1/"
+        assert np.isfinite(tmpl).all()
 
 
 # ─── 3. plot_astrocolibri_cutouts — PNG filename sanitisation ─────────────────
@@ -612,3 +629,15 @@ class TestTransientCandidateChecker:
         xobj = Table({"mag_calib": [17.0, 18.0]})
         mask = checker_fn(xobj, xcat, "foo", filter_mag="r")
         assert mask.tolist() == [True, True]
+
+
+class TestAstrocolibriPrefixedMagnitude:
+    def test_prefixed_columns_are_found(self):
+        from src.transient import (
+            select_astrocolibri_magnitude,
+            select_astrocolibri_magnitude_error,
+        )
+
+        row = pd.Series({"rapasg_psf_mag": 17.5, "rapasg_psf_mag_err": 0.03})
+        assert select_astrocolibri_magnitude(row) == 17.5
+        assert select_astrocolibri_magnitude_error(row) == 0.03
