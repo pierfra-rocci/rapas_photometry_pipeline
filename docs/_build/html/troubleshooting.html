@@ -1,0 +1,509 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Troubleshooting &mdash; RAPAS Photometry Pipeline (RPP) v1.9.0 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=c4cb232b"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Changelog" href="changelog.html" />
+    <link rel="prev" title="Examples" href="examples.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #2980b9" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            RAPAS Photometry Pipeline (RPP)
+              <img src="_static/rapas_logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="user_guide.html">User Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced_features.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Troubleshooting</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#installation-setup-issues">Installation &amp; Setup Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#login-registration-issues">Login &amp; Registration Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#image-loading-processing-issues">Image Loading &amp; Processing Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#catalog-query-issues-simbad-skybot-etc">Catalog Query Issues (SIMBAD, SkyBoT, etc.)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#database-and-migration-issues">Database and Migration Issues</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #2980b9" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">RAPAS Photometry Pipeline (RPP)</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Troubleshooting</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/troubleshooting.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="troubleshooting">
+<h1>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Link to this heading"></a></h1>
+<p>This section addresses common issues and provides solutions for the current
+RAPAS Photometry Pipeline workflow.</p>
+<section id="installation-setup-issues">
+<h2>Installation &amp; Setup Issues<a class="headerlink" href="#installation-setup-issues" title="Link to this heading"></a></h2>
+<p><strong>Error: Python version mismatch (Expected Python 3.12)</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: The project is tested against Python 3.12, but a different
+Python version is active.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ol class="arabic simple">
+<li><p>Check your Python version: <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">--version</span></code></p></li>
+<li><p>Install Python 3.12 from python.org or your package manager.</p></li>
+<li><p>Create a new virtual environment with Python 3.12:
+<code class="docutils literal notranslate"><span class="pre">python3.12</span> <span class="pre">-m</span> <span class="pre">venv</span> <span class="pre">.venv</span></code></p></li>
+<li><p>Activate the environment and reinstall dependencies:
+<code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-e</span> <span class="pre">.</span></code></p></li>
+</ol>
+</li>
+</ul>
+<p><strong>Error: ImportError: No module named ‘…’</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: Required Python packages are not installed or are not found in
+the current environment.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ol class="arabic simple">
+<li><p>Ensure your virtual environment is activated.</p></li>
+<li><p>Verify you are using Python 3.12.</p></li>
+<li><p>Run <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-e</span> <span class="pre">.</span></code> from the project root.</p></li>
+<li><p>If issues persist, try <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">--upgrade</span> <span class="pre">--force-reinstall</span> <span class="pre">-e</span> <span class="pre">.</span></code>.</p></li>
+</ol>
+</li>
+</ul>
+<p><strong>Error: Could not connect to the backend</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: The selected backend is not running or is inaccessible.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ol class="arabic simple">
+<li><p>Open a separate terminal in the project root.</p></li>
+<li><p>Activate the virtual environment.</p></li>
+<li><p>Start either <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">uvicorn</span> <span class="pre">api.main:app</span> <span class="pre">--reload</span> <span class="pre">--host</span> <span class="pre">127.0.0.1</span> <span class="pre">--port</span> <span class="pre">8000</span></code>
+or <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">backend.py</span></code>.</p></li>
+<li><p>Check the terminal output for errors and confirm the expected port is
+available.</p></li>
+<li><p>If needed, set <code class="docutils literal notranslate"><span class="pre">RPP_API_URL</span></code> or <code class="docutils literal notranslate"><span class="pre">RPP_LEGACY_URL</span></code> to match your
+environment.</p></li>
+<li><p>If the FastAPI server is running but <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/health</span></code> returns HTTP 500
+after a Python or library upgrade, treat that as a backend dependency
+problem rather than a missing legacy server. Reinstall the environment
+from the project root with <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">--upgrade</span> <span class="pre">--force-reinstall</span> <span class="pre">-e</span> <span class="pre">.</span></code>
+and verify that <code class="docutils literal notranslate"><span class="pre">anyio</span></code> was reinstalled cleanly.</p></li>
+</ol>
+</li>
+</ul>
+<p><strong>Error: ``FastAPI.__call__() missing 1 required positional argument: ‘send’``</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: The FastAPI app was started with plain Gunicorn WSGI workers,
+for example <code class="docutils literal notranslate"><span class="pre">gunicorn</span> <span class="pre">api.main:app</span></code>, so requests such as <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/health</span></code>
+fail before they reach FastAPI.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ol class="arabic simple">
+<li><p>Start the API with Uvicorn directly: <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">uvicorn</span> <span class="pre">api.main:app</span> <span class="pre">--host</span> <span class="pre">127.0.0.1</span> <span class="pre">--port</span> <span class="pre">8000</span></code>.</p></li>
+<li><p>Or start it with Gunicorn using the ASGI worker:
+<code class="docutils literal notranslate"><span class="pre">gunicorn</span> <span class="pre">-k</span> <span class="pre">uvicorn.workers.UvicornWorker</span> <span class="pre">api.main:app</span></code>.</p></li>
+<li><p>If you launch Gunicorn from the project root, the repository’s
+<code class="docutils literal notranslate"><span class="pre">gunicorn.conf.py</span></code> now sets <code class="docutils literal notranslate"><span class="pre">uvicorn.workers.UvicornWorker</span></code> by
+default.</p></li>
+</ol>
+</li>
+</ul>
+<p><strong>Error: DLL load failed while importing…</strong> (Windows)</p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: Missing C++ runtime libraries required by some Python packages.</p></li>
+<li><p><strong>Solution</strong>: Install the latest Microsoft Visual C++ Redistributable
+packages for Visual Studio from the official Microsoft website.</p></li>
+</ul>
+</section>
+<section id="login-registration-issues">
+<h2>Login &amp; Registration Issues<a class="headerlink" href="#login-registration-issues" title="Link to this heading"></a></h2>
+<p><strong>Error: “Username or email is already taken.”</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: The chosen username or email address already exists in the
+database.</p></li>
+<li><p><strong>Solution</strong>: Choose a different username and/or email address.</p></li>
+</ul>
+<p><strong>Error: “Invalid username or password.”</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: Incorrect password, or an identifier that does not match any
+account.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ol class="arabic simple">
+<li><p>The <em>Login</em> field accepts the account username <strong>or</strong> the email address
+used at registration. Try the email if you no longer remember the
+username.</p></li>
+<li><p>Verify the password, and use the password recovery option if you forgot
+it.</p></li>
+</ol>
+</li>
+</ul>
+<p><strong>Where can I see who logged in?</strong></p>
+<ul class="simple">
+<li><p><strong>Solution</strong>: every successful login writes a timestamped line with the
+pipeline version to the service log, for example
+<code class="docutils literal notranslate"><span class="pre">[2026-10-18</span> <span class="pre">18:46:22]</span> <span class="pre">RPP</span> <span class="pre">v1.9.0</span> <span class="pre">-</span> <span class="pre">User</span> <span class="pre">'intern1'</span> <span class="pre">logged</span> <span class="pre">in</span> <span class="pre">successfully</span> <span class="pre">(FastAPI</span> <span class="pre">backend).</span></code>
+The FastAPI backend, the legacy backend and the frontend each emit their
+own line, so a login appears in both the backend and frontend logs.
+Administrators can also open the in-app <em>Pipeline Logs</em> page
+(<code class="docutils literal notranslate"><span class="pre">pages/showlogs.py</span></code>) to read the last 200 lines of
+<code class="docutils literal notranslate"><span class="pre">fastapi_backend.log</span></code> and <code class="docutils literal notranslate"><span class="pre">streamlit_frontend.log</span></code>.</p></li>
+</ul>
+<p><strong>Error: “Email already registered.” while the account cannot be reached</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: The address is already attached to an account, but the login
+identifier does not match it.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ol class="arabic simple">
+<li><p>Log in with the email address itself instead of a username.</p></li>
+<li><p>Reset the password through <em>Password Recovery</em>, then log in with the
+email address and the new password.</p></li>
+</ol>
+</li>
+</ul>
+<p><strong>Password Recovery Fails / No Email Received</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: Email sending is not configured correctly on the backend.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ol class="arabic simple">
+<li><p>Ensure the active backend is running.</p></li>
+<li><p>Verify that SMTP settings are correctly configured, especially
+<code class="docutils literal notranslate"><span class="pre">SMTP_SERVER</span></code>, <code class="docutils literal notranslate"><span class="pre">SMTP_PORT</span></code>, <code class="docutils literal notranslate"><span class="pre">SMTP_USER</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">SMTP_PASS_ENCODED</span></code>.</p></li>
+<li><p>Check the backend terminal output for email sending errors.</p></li>
+<li><p>Check your email spam folder.</p></li>
+<li><p>Ensure your email provider allows sending via SMTP.</p></li>
+</ol>
+</li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>For privacy, the recovery request always reports success, even when no
+account uses the submitted address. The address must therefore be exactly
+the one attached to an account. Matching ignores capitalisation and
+surrounding spaces, so any spelling of the address that resolves to the
+registered mailbox works.</p>
+</div>
+</section>
+<section id="image-loading-processing-issues">
+<h2>Image Loading &amp; Processing Issues<a class="headerlink" href="#image-loading-processing-issues" title="Link to this heading"></a></h2>
+<p><strong>Error: Could not read FITS file / No image data found</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: The file is corrupted, not a valid FITS file, or uses an
+unsupported format or compression mode.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ul>
+<li><p>Verify the file opens correctly in other FITS viewers.</p></li>
+<li><p>Ensure the file has a standard extension such as <code class="docutils literal notranslate"><span class="pre">.fits</span></code> or
+<code class="docutils literal notranslate"><span class="pre">.fits.gz</span></code>.</p></li>
+<li><p>If it is a multi-extension FITS, ensure image data exists in at least
+one HDU.</p></li>
+</ul>
+</li>
+</ul>
+<p><strong>A wrong image or header appears, or a previous file seems to persist</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: The preview shows a header or file that is not the one you
+just uploaded.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ul>
+<li><p>Click <strong>Reset</strong> once. The uploader is re-created on every reset, so
+the previous file is dropped immediately; a second press is no longer
+needed.</p></li>
+<li><p>Each browser session now works in its own <code class="docutils literal notranslate"><span class="pre">work_&lt;id&gt;</span></code> folder, so
+files of other users or tabs cannot leak into your analysis. If the
+problem persists, reload the page and report the file name and time.</p></li>
+<li><p>Leftover temporary files from closed browsers or abandoned analyses
+are removed automatically after 24 hours; archived ZIP results are
+never deleted by this cleanup.</p></li>
+</ul>
+</li>
+</ul>
+<p><strong>The FITS file uploads but nothing starts immediately</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: This is expected behavior in the current interface.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ul>
+<li><p>Uploading stages the file only.</p></li>
+<li><p>Click <strong>Start Analysis</strong> to trigger FITS loading, WCS checks,
+astrometry, and photometry.</p></li>
+</ul>
+</li>
+</ul>
+<p><strong>Error: Missing required WCS keywords / WCS creation error</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: The FITS header lacks the necessary keywords for
+<code class="docutils literal notranslate"><span class="pre">astropy.wcs</span></code> to build a coordinate system.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ul>
+<li><p>Enable plate solving using Astrometry.net.</p></li>
+<li><p>Alternatively, use external software to add WCS information to the FITS
+header before uploading.</p></li>
+</ul>
+</li>
+</ul>
+<p><strong>Astrometry Check / WCS Refinement Fails</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: The SCAMP refinement or blind-solving process could not
+find enough matches, or the initial WCS was too inaccurate.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ul>
+<li><p>Ensure the initial WCS is roughly correct.</p></li>
+<li><p>Ensure the <code class="docutils literal notranslate"><span class="pre">scamp</span></code> binary is installed and on <code class="docutils literal notranslate"><span class="pre">PATH</span></code>, or point
+<code class="docutils literal notranslate"><span class="pre">RPP_SCAMP_EXECUTABLE</span></code> at it. The refinement runs SCAMP directly.</p></li>
+<li><p>Check internet connectivity when catalog access is needed.</p></li>
+<li><p>Try adjusting the seeing parameter, as it affects detection.</p></li>
+<li><p>The solver already lowers its detection threshold (3, 2, then 1 sigma)
+to reach about 20 stars (it also tries 2 sigma when 3 sigma gives
+fewer than 100 sources); fewer than 20 stars (or fewer than 5, which
+is fatal) means the field is too sparse, too short an exposure, or
+the image is saturated or out of focus.</p></li>
+<li><p>If the field is very sparse or very crowded, refinement may struggle.</p></li>
+<li><p>If <strong>Astrometry Check</strong> was enabled on an image that already had valid
+WCS, the app may fall back to the original WCS when the forced solve
+fails.</p></li>
+</ul>
+</li>
+</ul>
+<p>When the local Astrometry.net solve fails, RPP can optionally try the online
+Astrometry.net service using the detected source list (not the FITS image). Set
+<code class="docutils literal notranslate"><span class="pre">ASTROMETRY_API_KEY</span></code> in the environment of the Streamlit process, or configure
+<code class="docutils literal notranslate"><span class="pre">api_key</span></code> under <code class="docutils literal notranslate"><span class="pre">[astrometry_net]</span></code> in Astroquery’s
+<code class="docutils literal notranslate"><span class="pre">~/.astropy/config/astroquery.cfg</span></code>. Online solving is skipped when no key is
+available; the original local-solve failure and WCS fallback behavior remain
+unchanged. Submitted source lists are marked private where supported by the
+service.</p>
+<p><strong>No Sources Found / Few Sources Found</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: Detection parameters may be unsuitable for the image.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ul>
+<li><p>Lower the detection threshold to detect fainter sources.</p></li>
+<li><p>Ensure the seeing estimate is reasonable.</p></li>
+<li><p>Check if the border mask is too large.</p></li>
+<li><p>Verify the image is not blank or excessively noisy.</p></li>
+</ul>
+</li>
+</ul>
+<p><strong>Zero Point Calculation Fails / No Gaia Matches</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: The app could not match detected sources to the GAIA catalog
+or calculate a reliable zero point.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ul>
+<li><p>Verify WCS accuracy.</p></li>
+<li><p>Check internet connectivity for GAIA queries.</p></li>
+<li><p>Adjust the filter magnitude limit.</p></li>
+<li><p>Ensure the selected filter band is appropriate for the image filter.</p></li>
+<li><p>The field may genuinely lack suitable GAIA stars in the specified
+magnitude range.</p></li>
+</ul>
+</li>
+</ul>
+<p><strong>Unrealistic S/N or Magnitude Errors / Gain Reported as Ignored</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: The warning “… is outside the plausible effective-gain
+range” appears, or bright-source magnitude errors look far too small (and
+the cosmic-ray mask covers a large part of the frame). On several CMOS
+cameras the FITS <code class="docutils literal notranslate"><span class="pre">GAIN</span></code> keyword stores an abstract <em>driver</em> setting
+rather than an e-/ADU conversion factor: QHY uses a 0-100 scale (a QHY268M
+at <code class="docutils literal notranslate"><span class="pre">GAIN=56</span></code> is ≈0.77 e-/ADU) and ZWO ASI uses a 0.1 dB value.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ul>
+<li><p>RPP already recognises QHY/ZWO/ASI cameras (see
+<code class="docutils literal notranslate"><span class="pre">DRIVER_GAIN_INSTRUMENT_PATTERNS</span></code>) and ignores their bare <code class="docutils literal notranslate"><span class="pre">GAIN</span></code>,
+falling back to <code class="docutils literal notranslate"><span class="pre">EGAIN</span></code>/<code class="docutils literal notranslate"><span class="pre">CVF</span></code>, the frame’s photon-transfer estimate,
+or <code class="docutils literal notranslate"><span class="pre">effective_gain</span> <span class="pre">=</span> <span class="pre">1</span></code>.</p></li>
+<li><p>For the most accurate errors, set <em>Detector Gain</em> in the sidebar (or
+<code class="docutils literal notranslate"><span class="pre">RPP_EFFECTIVE_GAIN</span></code> for headless runs) to the true e-/ADU conversion
+factor for the gain setting in use, read from the manufacturer’s
+gain-vs-e-/ADU chart.</p></li>
+<li><p>If the header carries a genuine conversion factor, provide it as
+<code class="docutils literal notranslate"><span class="pre">EGAIN</span></code>/<code class="docutils literal notranslate"><span class="pre">CCDGAIN</span></code> (e-/ADU) or <code class="docutils literal notranslate"><span class="pre">CVF</span></code> (RPP uses <code class="docutils literal notranslate"><span class="pre">gain</span> <span class="pre">=</span> <span class="pre">1/CVF</span></code>).</p></li>
+</ul>
+</li>
+</ul>
+</section>
+<section id="catalog-query-issues-simbad-skybot-etc">
+<h2>Catalog Query Issues (SIMBAD, SkyBoT, etc.)<a class="headerlink" href="#catalog-query-issues-simbad-skybot-etc" title="Link to this heading"></a></h2>
+<p><strong>Warning: “Query failed: Network error / Timeout”</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: A temporary network issue occurred or the external catalog
+service is down or slow.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ul>
+<li><p>Wait and try processing the image again later.</p></li>
+<li><p>Check your internet connection.</p></li>
+<li><p>Review the generated log file to see which catalog step timed out or was
+skipped.</p></li>
+<li><p>Note that the pipeline may continue with partial results rather than
+failing completely.</p></li>
+</ul>
+</li>
+</ul>
+<p><strong>Warning: “No sources found…” for a specific catalog</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: The catalog genuinely contains no known objects matching the
+criteria within your image field.</p></li>
+<li><p><strong>Solution</strong>: This is expected for many fields. The message is informational.</p></li>
+</ul>
+<p><strong>SkyBoT parse error: “not well-formed (invalid token)”</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: SkyBoT returned a malformed or non-XML payload for the query,
+so parsing failed.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ul>
+<li><p>The pipeline now treats this as a warning and continues without SkyBoT
+matches.</p></li>
+<li><p>Re-run later to retry the external service response.</p></li>
+<li><p>If the preview starts with <code class="docutils literal notranslate"><span class="pre">#</span> <span class="pre">Flag:</span> <span class="pre">-1</span></code>, SkyBoT reports a service-side
+error. Keep the accompanying ticket number and report it to IMCCE if the
+error persists.</p></li>
+<li><p>The pipeline requests VOTable output for Astroquery’s parser. A
+<code class="docutils literal notranslate"><span class="pre">No</span> <span class="pre">sources</span> <span class="pre">found</span> <span class="pre">from</span> <span class="pre">10</span> <span class="pre">Parsec</span> <span class="pre">catalog</span></code> message is a separate
+VizieR query result and is not caused by the SkyBoT response.</p></li>
+</ul>
+</li>
+</ul>
+<p><strong>Astro-Colibri: No matches or Error</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: Invalid or missing API key, network issue, or no recent events
+in the field.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ul>
+<li><p>Ensure you have entered the correct Astro-Colibri UID key in the
+sidebar.</p></li>
+<li><p>Check internet connectivity.</p></li>
+<li><p>Check the Astro-Colibri service status.</p></li>
+<li><p>HTTP 429 means the daily quota (100 requests/day) is exhausted; the
+log message states the reason returned by the API.</p></li>
+<li><p>A warning about the 15 or 20 arcsec tier means the association is
+loose: check it visually in Aladin.</p></li>
+</ul>
+</li>
+</ul>
+</section>
+<section id="database-and-migration-issues">
+<h2>Database and Migration Issues<a class="headerlink" href="#database-and-migration-issues" title="Link to this heading"></a></h2>
+<p><strong>Need to add 1.6.0 tracking tables to an existing database</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: Older databases may not contain the WCS FITS and ZIP archive
+tracking tables.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ul>
+<li><p>Run <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">scripts/migrate_add_wcs_zip_tables.py</span></code>.</p></li>
+<li><p>Keep the generated backup before applying changes to production data.</p></li>
+</ul>
+</li>
+</ul>
+<p><strong>Need to convert a legacy Streamlit SQLite database to the API schema</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: A legacy database layout may not match the SQLAlchemy-backed
+FastAPI schema.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ul>
+<li><p>Run <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">scripts/migrate_legacy_db.py</span></code> with the appropriate
+arguments.</p></li>
+<li><p>Prefer a dry run and backup before migrating live data.</p></li>
+</ul>
+</li>
+</ul>
+<p><strong>Pixel scale could not be determined</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: The run stops with “Pixel scale could not be determined from
+the FITS header”.</p></li>
+<li><p><strong>Solution</strong>: The header has no usable <code class="docutils literal notranslate"><span class="pre">PIXSCALE</span></code>/<code class="docutils literal notranslate"><span class="pre">SECPIX</span></code>, CD matrix, or
+pixel size + focal length, and the WCS could not provide a scale. Enter the
+value in the sidebar (<strong>Parameters &gt; Pixel scale override</strong>, arcsec/pixel)
+and start the analysis again.</p></li>
+</ul>
+<p><strong>Login password not taken into account in Firefox</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: After typing the password, the value is not taken into account.</p></li>
+<li><p><strong>Solution</strong>: Press Enter in the password field before clicking <strong>Login</strong>.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="examples.html" class="btn btn-neutral float-left" title="Examples" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="changelog.html" class="btn btn-neutral float-right" title="Changelog" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024-2026, Pier-Francesco Rocci.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

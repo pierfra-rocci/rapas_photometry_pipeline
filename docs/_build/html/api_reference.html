@@ -1,0 +1,441 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>API Reference &mdash; RAPAS Photometry Pipeline (RPP) v1.9.0 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=c4cb232b"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Examples" href="examples.html" />
+    <link rel="prev" title="Backend API" href="api.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #2980b9" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            RAPAS Photometry Pipeline (RPP)
+              <img src="_static/rapas_logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="user_guide.html">User Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced_features.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#application-modules">Application Modules</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#frontend-and-ui">Frontend and UI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#science-and-processing-modules">Science and Processing Modules</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#database-and-api-modules">Database and API Modules</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#useful-functions">Useful Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#photometric-formula-conventions">Photometric Formula Conventions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#photometry-error-columns">Photometry Error Columns</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#analysis-result-files">Analysis Result Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#http-api-endpoints">HTTP API Endpoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#maintenance-and-migration-scripts">Maintenance and Migration Scripts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#test-suite">Test Suite</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #2980b9" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">RAPAS Photometry Pipeline (RPP)</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">API Reference</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/api_reference.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="api-reference">
+<h1>API Reference<a class="headerlink" href="#api-reference" title="Link to this heading"></a></h1>
+<p>This section summarizes the main Python modules and HTTP endpoints that make up
+RAPAS Photometry Pipeline. The project is primarily used through the Streamlit
+frontend, but several modules and backend routes are also useful for
+programmatic access.</p>
+<section id="application-modules">
+<h2>Application Modules<a class="headerlink" href="#application-modules" title="Link to this heading"></a></h2>
+<section id="frontend-and-ui">
+<h3>Frontend and UI<a class="headerlink" href="#frontend-and-ui" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">pages/app.py</span></code></dt><dd><p>Main Streamlit workflow for FITS upload, parameter selection, astrometry,
+photometry, cross-matching, result export, and transient finding.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">pages/login.py</span></code></dt><dd><p>Login, registration, password recovery, and backend selection workflow. Every
+successful sign-in is written to the Streamlit log as
+<code class="docutils literal notranslate"><span class="pre">[YYYY-MM-DD</span> <span class="pre">HH:MM:SS]</span> <span class="pre">RPP</span> <span class="pre">vX.Y.Z</span> <span class="pre">-</span> <span class="pre">User</span> <span class="pre">'&lt;username&gt;'</span> <span class="pre">logged</span> <span class="pre">in</span>
+<span class="pre">successfully</span> <span class="pre">(frontend,</span> <span class="pre">&lt;backend&gt;</span> <span class="pre">backend).</span></code></p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">pages/api_client.py</span></code></dt><dd><p>Thin HTTP client used by the Streamlit frontend to talk to the FastAPI
+backend. Includes backend auto-detection logic.</p>
+</dd>
+</dl>
+</section>
+<section id="science-and-processing-modules">
+<h3>Science and Processing Modules<a class="headerlink" href="#science-and-processing-modules" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">src/pipeline.py</span></code></dt><dd><p>Core photometry helpers including masking, cosmic-ray handling, and other
+lower-level processing helpers. It also owns the effective-gain resolution
+(<code class="docutils literal notranslate"><span class="pre">resolve_effective_gain</span></code> / <code class="docutils literal notranslate"><span class="pre">instrument_uses_driver_gain</span></code>) shared by the
+error model, the cosmic-ray mask and SEP detection: explicit <code class="docutils literal notranslate"><span class="pre">EGAIN</span></code>,
+<code class="docutils literal notranslate"><span class="pre">CCDGAIN</span></code> and <code class="docutils literal notranslate"><span class="pre">CVF</span></code> (<code class="docutils literal notranslate"><span class="pre">gain</span> <span class="pre">=</span> <span class="pre">1/CVF</span></code>) keywords take precedence over the
+conventional <code class="docutils literal notranslate"><span class="pre">GAIN</span></code>, which is ignored on recognised driver-gain cameras
+(QHY/ZWO) because it is an abstract driver setting rather than e-/ADU.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src/astrometry.py</span></code></dt><dd><p>Plate solving and WCS-related utilities using <code class="docutils literal notranslate"><span class="pre">stdpipe</span></code> and local
+Astrometry.net tooling.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src/psf.py</span></code></dt><dd><p>PSF photometry helpers and PSF model construction, including the empirical
+PSF (ePSF) builder and <code class="docutils literal notranslate"><span class="pre">compute_encircled_energy</span></code> for the aperture
+correction.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src/xmatch_catalogs.py</span></code></dt><dd><p>Catalog cross-matching and catalog enhancement, including GAIA, SIMBAD,
+SkyBoT, and related services.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src/transient.py</span></code></dt><dd><p>Transient candidate search, reference-survey/catalog comparison, and extra
+filtering such as Solar System object rejection.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src/tools_pipeline.py</span></code></dt><dd><p>Shared photometry and WCS utilities such as filter mapping, pixel scale
+extraction, background estimation, and calibrated magnitude helpers.</p>
+</dd>
+</dl>
+<p><code class="docutils literal notranslate"><span class="pre">src/pipeline.py</span></code> also exposes <code class="docutils literal notranslate"><span class="pre">check_psf_aperture_consistency()</span></code>, which
+matches PSF and aperture sources by position and reports the median
+<code class="docutils literal notranslate"><span class="pre">psf_mag</span> <span class="pre">-</span> <span class="pre">aperture_mag</span></code> per aperture, warning when the offset exceeds
+<code class="docutils literal notranslate"><span class="pre">PSF_APERTURE_CONSISTENCY_THRESHOLD</span></code> (0.15 mag). Diagnostics are stored in
+<code class="docutils literal notranslate"><span class="pre">st.session_state[&quot;psf_aperture_consistency&quot;]</span></code>, and <code class="docutils literal notranslate"><span class="pre">add_calibrated_magnitudes</span></code>
+exports the per-source difference as <code class="docutils literal notranslate"><span class="pre">psf_minus_aperture_mag_X_X</span></code> (with
+filter-prefixed aliases, NaN where only one method measured the source).</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">src/tools_app.py</span></code></dt><dd><p>Streamlit-side helper functions including FITS loading, cache reset, and UI
+support routines. <code class="docutils literal notranslate"><span class="pre">plot_photometry_offsets()</span></code> renders the per-source
+<code class="docutils literal notranslate"><span class="pre">psf_mag</span> <span class="pre">-</span> <span class="pre">aperture_mag</span></code> offset (scatter against calibrated PSF magnitude
+with per-aperture median/zero lines, plus the histogram) shown in the
+results view.</p>
+</dd>
+</dl>
+</section>
+<section id="database-and-api-modules">
+<h3>Database and API Modules<a class="headerlink" href="#database-and-api-modules" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">api/main.py</span></code></dt><dd><p>FastAPI application with health, authentication, config persistence, and
+FITS upload/listing endpoints. A successful <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/login</span></code> writes
+<code class="docutils literal notranslate"><span class="pre">[YYYY-MM-DD</span> <span class="pre">HH:MM:SS]</span> <span class="pre">RPP</span> <span class="pre">vX.Y.Z</span> <span class="pre">-</span> <span class="pre">User</span> <span class="pre">'&lt;username&gt;'</span> <span class="pre">logged</span> <span class="pre">in</span>
+<span class="pre">successfully</span> <span class="pre">(FastAPI</span> <span class="pre">backend).</span></code> to the service log; the legacy backend
+(<code class="docutils literal notranslate"><span class="pre">backend.py</span></code>) emits the same line tagged <code class="docutils literal notranslate"><span class="pre">(legacy</span> <span class="pre">backend)</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">api/models.py</span></code></dt><dd><p>SQLAlchemy ORM models for users, FITS storage, recovery codes, and tracking
+tables.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">api/schemas.py</span></code></dt><dd><p>Pydantic request and response models for the FastAPI service.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">api/storage.py</span></code></dt><dd><p>Storage path generation for uploaded FITS files and related backend storage
+conventions.</p>
+</dd>
+</dl>
+</section>
+</section>
+<section id="useful-functions">
+<h2>Useful Functions<a class="headerlink" href="#useful-functions" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">src.tools_app.load_fits_data(file)</span></code></dt><dd><p>Load image data and headers from a FITS file with robust handling for empty,
+invalid, multi-extension, or multi-dimensional FITS content.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src.tools_app.update_observatory_from_fits_header(header)</span></code></dt><dd><p>Extract observatory metadata (name, latitude, longitude, elevation) from a
+FITS header and update the Streamlit session state observatory fields.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src.tools_app.display_archived_files_browser(api_client)</span></code></dt><dd><p>Render the archived FITS file and ZIP result browser in the Streamlit
+sidebar. Queries the backend for the current user’s stored files.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src.tools_pipeline.safe_wcs_create(header)</span></code></dt><dd><p>Attempt to build a WCS object from a FITS header while returning structured
+error information and log messages.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src.tools_pipeline.extract_pixel_scale(header)</span></code></dt><dd><p>Extract or estimate the pixel scale used by later photometric and
+astrometric steps.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src.pipeline.make_border_mask(image,</span> <span class="pre">border=50,</span> <span class="pre">invert=True,</span> <span class="pre">dtype=bool)</span></code></dt><dd><p>Build a border mask for detection workflows.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src.pipeline.fwhm_fit(image,</span> <span class="pre">objects,</span> <span class="pre">pixel_scale)</span></code></dt><dd><p>Estimate the FWHM of the stellar PSF by fitting Gaussian profiles to
+detected sources and averaging the results with sigma clipping.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src.pipeline.detect_and_mask_satellite_trails(image_data,</span> <span class="pre">header,</span> <span class="pre">temp_fits_path=None)</span></code></dt><dd><p>Detect satellite trails in an image using ASTRiDE and return a boolean mask
+with trail pixels set to True. Returns an empty mask when ASTRiDE is
+unavailable or no trails are found.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src.pipeline.show_subtracted_image(image_sub)</span></code></dt><dd><p>Display the background-subtracted image inside the Streamlit interface.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src.astrometry.solve_with_astrometrynet(file_path)</span></code></dt><dd><p>Run local astrometric solving with the configured Astrometry.net/stdpipe
+stack.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src.xmatch_catalogs.cross_match_with_gaia(...)</span></code></dt><dd><p>Cross-match measured sources with calibration catalogs and prepare data for
+zero-point estimation and later enrichment.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src.xmatch_catalogs.enhance_catalog(...)</span></code></dt><dd><p>Enrich the photometry catalog with additional catalog matches such as
+SIMBAD, SkyBoT, and Astro-Colibri.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src.transient.find_candidates(...)</span></code></dt><dd><p>Run the transient candidate workflow after photometry and catalog
+preparation. Sources are detected with SExtractor, unreliable detections are
+dropped using the SEP flag mask (<code class="docutils literal notranslate"><span class="pre">SEP_REJECT_FLAGS</span></code>) and matched to the
+photometry catalog within a seeing-based radius, and reference-survey /
+Vizier matches are rejected unless the detection is a genuine brightness
+excess (<code class="docutils literal notranslate"><span class="pre">mag_threshold</span></code>, default 2.0 mag). No minimum S/N cutoff is
+applied; low-S/N detections can remain candidates if they pass the other
+catalog and known-object filters.</p>
+</dd>
+</dl>
+</section>
+<section id="photometric-formula-conventions">
+<h2>Photometric Formula Conventions<a class="headerlink" href="#photometric-formula-conventions" title="Link to this heading"></a></h2>
+<p>The project documentation and code use the following formulas consistently:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">σ_flux²</span> <span class="pre">=</span> <span class="pre">σ_aperture²</span> <span class="pre">+</span> <span class="pre">σ_total_bkg²</span> <span class="pre">+</span> <span class="pre">σ_centroid²</span></code> (aperture-sum error,
+the local-background error from the sigma-clipped annulus, and the
+centroid-position term)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">σ_bkg_pixel</span> <span class="pre">=</span> <span class="pre">ApertureStats.median_err</span></code> = <code class="docutils literal notranslate"><span class="pre">√(π/2)</span> <span class="pre">·</span> <span class="pre">s</span> <span class="pre">/</span> <span class="pre">√A_ann</span></code> (standard
+error of the median annulus level)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">S/N</span> <span class="pre">=</span> <span class="pre">flux</span> <span class="pre">/</span> <span class="pre">flux_error</span></code> (computed from the background-subtracted,
+aperture-corrected flux)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">σ_mag</span> <span class="pre">=</span> <span class="pre">1.0857</span> <span class="pre">×</span> <span class="pre">(σ_flux</span> <span class="pre">/</span> <span class="pre">flux)</span></code>, combined in quadrature with the
+aperture-correction systematic
+<code class="docutils literal notranslate"><span class="pre">σ_apcorr</span> <span class="pre">=</span> <span class="pre">1.0857</span> <span class="pre">·</span> <span class="pre">f_apcorr</span> <span class="pre">·</span> <span class="pre">|apcorr</span> <span class="pre">−</span> <span class="pre">1|</span> <span class="pre">/</span> <span class="pre">apcorr</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">flux_total</span> <span class="pre">=</span> <span class="pre">flux_aperture</span> <span class="pre">/</span> <span class="pre">EE(r)</span></code> (encircled-energy aperture correction)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">σ_mag_calib</span> <span class="pre">=</span> <span class="pre">√(σ_mag_inst²</span> <span class="pre">+</span> <span class="pre">σ_zp²</span> <span class="pre">+</span> <span class="pre">σ_sys²)</span></code>, where <code class="docutils literal notranslate"><span class="pre">σ_zp</span></code> uses the
+sigma-clipped, untrimmed residual scatter and the <code class="docutils literal notranslate"><span class="pre">√(π/2)</span></code> median factor</p></li>
+</ul>
+<section id="photometry-error-columns">
+<h3>Photometry Error Columns<a class="headerlink" href="#photometry-error-columns" title="Link to this heading"></a></h3>
+<p>The exported photometry catalog exposes the error budget explicitly so it can
+be inspected or recombined downstream:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">background_rms_per_pixel_X_X</span></code> — local-background <code class="docutils literal notranslate"><span class="pre">median_err</span></code> per pixel</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">centroid_flux_err_X_X</span></code> — centroid-position term</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">apcorr_X_X</span></code> / <code class="docutils literal notranslate"><span class="pre">ee_fraction_X_X</span></code> — aperture correction and its
+encircled-energy fraction</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">apcorr_mag_err_X_X</span></code> — aperture-correction magnitude systematic</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">aperture_mag_err_X_X</span></code> / <code class="docutils literal notranslate"><span class="pre">psf_mag_err</span></code> — total calibrated magnitude error
+(after zero-point propagation)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">aperture_mag_err_X_X_random</span></code> / <code class="docutils literal notranslate"><span class="pre">..._correlated</span></code> and
+<code class="docutils literal notranslate"><span class="pre">psf_mag_err_random</span></code> / <code class="docutils literal notranslate"><span class="pre">psf_mag_err_correlated</span></code> — the per-source and
+field-common components of the calibrated magnitude error</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">aperture_mag_X_X_colorcorr_err</span></code> / <code class="docutils literal notranslate"><span class="pre">psf_mag_colorcorr_err</span></code> — errors of the
+color-term-corrected magnitudes</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">zero_point_std</span></code> — field-level formal zero-point uncertainty</p></li>
+</ul>
+<p>The total aperture flux error (aperture + local background + centroid) is
+computed as the <code class="docutils literal notranslate"><span class="pre">aperture_sum_bkg_corr_err_X_X</span></code> column by
+<code class="docutils literal notranslate"><span class="pre">detection_and_photometry</span></code>; it is an intermediate quantity that
+<code class="docutils literal notranslate"><span class="pre">add_calibrated_magnitudes</span></code> does not retain in the exported catalog. The
+calibrator scatter and count diagnostics (<code class="docutils literal notranslate"><span class="pre">zero_point_scatter</span></code>,
+<code class="docutils literal notranslate"><span class="pre">zero_point_scatter_kept</span></code>, <code class="docutils literal notranslate"><span class="pre">zero_point_n</span></code>) are stored on the matched
+calibration table used for zero-point diagnostics, not on the exported source
+catalog.</p>
+</section>
+</section>
+<section id="analysis-result-files">
+<h2>Analysis Result Files<a class="headerlink" href="#analysis-result-files" title="Link to this heading"></a></h2>
+<p>The Streamlit workflow writes files to a per-user <code class="docutils literal notranslate"><span class="pre">*_results/</span></code> directory.
+Both ZIP builders include files matching the input base name except files with
+the <code class="docutils literal notranslate"><span class="pre">.fits</span></code> extension. FITS products therefore remain on disk and are not
+part of the downloadable archive.</p>
+<table class="docutils align-default" id="id1">
+<caption><span class="caption-text">Generated analysis artifacts</span><a class="headerlink" href="#id1" title="Link to this table"></a></caption>
+<colgroup>
+<col style="width: 25.0%" />
+<col style="width: 35.0%" />
+<col style="width: 25.0%" />
+<col style="width: 15.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>File pattern</p></th>
+<th class="head"><p>Contents</p></th>
+<th class="head"><p>Generation / writer</p></th>
+<th class="head"><p>In ZIP</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">*_catalog.csv</span></code> and <code class="docutils literal notranslate"><span class="pre">*_catalog.vot</span></code></p></td>
+<td><p>Curated columns only (<code class="docutils literal notranslate"><span class="pre">id</span></code> first, then coordinates, Astro-Colibri/SIMBAD/SkyBoT/AAVSO matches, S/N, aperture and PSF photometry); Astro-Colibri sources sorted first</p></td>
+<td><p>After photometry and catalog enrichment; <code class="docutils literal notranslate"><span class="pre">src.utils.save_catalog_files</span></code> (columns chosen by <code class="docutils literal notranslate"><span class="pre">build_export_columns</span></code>/<code class="docutils literal notranslate"><span class="pre">prepare_export_table</span></code>)</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">*_header.txt</span></code></p></td>
+<td><p>Input FITS header</p></td>
+<td><p>When a science header is available; <code class="docutils literal notranslate"><span class="pre">src.utils.save_header_to_txt</span></code></p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">*_wcs_header.txt</span></code></p></td>
+<td><p>Header containing the available astrometric solution</p></td>
+<td><p>When a WCS solution is available; <code class="docutils literal notranslate"><span class="pre">src.utils.save_header_to_txt</span></code></p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">*.log</span></code></p></td>
+<td><p>Processing log</p></td>
+<td><p>At the end of analysis; <code class="docutils literal notranslate"><span class="pre">pages/app.py</span></code></p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">*_*.png</span></code></p></td>
+<td><p>Image and diagnostic plots (for example magnitude and PSF/aperture-offset plots)</p></td>
+<td><p>Depending on the plots produced; <code class="docutils literal notranslate"><span class="pre">pages/app.py</span></code></p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">*_transients.csv</span></code></p></td>
+<td><p>Transient candidate table with the same columns as the catalog (including <code class="docutils literal notranslate"><span class="pre">id</span></code>)</p></td>
+<td><p>When transient candidates are returned; <code class="docutils literal notranslate"><span class="pre">src.transient.build_transient_table</span></code></p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">*_psf.fits</span></code></p></td>
+<td><p>Empirical PSF model</p></td>
+<td><p>When the ePSF model is saved; <code class="docutils literal notranslate"><span class="pre">src/psf.py</span></code></p></td>
+<td><p>No</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">*_wcs.fits</span></code></p></td>
+<td><p>Original image with the updated WCS header</p></td>
+<td><p>When WCS solving succeeds; <code class="docutils literal notranslate"><span class="pre">src.utils.save_fits_with_wcs</span></code>. Also copied to <code class="docutils literal notranslate"><span class="pre">rpp_data/fits/</span></code>.</p></td>
+<td><p>No</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="http-api-endpoints">
+<h2>HTTP API Endpoints<a class="headerlink" href="#http-api-endpoints" title="Link to this heading"></a></h2>
+<p>The FastAPI backend in <code class="docutils literal notranslate"><span class="pre">api/main.py</span></code> currently exposes these primary routes:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/health</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/register</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/login</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/recovery/request</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/recovery/confirm</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/config</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/config</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/upload/fits</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/fits</span></code></p></li>
+</ul>
+<p>The optional legacy Flask backend in <code class="docutils literal notranslate"><span class="pre">backend.py</span></code> exposes an equivalent
+configuration surface for older deployments (see <code class="docutils literal notranslate"><span class="pre">api.rst</span></code> for the full
+persistence comparison):</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/register</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/login</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/recover_request</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/recover_confirm</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/save_config</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/get_config</span></code></p></li>
+</ul>
+</section>
+<section id="maintenance-and-migration-scripts">
+<h2>Maintenance and Migration Scripts<a class="headerlink" href="#maintenance-and-migration-scripts" title="Link to this heading"></a></h2>
+<p>The repository also contains command-line helpers in <code class="docutils literal notranslate"><span class="pre">scripts/</span></code>:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">scripts/migrate_add_wcs_zip_tables.py</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">scripts/migrate_legacy_db.py</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">scripts/satellite_trail_detector.py</span></code></p></li>
+</ul>
+<p>These are maintenance or standalone utilities and are not all part of the main
+interactive Streamlit workflow.</p>
+</section>
+<section id="test-suite">
+<h2>Test Suite<a class="headerlink" href="#test-suite" title="Link to this heading"></a></h2>
+<p>Tests live in <code class="docutils literal notranslate"><span class="pre">tests/</span></code> and run with <code class="docutils literal notranslate"><span class="pre">pytest</span></code> from the project root. The
+modules most relevant to backend and settings behaviour are:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">tests/test_config_persistence.py</span></code> — FastAPI and legacy Flask
+configuration round-trips, default seeding of <code class="docutils literal notranslate"><span class="pre">mag_err_max</span></code> /
+<code class="docutils literal notranslate"><span class="pre">effective_gain</span></code>, and the save/load wiring in <code class="docutils literal notranslate"><span class="pre">pages/app.py</span></code> and
+<code class="docutils literal notranslate"><span class="pre">pages/login.py</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tests/test_robustness_ingestion.py</span></code> — FastAPI FITS ingestion and listing</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tests/test_database.py</span></code> — ORM models and analysis-history tracking</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tests/test_photometry.py</span></code> — photometry and error-budget calculations,
+including the PSF star-selection regression, the ePSF centring, the
+PSF-vs-aperture consistency diagnostic and the effective-gain resolution
+(<code class="docutils literal notranslate"><span class="pre">CVF</span></code> inversion, keyword precedence, driver-camera detection and the
+plausible range)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tests/test_version_consistency.py</span></code> — release-version agreement across
+<code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>, <code class="docutils literal notranslate"><span class="pre">src/__version__.py</span></code>, <code class="docutils literal notranslate"><span class="pre">docs/conf.py</span></code>, the README and
+the changelog</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="api.html" class="btn btn-neutral float-left" title="Backend API" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="examples.html" class="btn btn-neutral float-right" title="Examples" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024-2026, Pier-Francesco Rocci.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

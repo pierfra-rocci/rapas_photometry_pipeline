@@ -1,0 +1,364 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Examples &mdash; RAPAS Photometry Pipeline (RPP) v1.9.0 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=c4cb232b"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Troubleshooting" href="troubleshooting.html" />
+    <link rel="prev" title="API Reference" href="api_reference.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #2980b9" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            RAPAS Photometry Pipeline (RPP)
+              <img src="_static/rapas_logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="user_guide.html">User Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced_features.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Examples</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#basic-photometry-example">Basic Photometry Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#variable-star-analysis">Variable Star Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#asteroids-and-moving-objects">Asteroids and Moving Objects</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#tutorial-complete-photometry-workflow">Tutorial: Complete Photometry Workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#advanced-scripting-with-rpp-functions">Advanced: Scripting with RPP Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#notes-and-next-steps">Notes and Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #2980b9" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">RAPAS Photometry Pipeline (RPP)</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Examples</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/examples.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="examples">
+<h1>Examples<a class="headerlink" href="#examples" title="Link to this heading"></a></h1>
+<p>This page provides practical examples of using RAPAS Photometry Pipeline for
+common workflows. The examples below are aligned with the current Streamlit UI
+and the dual-backend architecture.</p>
+<section id="basic-photometry-example">
+<h2>Basic Photometry Example<a class="headerlink" href="#basic-photometry-example" title="Link to this heading"></a></h2>
+<p>This example demonstrates how to perform basic photometry on a single FITS image:</p>
+<ol class="arabic simple">
+<li><p>Log in to the application.</p></li>
+<li><p>Upload a science image using the main uploader.</p></li>
+<li><p>Configure parameters in the sidebar such as seeing, threshold, border mask,
+filter band, and optional Astrometry Check.</p></li>
+<li><p>Click <strong>Start Analysis</strong>.</p></li>
+<li><p>Review the results (plots, tables, Aladin viewer).</p></li>
+<li><p>Download the results using the ZIP download controls.</p></li>
+</ol>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Every successful login writes a timestamped line with the pipeline version
+to the service log, for example
+<code class="docutils literal notranslate"><span class="pre">[2026-10-18</span> <span class="pre">18:46:22]</span> <span class="pre">RPP</span> <span class="pre">v1.9.0</span> <span class="pre">-</span> <span class="pre">User</span> <span class="pre">'intern1'</span> <span class="pre">logged</span> <span class="pre">in</span> <span class="pre">successfully</span> <span class="pre">(FastAPI</span> <span class="pre">backend).</span></code>
+The FastAPI backend, the legacy backend and the frontend each emit their
+own line, so a login appears in both the backend and the frontend logs.</p>
+</div>
+</section>
+<section id="variable-star-analysis">
+<h2>Variable Star Analysis<a class="headerlink" href="#variable-star-analysis" title="Link to this heading"></a></h2>
+<p>This example shows how to analyze a variable star using RPP outputs:</p>
+<ol class="arabic simple">
+<li><p>Upload and process a sequence of science images of the same field individually through the RPP application. Ensure consistent parameters.</p></li>
+<li><p>Download the results ZIP for each image.</p></li>
+<li><p>Extract the <cite>*_catalog.csv</cite> files.</p></li>
+<li><p>Use a script like the one below to combine catalogs and plot a light curve.</p></li>
+</ol>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Example script for processing multiple RPP catalogs</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">glob</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">astropy.time</span><span class="w"> </span><span class="kn">import</span> <span class="n">Time</span>
+
+<span class="c1"># Directory containing extracted CSV catalog files</span>
+<span class="n">results_dir</span> <span class="o">=</span> <span class="s2">"path/to/extracted/catalogs"</span>
+<span class="n">catalog_files</span> <span class="o">=</span> <span class="n">glob</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">results_dir</span><span class="p">,</span> <span class="s2">"*_catalog.csv"</span><span class="p">))</span>
+
+<span class="c1"># --- Option 1: Identify target by coordinates ---</span>
+<span class="n">target_ra</span> <span class="o">=</span> <span class="mf">183.2641</span>  <span class="c1"># Example RA</span>
+<span class="n">target_dec</span> <span class="o">=</span> <span class="mf">22.0145</span> <span class="c1"># Example Dec</span>
+<span class="n">search_radius_deg</span> <span class="o">=</span> <span class="mf">3.0</span> <span class="o">/</span> <span class="mf">3600.0</span> <span class="c1"># 3 arcseconds</span>
+
+<span class="c1"># --- Option 2: Identify target by a known ID (if available) ---</span>
+<span class="c1"># target_id_col = 'aavso_Name' # e.g., 'simbad_main_id', 'aavso_Name'</span>
+<span class="c1"># target_id_val = 'V* AB Aur'</span>
+
+<span class="n">light_curve_data</span> <span class="o">=</span> <span class="p">[]</span>
+
+<span class="k">for</span> <span class="n">file</span> <span class="ow">in</span> <span class="n">catalog_files</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">file</span><span class="p">)</span>
+        <span class="c1"># Extract observation time from header file (assuming it exists)</span>
+        <span class="n">header_file</span> <span class="o">=</span> <span class="n">file</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">"_catalog.csv"</span><span class="p">,</span> <span class="s2">"_header.txt"</span><span class="p">)</span>
+        <span class="n">obs_time_str</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">header_file</span><span class="p">):</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">header_file</span><span class="p">,</span> <span class="s1">'r'</span><span class="p">)</span> <span class="k">as</span> <span class="n">hf</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">hf</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">'DATE-OBS'</span><span class="p">):</span>
+                        <span class="n">obs_time_str</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">'='</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">'/'</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="c1"># Extract value</span>
+                        <span class="k">break</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">obs_time_str</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Warning: Could not find DATE-OBS in </span><span class="si">{</span><span class="n">header_file</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="k">continue</span>
+
+        <span class="n">obs_time_jd</span> <span class="o">=</span> <span class="n">Time</span><span class="p">(</span><span class="n">obs_time_str</span><span class="p">)</span><span class="o">.</span><span class="n">jd</span>
+
+        <span class="c1"># Find the target</span>
+        <span class="n">target_row</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="c1"># Option 1: Match by coordinates</span>
+        <span class="k">if</span> <span class="s1">'ra'</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="ow">and</span> <span class="s1">'dec'</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="n">dist_deg</span> <span class="o">=</span> <span class="p">((</span><span class="n">df</span><span class="p">[</span><span class="s1">'ra'</span><span class="p">]</span> <span class="o">-</span> <span class="n">target_ra</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s1">'dec'</span><span class="p">]</span> <span class="o">-</span> <span class="n">target_dec</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">**</span><span class="mf">0.5</span>
+            <span class="n">match_idx</span> <span class="o">=</span> <span class="n">dist_deg</span><span class="o">.</span><span class="n">idxmin</span><span class="p">()</span> <span class="c1"># Find closest match</span>
+            <span class="k">if</span> <span class="n">dist_deg</span><span class="p">[</span><span class="n">match_idx</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">search_radius_deg</span><span class="p">:</span>
+                <span class="n">target_row</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">match_idx</span><span class="p">]</span>
+
+        <span class="c1"># Option 2: Match by ID (Uncomment and adapt if using)</span>
+        <span class="c1"># elif target_id_col in df.columns:</span>
+        <span class="c1">#     matches = df[df[target_id_col] == target_id_val]</span>
+        <span class="c1">#     if not matches.empty:</span>
+        <span class="c1">#         target_row = matches.iloc[0]</span>
+
+        <span class="c1"># Calibrated magnitudes are exported either with the legacy names</span>
+        <span class="c1"># (aperture_mag_1_3) or with a filter prefix (e.g.</span>
+        <span class="c1"># rapasg_aperture_mag_1_3); pick whichever column is present.</span>
+        <span class="n">mag_col</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">'aperture_mag_1_3'</span><span class="p">)</span> <span class="ow">and</span> <span class="s1">'err'</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">c</span><span class="p">),</span>
+            <span class="kc">None</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">err_col</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">'aperture_mag_err_1_3'</span><span class="p">)),</span>
+            <span class="kc">None</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">target_row</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">mag_col</span> <span class="ow">and</span> <span class="n">pd</span><span class="o">.</span><span class="n">notna</span><span class="p">(</span><span class="n">target_row</span><span class="p">[</span><span class="n">mag_col</span><span class="p">]):</span>
+            <span class="n">mag</span> <span class="o">=</span> <span class="n">target_row</span><span class="p">[</span><span class="n">mag_col</span><span class="p">]</span>
+            <span class="c1"># The calibrated magnitude error already includes the flux error</span>
+            <span class="c1"># (aperture + local background) and the zero-point uncertainty.</span>
+            <span class="n">mag_err</span> <span class="o">=</span> <span class="n">target_row</span><span class="p">[</span><span class="n">err_col</span><span class="p">]</span> <span class="k">if</span> <span class="n">err_col</span> <span class="k">else</span> <span class="kc">None</span>
+
+            <span class="n">light_curve_data</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s1">'jd'</span><span class="p">:</span> <span class="n">obs_time_jd</span><span class="p">,</span> <span class="s1">'mag'</span><span class="p">:</span> <span class="n">mag</span><span class="p">,</span> <span class="s1">'mag_err'</span><span class="p">:</span> <span class="n">mag_err</span><span class="p">})</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Warning: Target not found or missing magnitude in </span><span class="si">{</span><span class="n">file</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Error processing </span><span class="si">{</span><span class="n">file</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="ow">not</span> <span class="n">light_curve_data</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"No data points collected for light curve."</span><span class="p">)</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="c1"># Create DataFrame and sort by time</span>
+    <span class="n">lc_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">light_curve_data</span><span class="p">)</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s1">'jd'</span><span class="p">)</span>
+
+    <span class="c1"># Plot the light curve</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">6</span><span class="p">))</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">errorbar</span><span class="p">(</span><span class="n">lc_df</span><span class="p">[</span><span class="s1">'jd'</span><span class="p">],</span> <span class="n">lc_df</span><span class="p">[</span><span class="s1">'mag'</span><span class="p">],</span> <span class="n">yerr</span><span class="o">=</span><span class="n">lc_df</span><span class="p">[</span><span class="s1">'mag_err'</span><span class="p">],</span> <span class="n">fmt</span><span class="o">=</span><span class="s1">'o'</span><span class="p">,</span> <span class="n">capsize</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s1">'Aperture Mag'</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">gca</span><span class="p">()</span><span class="o">.</span><span class="n">invert_yaxis</span><span class="p">()</span>  <span class="c1"># Astronomical magnitude convention</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">'Time (JD)'</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">'Calibrated Magnitude'</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Light Curve (RA:</span><span class="si">{</span><span class="n">target_ra</span><span class="si">:</span><span class="s1">.4f</span><span class="si">}</span><span class="s1">, Dec:</span><span class="si">{</span><span class="n">target_dec</span><span class="si">:</span><span class="s1">.4f</span><span class="si">}</span><span class="s1">)'</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="kc">True</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="s1">'light_curve.png'</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"Light curve saved to light_curve.png"</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="asteroids-and-moving-objects">
+<h2>Asteroids and Moving Objects<a class="headerlink" href="#asteroids-and-moving-objects" title="Link to this heading"></a></h2>
+<p>This example demonstrates how to identify potential moving objects:</p>
+<ol class="arabic simple">
+<li><p>Upload an image suspected to contain solar system objects.</p></li>
+<li><p>Run the analysis with <strong>Start Analysis</strong>. The pipeline
+automatically queries SkyBoT.</p></li>
+<li><p>Review the “Matched Objects Summary” table or the full catalog (<cite>*_catalog.csv</cite>).</p></li>
+<li><p>Look for the SkyBoT identification in the Aladin popup or the <cite>skybot_NAME</cite>
+column in the exported catalog.</p></li>
+<li><p>SkyBoT service failures are logged and do not imply that the field contains
+no moving objects.</p></li>
+</ol>
+</section>
+<section id="tutorial-complete-photometry-workflow">
+<h2>Tutorial: Complete Photometry Workflow<a class="headerlink" href="#tutorial-complete-photometry-workflow" title="Link to this heading"></a></h2>
+<p>This step-by-step tutorial covers a complete workflow:</p>
+<ol class="arabic simple">
+<li><p><strong>Preparation</strong></p>
+<ul class="simple">
+<li><p>Ensure the backend server is running.</p></li>
+<li><p>Have your science image(s) ready.</p></li>
+<li><p>Know your approximate observatory location.</p></li>
+<li><p>Obtain an Astro-Colibri UID key if you want transient matching.</p></li>
+</ul>
+</li>
+<li><p><strong>Login &amp; Configuration</strong></p>
+<ul class="simple">
+<li><p>Launch the frontend (<cite>streamlit run frontend.py</cite>) and log in. Each
+successful sign-in is written to the service logs with a local timestamp
+and the pipeline version, tagged with its origin (backend or frontend).</p></li>
+<li><p>Upload your science image.</p></li>
+<li><p>Configure observatory values, analysis parameters, transient options, and
+the Astro-Colibri key in the sidebar.</p></li>
+<li><p>Click “Save Configuration” to store settings.</p></li>
+</ul>
+</li>
+<li><p><strong>Run Pipeline</strong></p>
+<ul class="simple">
+<li><p>Click <strong>Start Analysis</strong>.</p></li>
+<li><p>Monitor progress messages in the main panel.</p></li>
+</ul>
+</li>
+<li><p><strong>Analysis &amp; Review</strong></p>
+<ul class="simple">
+<li><p>Examine the image display and plots (Background, FWHM, PSF, Zero Point).</p></li>
+<li><p>Review the matched sources tables (GAIA calibration, Catalog Matches Summary).</p></li>
+<li><p>Explore objects in the Aladin viewer.</p></li>
+<li><p>Check the log output for details or warnings.</p></li>
+</ul>
+</li>
+<li><p><strong>Results</strong></p>
+<ul class="simple">
+<li><p>Download the complete results using the ZIP button.</p></li>
+<li><p>Use the <cite>*_catalog.csv</cite> file for your scientific analysis.</p></li>
+</ul>
+</li>
+</ol>
+</section>
+<section id="advanced-scripting-with-rpp-functions">
+<h2>Advanced: Scripting with RPP Functions<a class="headerlink" href="#advanced-scripting-with-rpp-functions" title="Link to this heading"></a></h2>
+<p>While RPP is primarily a web app, some core functions from <code class="docutils literal notranslate"><span class="pre">src/</span></code> can be
+used in standalone Python scripts if dependencies are managed correctly.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Directly calling Streamlit-cached functions or functions relying heavily on
+<code class="docutils literal notranslate"><span class="pre">st.session_state</span></code> or other <code class="docutils literal notranslate"><span class="pre">streamlit</span></code> UI calls outside the Streamlit
+environment may not work as expected and may require adaptation.</p>
+</div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">astropy.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">fits</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">src.header_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">select_science_header</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">src.tools_pipeline</span><span class="w"> </span><span class="kn">import</span> <span class="n">extract_pixel_scale</span><span class="p">,</span> <span class="n">safe_wcs_create</span>
+
+<span class="n">file_path</span> <span class="o">=</span> <span class="s2">"my_image.fits"</span>
+
+<span class="k">with</span> <span class="n">fits</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span> <span class="k">as</span> <span class="n">hdul</span><span class="p">:</span>
+    <span class="n">image_data</span> <span class="o">=</span> <span class="n">hdul</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">data</span>
+    <span class="n">header</span> <span class="o">=</span> <span class="n">hdul</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">header</span>
+
+<span class="n">wcs_obj</span><span class="p">,</span> <span class="n">wcs_error</span><span class="p">,</span> <span class="n">log_messages</span> <span class="o">=</span> <span class="n">safe_wcs_create</span><span class="p">(</span><span class="n">header</span><span class="p">)</span>
+<span class="n">pixel_scale_arcsec</span><span class="p">,</span> <span class="n">pixel_scale_source</span> <span class="o">=</span> <span class="n">extract_pixel_scale</span><span class="p">(</span><span class="n">header</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">"WCS OK:"</span><span class="p">,</span> <span class="n">wcs_obj</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"WCS error:"</span><span class="p">,</span> <span class="n">wcs_error</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Pixel scale:"</span><span class="p">,</span> <span class="n">pixel_scale_arcsec</span><span class="p">,</span> <span class="n">pixel_scale_source</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Log messages:"</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">message</span> <span class="ow">in</span> <span class="n">log_messages</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">" -"</span><span class="p">,</span> <span class="n">message</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="notes-and-next-steps">
+<h2>Notes and Next Steps<a class="headerlink" href="#notes-and-next-steps" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Use <a class="reference internal" href="installation.html"><span class="doc">Installation Guide</span></a> and <a class="reference internal" href="usage.html"><span class="doc">Usage Guide</span></a> to set up the frontend/backend
+stack before trying the UI examples.</p></li>
+<li><p>Use the generated <code class="docutils literal notranslate"><span class="pre">*_catalog.csv</span></code> and log files for downstream scientific
+workflows such as light-curve building or object triage.</p></li>
+<li><p>When scripting with internal functions, prefer modules under <code class="docutils literal notranslate"><span class="pre">src/</span></code> and
+avoid directly depending on Streamlit page code.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="api_reference.html" class="btn btn-neutral float-left" title="API Reference" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="troubleshooting.html" class="btn btn-neutral float-right" title="Troubleshooting" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024-2026, Pier-Francesco Rocci.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

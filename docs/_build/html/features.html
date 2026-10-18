@@ -1,0 +1,704 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Features &mdash; RAPAS Photometry Pipeline (RPP) v1.9.0 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=c4cb232b"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Advanced Features" href="advanced_features.html" />
+    <link rel="prev" title="User Guide" href="user_guide.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #2980b9" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            RAPAS Photometry Pipeline (RPP)
+              <img src="_static/rapas_logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="user_guide.html">User Guide</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Features</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#user-authentication-multi-user-support">User Authentication &amp; Multi-User Support</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#advanced-image-processing">Advanced Image Processing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#astrometric-solutions">Astrometric Solutions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#source-detection-photometry">Source Detection &amp; Photometry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#photometric-calibration">Photometric Calibration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#multi-catalog-cross-matching">Multi-Catalog Cross-Matching</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#transient-detection-beta">Transient Detection (Beta)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#data-visualization-analysis">Data Visualization &amp; Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#user-interface-workflow">User Interface &amp; Workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#developer-utilities-and-scripts">Developer Utilities and Scripts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#output-generation-export">Output Generation &amp; Export</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#performance-scalability">Performance &amp; Scalability</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="advanced_features.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #2980b9" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">RAPAS Photometry Pipeline (RPP)</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Features</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/features.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="features">
+<h1>Features<a class="headerlink" href="#features" title="Link to this heading"></a></h1>
+<p>The sections below summarize the currently implemented user-facing and
+developer-facing capabilities of RAPAS Photometry Pipeline.</p>
+<section id="user-authentication-multi-user-support">
+<h2>User Authentication &amp; Multi-User Support<a class="headerlink" href="#user-authentication-multi-user-support" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><strong>Secure User Management</strong>:</dt><dd><ul class="simple">
+<li><p>User registration and login system via FastAPI (recommended) or legacy Flask backend</p></li>
+<li><p>Password hashing with secure storage in SQLite or SQL database</p></li>
+<li><p>Password recovery via email (requires SMTP configuration)</p></li>
+<li><p>Automatic frontend fallback from FastAPI to the legacy backend when needed</p></li>
+<li><p>Individual user workspaces with isolated data storage</p></li>
+<li><p>Session management with automatic logout options</p></li>
+<li><p>Successful logins are recorded in the service logs with a local timestamp
+and the pipeline version (the FastAPI backend, the legacy backend and the
+frontend each emit their own line)</p></li>
+</ul>
+</dd>
+<dt><strong>Configuration Persistence</strong>:</dt><dd><ul class="simple">
+<li><p>User-specific settings stored in backend database</p></li>
+<li><p>Observatory parameters, analysis settings, and API keys</p></li>
+<li><p>Automatic loading of saved configurations on login</p></li>
+<li><p>Configuration persistence when the API backend is active</p></li>
+</ul>
+</dd>
+<dt><strong>Analysis History Tracking</strong>:</dt><dd><ul class="simple">
+<li><p>Database tracking of all WCS-solved FITS files per user</p></li>
+<li><p>Complete archive of result ZIP files with timestamps</p></li>
+<li><p>Many-to-many linking between FITS files and result archives</p></li>
+<li><p>Query functions to retrieve analysis history</p></li>
+<li><p>Safe migration scripts for database schema updates</p></li>
+</ul>
+</dd>
+<dt><strong>Backend Modes</strong>:</dt><dd><ul class="simple">
+<li><p>FastAPI backend available through <code class="docutils literal notranslate"><span class="pre">api/main.py</span></code></p></li>
+<li><p>Legacy backend remains supported for compatibility</p></li>
+<li><p>Frontend probing logic implemented in <code class="docutils literal notranslate"><span class="pre">pages/api_client.py</span></code></p></li>
+<li><p>Backend URLs can be overridden with <code class="docutils literal notranslate"><span class="pre">RPP_API_URL</span></code> and <code class="docutils literal notranslate"><span class="pre">RPP_LEGACY_URL</span></code></p></li>
+</ul>
+</dd>
+</dl>
+</section>
+<section id="advanced-image-processing">
+<h2>Advanced Image Processing<a class="headerlink" href="#advanced-image-processing" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><strong>FITS File Support</strong>:</dt><dd><ul class="simple">
+<li><p>Standard FITS formats (.fits, .fit, .fts, .fits.gz)</p></li>
+<li><p>Multi-extension FITS (MEF) file handling</p></li>
+<li><p>Data cubes with automatic 2D plane extraction</p></li>
+<li><p>RGB astronomical images (uses first color channel)</p></li>
+<li><p>Automatic header validation and fixing</p></li>
+<li><p>Upload staging in the UI before the scientific processing phase starts</p></li>
+</ul>
+</dd>
+<dt><strong>Header Processing</strong>:</dt><dd><ul class="simple">
+<li><p>Automatic WCS keyword validation and correction</p></li>
+<li><p>Removal of problematic or conflicting keywords</p></li>
+<li><p>Observatory information extraction from headers</p></li>
+<li><p>Coordinate system standardization and validation</p></li>
+<li><p>Missing keyword interpolation and defaults</p></li>
+</ul>
+</dd>
+<dt><strong>Cosmic Ray Removal</strong>:</dt><dd><ul class="simple">
+<li><p>L.A.Cosmic algorithm implementation via <cite>astroscrappy</cite> package</p></li>
+<li><p>Automatic cosmic ray detection and removal enabled by default</p></li>
+<li><p>Noise model built from the <em>resolved</em> effective gain (explicit header
+<cite>EGAIN</cite>/<cite>CCDGAIN</cite>/<cite>1/CVF</cite> inside a plausible 0.02-100 e-/ADU range, then the
+user gain, then an empirical estimate; a bare <cite>GAIN</cite> is ignored on
+driver-gain cameras such as QHY/ZWO) plus <cite>RDNOISE</cite>/<cite>ENOISE</cite> when present</p></li>
+<li><p>A mask covering an unphysical fraction of the frame (&gt; 20%) is rejected
+rather than deleting a large part of the science image</p></li>
+<li><p>Before/after comparison for quality assessment</p></li>
+<li><p>Seamless integration into photometry pipeline preprocessing</p></li>
+</ul>
+</dd>
+<dt><strong>Background Estimation</strong>:</dt><dd><ul class="simple">
+<li><p>photutils.Background2D with SExtractor algorithm</p></li>
+<li><p>2D background modeling with sigma clipping</p></li>
+<li><p>Automatic box size adjustment for image dimensions</p></li>
+<li><p>MAD-based per-box RMS, so the noise map is not inflated by undetected
+sources in crowded fields (the plain std over-estimated it by up to ~2x)</p></li>
+<li><p>Smoothing filter capped for small background meshes to avoid over-smoothing
+the model and leaving large-scale residuals on sky gradients</p></li>
+<li><p>Graceful degradation instead of a hard failure: the box-exclusion threshold
+is relaxed and the box size coarsened if <code class="docutils literal notranslate"><span class="pre">Background2D</span></code> would reject every
+box (crowded fields, large masked areas), with a single sigma-clipped
+background level as the last resort</p></li>
+<li><p>Background and RMS map visualization</p></li>
+<li><p>FITS output for background and noise models</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+<section id="astrometric-solutions">
+<h2>Astrometric Solutions<a class="headerlink" href="#astrometric-solutions" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><strong>Local Plate Solving</strong>:</dt><dd><ul class="simple">
+<li><p>Astrometry.net integration via stdpipe wrapper</p></li>
+<li><p>Blind astrometric solving for images without WCS</p></li>
+<li><p>Automatic source detection using photutils</p></li>
+<li><p>Scale estimation from focal length and pixel size</p></li>
+<li><p>Solution validation and coordinate range checking</p></li>
+<li><p>Forced re-solve option when the user enables Astrometry Check</p></li>
+<li><p>Target of at least 20 detected stars; the detection threshold is lowered
+3 -&gt; 2 -&gt; 1 sigma on small or sparse fields (best effort down to 5 stars)</p></li>
+<li><p>Automatic retry of the solve with a deeper detection when it fails</p></li>
+</ul>
+</dd>
+<dt><strong>WCS Refinement</strong>:</dt><dd><ul class="simple">
+<li><p>SCAMP integration for high-precision astrometry</p></li>
+<li><p>GAIA DR3 catalog matching for reference stars</p></li>
+<li><p>High-order polynomial distortion correction</p></li>
+<li><p>Residual analysis and quality assessment</p></li>
+<li><p>Optional refinement for existing WCS solutions</p></li>
+</ul>
+</dd>
+<dt><strong>Coordinate Systems</strong>:</dt><dd><ul class="simple">
+<li><p>Support for multiple coordinate reference frames</p></li>
+<li><p>SIP distortion correction handling</p></li>
+<li><p>Coordinate transformation validation</p></li>
+<li><p>Edge case handling for problematic coordinates</p></li>
+<li><p>Fallback to original WCS when forced solving fails and a valid WCS already exists</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+<section id="source-detection-photometry">
+<h2>Source Detection &amp; Photometry<a class="headerlink" href="#source-detection-photometry" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><strong>Source Detection</strong>:</dt><dd><ul class="simple">
+<li><p>DAOStarFinder implementation with configurable parameters</p></li>
+<li><p>MAD-based detection threshold, consistent with the error model and not
+inflated by undetected sources in crowded fields</p></li>
+<li><p>Border masking to avoid edge artifacts</p></li>
+<li><p>Quality filtering based on shape parameters (roundness, sharpness)</p></li>
+<li><p>Automatic threshold optimization</p></li>
+<li><p>Detection validation and source counting</p></li>
+</ul>
+</dd>
+<dt><strong>FWHM Estimation</strong>:</dt><dd><ul class="simple">
+<li><p>Gaussian profile fitting on stellar marginal sums</p></li>
+<li><p>Multiple source averaging for robust estimates</p></li>
+<li><p>FWHM vs relative flux analysis</p></li>
+<li><p>Outlier rejection with sigma clipping</p></li>
+<li><p>Seeing estimation from stellar profiles</p></li>
+</ul>
+</dd>
+<dt><strong>Multi-Aperture Photometry</strong>:</dt><dd><ul class="simple">
+<li><p>Two fixed aperture radii: 1.1× and 1.3× FWHM (optimized for most use cases)</p></li>
+<li><p>User-configurable third aperture (FWHM Radius Factor, 0.5–2.0× FWHM, default 1.5×); values 1.1 and 1.3 collapse back to two apertures without duplication</p></li>
+<li><p>All three apertures produce the same set of output columns: flux, background-corrected flux, S/N, instrumental magnitude, calibrated magnitude, magnitude error, and quality flag</p></li>
+<li><p>Column naming follows <code class="docutils literal notranslate"><span class="pre">aperture_mag_X_X</span></code> / <code class="docutils literal notranslate"><span class="pre">snr_X_X</span></code> / <code class="docutils literal notranslate"><span class="pre">aperture_mag_err_X_X</span></code> / <code class="docutils literal notranslate"><span class="pre">quality_flag_X_X</span></code> (e.g. <code class="docutils literal notranslate"><span class="pre">_1_1</span></code>, <code class="docutils literal notranslate"><span class="pre">_1_3</span></code>, <code class="docutils literal notranslate"><span class="pre">_1_5</span></code>)</p></li>
+<li><dl class="simple">
+<dt>When the selected calibration band defines a prefix, the exported</dt><dd><p>calibrated magnitude and error columns use the filter-prefixed names
+(for example <code class="docutils literal notranslate"><span class="pre">rapasg_psf_mag</span></code> or <code class="docutils literal notranslate"><span class="pre">rapasg_aperture_mag_1_5</span></code>) in place of
+the legacy unprefixed names, which are dropped on export; when no prefix
+applies the legacy names are exported</p>
+</dd>
+</dl>
+</li>
+<li><p>Per-aperture background-subtracted flux measurements with a robust
+sigma-clipped median annulus background (<code class="docutils literal notranslate"><span class="pre">ApertureStats</span></code>)</p></li>
+<li><p>The pipeline mask (border, cosmic rays, satellite trails, NaNs) is applied
+to both the source and the annulus photometry, and the exact masked-pixel
+area is used (<code class="docutils literal notranslate"><span class="pre">area_overlap</span></code>)</p></li>
+<li><p>Signal-to-noise ratio (S/N) computed from the background-subtracted flux and
+its full error, including the local-background and centroid uncertainties:
+<code class="docutils literal notranslate"><span class="pre">σ_flux²</span> <span class="pre">=</span> <span class="pre">σ_aperture²</span> <span class="pre">+</span> <span class="pre">σ_total_bkg²</span> <span class="pre">+</span> <span class="pre">σ_centroid²</span></code></p></li>
+<li><p>Magnitude error calculated from the same flux used for the magnitude:
+<code class="docutils literal notranslate"><span class="pre">σ_mag</span> <span class="pre">=</span> <span class="pre">1.0857</span> <span class="pre">×</span> <span class="pre">(σ_flux</span> <span class="pre">/</span> <span class="pre">flux)</span></code></p></li>
+<li><p>Aperture correction from the empirical-PSF encircled-energy curve (analytic
+Gaussian fallback) so aperture and PSF photometry share a total-flux scale;
+the correction factor is exported in <code class="docutils literal notranslate"><span class="pre">apcorr_X_X</span></code> and the underlying
+encircled-energy fraction in <code class="docutils literal notranslate"><span class="pre">ee_fraction_X_X</span></code></p></li>
+<li><p>Quality flags: ‘good’ (S/N&gt;10), ‘marginal’ (5&lt;S/N≤10), ‘poor’ (S/N≤5)</p></li>
+<li><p>Magnitude calibration against the fitted catalog zero-point</p></li>
+<li><p>Optional parallel <code class="docutils literal notranslate"><span class="pre">*_colorcorr</span></code> magnitude columns when a usable catalog
+color is available for the selected calibration band</p></li>
+</ul>
+</dd>
+<dt><strong>PSF Photometry</strong>:</dt><dd><ul class="simple">
+<li><p>Empirical PSF model construction using EPSFBuilder</p></li>
+<li><p>Star selection with quality filtering criteria (flux, S/N, shape, crowding
+and local-background flatness); truly saturated pixels are removed by the
+mask beforehand, so the saturation check never discards the brightest
+unsaturated stars and no field is skipped just because too few candidates
+survived an over-aggressive filter</p></li>
+<li><p>The PSF is fitted in a compact ≈3× FWHM region while the ePSF is extracted
+from a larger ≈5× FWHM cutout, so its wings are not truncated and the
+aperture-correction curve stays meaningful</p></li>
+<li><p>Iterative PSF fitting with IterativePSFPhotometry</p></li>
+<li><p>Per-source local-background subtraction (sigma-clipped median annulus) so
+residual sky/nebulosity does not bias the fitted PSF flux, applied both to
+the ePSF-building star cutouts and to the per-source fits</p></li>
+<li><p>Correct S/N calculation: <code class="docutils literal notranslate"><span class="pre">S/N</span> <span class="pre">=</span> <span class="pre">flux_fit</span> <span class="pre">/</span> <span class="pre">flux_err</span></code></p></li>
+<li><p>PSF-specific quality flags for reliability assessment</p></li>
+<li><p>PSF model visualization and FITS output</p></li>
+<li><p><strong>PSF-vs-aperture consistency check</strong>: the median
+<code class="docutils literal notranslate"><span class="pre">psf_mag</span> <span class="pre">−</span> <span class="pre">aperture_mag</span></code> offset is reported per aperture, with a warning
+when it exceeds <code class="docutils literal notranslate"><span class="pre">PSF_APERTURE_CONSISTENCY_THRESHOLD</span></code> (0.15 mag) — a
+direct indicator of an ePSF shape/normalisation problem</p></li>
+<li><p>Per-source difference columns <code class="docutils literal notranslate"><span class="pre">psf_minus_aperture_mag_X_X</span></code> (with
+filter-prefixed aliases) for every aperture, NaN where only one method
+measured the source</p></li>
+<li><p><strong>Offset diagnostic plot</strong> in the results view: the per-source offset
+against the calibrated PSF magnitude, with per-aperture median and zero
+lines, plus the offset histogram (saved as
+<code class="docutils literal notranslate"><span class="pre">&lt;base&gt;_psf_aperture_offset.png</span></code>)</p></li>
+</ul>
+</dd>
+<dt><strong>Error Propagation</strong>:</dt><dd><ul class="simple">
+<li><p>Comprehensive photometric error calculation</p></li>
+<li><p>Sky (global) background noise from the MAD-based <code class="docutils literal notranslate"><span class="pre">Background2D</span></code> RMS map,
+plus the local annulus background subtracted per source</p></li>
+<li><p>Poisson noise plus read noise modeling with <code class="docutils literal notranslate"><span class="pre">calc_total_error</span></code>; the
+effective gain is taken from the FITS <code class="docutils literal notranslate"><span class="pre">EGAIN</span></code>/<code class="docutils literal notranslate"><span class="pre">CCDGAIN</span></code> keyword or the
+<code class="docutils literal notranslate"><span class="pre">CVF</span></code> conversion factor (<code class="docutils literal notranslate"><span class="pre">gain</span> <span class="pre">=</span> <span class="pre">1/CVF</span></code>), then from the user-supplied
+<em>Detector Gain</em> parameter (<code class="docutils literal notranslate"><span class="pre">RPP_EFFECTIVE_GAIN</span></code> for headless runs), then
+estimated empirically from the frame’s variance-vs-signal statistics
+(photon transfer), and only then defaults to electrons (<code class="docutils literal notranslate"><span class="pre">gain</span> <span class="pre">=</span> <span class="pre">1</span></code>). A
+conventional <code class="docutils literal notranslate"><span class="pre">GAIN</span></code> is accepted only when it is inside 0.02-100 e-/ADU
+and the instrument is not a driver-gain camera (QHY/ZWO), whose <code class="docutils literal notranslate"><span class="pre">GAIN</span></code>
+is an abstract driver setting rather than a conversion factor</p></li>
+<li><p>Local-background uncertainty propagation using the standard error of the
+median annulus (<code class="docutils literal notranslate"><span class="pre">ApertureStats.median_err</span></code>):
+<code class="docutils literal notranslate"><span class="pre">σ_flux²</span> <span class="pre">=</span> <span class="pre">σ_aperture²</span> <span class="pre">+</span> <span class="pre">σ_total_bkg²</span> <span class="pre">+</span> <span class="pre">σ_centroid²</span></code></p></li>
+<li><p>Centroid-position term from re-measuring the aperture shifted by the
+centroid uncertainty (<code class="docutils literal notranslate"><span class="pre">σ_centroid</span> <span class="pre">=</span> <span class="pre">σ_PSF/S/N</span></code>), capturing the real PSF
+asymmetry (<code class="docutils literal notranslate"><span class="pre">centroid_flux_err_X_X</span></code>)</p></li>
+<li><p>Zero-point and systematic-floor error propagation into every calibrated
+magnitude error:
+<code class="docutils literal notranslate"><span class="pre">σ_mag_calib</span> <span class="pre">=</span> <span class="pre">√(σ_mag_inst²</span> <span class="pre">+</span> <span class="pre">σ_zp²</span> <span class="pre">+</span> <span class="pre">σ_sys²)</span></code>, with the zero point’s
+median standard error <code class="docutils literal notranslate"><span class="pre">σ_zp</span> <span class="pre">=</span> <span class="pre">√(π/2)</span> <span class="pre">×</span> <span class="pre">scatter/√N</span></code> using the sigma-clipped
+(untrimmed) residual scatter, so the ±0.5 mag outlier cut does not bias it,
+and the optional systematic floor <code class="docutils literal notranslate"><span class="pre">σ_sys</span></code> resolved by
+<code class="docutils literal notranslate"><span class="pre">resolve_systematic_floor()</span></code></p></li>
+<li><p>Random and correlated components exposed separately: <code class="docutils literal notranslate"><span class="pre">*_mag_err_*_random</span></code>
+(per source) and <code class="docutils literal notranslate"><span class="pre">*_mag_err_*_correlated</span></code> (field-common zero-point term),
+in addition to the total error</p></li>
+<li><p>Unreliable-photometry cut: a source is dropped only when every photometry
+method reports a magnitude error ≥ 2 mag (<code class="docutils literal notranslate"><span class="pre">MAG_ERR_MAX</span></code>, configurable
+through the <em>Max Magnitude Error</em> parameter, 0 disables the cut)</p></li>
+<li><p>Full precision S/N and zero point (no rounding) to avoid divide-by-zero and
+to preserve the propagated uncertainty</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+<section id="photometric-calibration">
+<h2>Photometric Calibration<a class="headerlink" href="#photometric-calibration" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><strong>GAIA DR3 Integration</strong>:</dt><dd><ul class="simple">
+<li><p>Automatic cross-matching with GAIA Data Release 3</p></li>
+<li><p>Quality filtering (variability, color, astrometric quality)</p></li>
+<li><p>Multiple photometric bands including synthetic photometry</p></li>
+<li><p>Cone search with configurable radius</p></li>
+<li><p>Proper motion and parallax data inclusion</p></li>
+<li><p><strong>VizieR fallback</strong>: when the primary Gaia TAP service is unavailable, the
+query is automatically retried against the VizieR mirror with a reduced
+column set so calibration can proceed during TAP outages</p></li>
+<li><p><strong>Match validation</strong>: clustered matches or a large median catalog
+separation are flagged, so a bad WCS cannot silently bias the zero point</p></li>
+</ul>
+</dd>
+<dt><strong>Zero-Point Calculation</strong>:</dt><dd><ul class="simple">
+<li><p>Robust calibration with sigma clipping outlier rejection</p></li>
+<li><p>Sources with residuals beyond ±0.5 mag from the median excluded before the final fit</p></li>
+<li><p>Aperture 1.3× FWHM used as the primary reference aperture for zero-point determination</p></li>
+<li><p>Multiple aperture zero-point determination</p></li>
+<li><p>Atmospheric extinction correction using airmass</p></li>
+<li><p>Calibration star quality assessment</p></li>
+<li><p>Zero-point uncertainty estimation and propagation</p></li>
+<li><p>Correct column name lookup for error columns</p></li>
+</ul>
+</dd>
+<dt><strong>Color-Term Calibration</strong>:</dt><dd><ul class="simple">
+<li><p>First-order color term fitted from the matched calibration stars after the
+scalar zero-point calibration</p></li>
+<li><p>Uses simple catalog colors when available: Gaia <code class="docutils literal notranslate"><span class="pre">BP-RP</span></code> and Sloan-style
+<code class="docutils literal notranslate"><span class="pre">g-r</span></code>, <code class="docutils literal notranslate"><span class="pre">r-i</span></code>, or <code class="docutils literal notranslate"><span class="pre">i-z</span></code> depending on the selected calibration band</p></li>
+<li><p>Writes parallel <code class="docutils literal notranslate"><span class="pre">*_colorcorr</span></code> magnitude columns instead of replacing the
+baseline calibrated magnitudes, together with <code class="docutils literal notranslate"><span class="pre">*_colorcorr_err</span></code> errors
+that combine the baseline calibrated error with the color-term fit
+uncertainty</p></li>
+<li><p>Automatically skipped when the selected filter is unsupported or when the
+final catalog lacks usable color information for a source</p></li>
+</ul>
+</dd>
+<dt><strong>Magnitude Systems</strong>:</dt><dd><ul class="simple">
+<li><p>GAIA G, BP, RP photometric bands</p></li>
+<li><p>Johnson-Cousins UBVRI synthetic photometry</p></li>
+<li><p>SDSS ugriz synthetic photometry</p></li>
+<li><p>Instrumental to standard magnitude conversion</p></li>
+<li><p>Multi-band calibration support</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+<section id="multi-catalog-cross-matching">
+<h2>Multi-Catalog Cross-Matching<a class="headerlink" href="#multi-catalog-cross-matching" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><strong>GAIA DR3 Catalog</strong>:</dt><dd><ul class="simple">
+<li><p>Stellar parameters, proper motions, and photometry</p></li>
+<li><p>Quality filtering for reliable calibration sources</p></li>
+<li><p>Synthetic photometry for non-standard bands</p></li>
+<li><p>Astrometric quality indicators (RUWE)</p></li>
+<li><p>Variability and color index filtering</p></li>
+</ul>
+</dd>
+<dt><strong>SIMBAD Database</strong>:</dt><dd><ul class="simple">
+<li><p>Object identification and classification</p></li>
+<li><p>Multiple identifier retrieval</p></li>
+<li><p>Astronomical object types and properties</p></li>
+<li><p>B and V magnitude data when available</p></li>
+<li><p>Cross-reference with other catalogs</p></li>
+</ul>
+</dd>
+<dt><strong>Astro-Colibri Transient Alerts</strong>:</dt><dd><ul class="simple">
+<li><p>Real-time transient and variable source alerts</p></li>
+<li><p>Multi-messenger astronomy event correlation</p></li>
+<li><p>Configurable time windows around observation date</p></li>
+<li><p>API key authentication for full access</p></li>
+<li><p>Event classification and discovery information</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">plot_astrocolibri_cutouts()</span></code>: postage-stamp cutouts of Astro-Colibri
+candidates extracted from the science frame for rapid visual inspection;
+each stamp shows the HiPS template (PanSTARRS north, SkyMapper south, with
+automatic fallback to the other survey), the circled source and its
+calibrated magnitude</p></li>
+<li><p>Progressive cross-match radius 5 -&gt; 10 -&gt; 15 -&gt; 20 arcsec (nearest event per
+source, radius reached reported in the log); matches found only at the
+15 or 20 arcsec tier raise a warning; the match outcome is displayed in
+the app</p></li>
+<li><p>Every source returned by Astro-Colibri for the field is listed (name,
+RA/Dec, type, classification, observatory, trigger ID, position error,
+date, redshift, matched flag, separation); the event
+RA/Dec are exported as <code class="docutils literal notranslate"><span class="pre">astrocolibri_ra</span></code> / <code class="docutils literal notranslate"><span class="pre">astrocolibri_dec</span></code></p></li>
+</ul>
+</dd>
+<dt><strong>Solar System Objects (SkyBoT)</strong>:</dt><dd><ul class="simple">
+<li><p>Moving object identification and ephemeris</p></li>
+<li><p>Asteroid and comet detection</p></li>
+<li><p>Magnitude predictions and orbital elements</p></li>
+<li><p>Time-dependent position calculations</p></li>
+<li><p>Integration with observation timestamps</p></li>
+<li><p>Graceful handling of timeout or network failures during catalog access</p></li>
+<li><p>Shared request helper: 3 attempts with growing delay on network errors
+and HTTP 429/5xx, epoch range check, mid-exposure epoch and per-object
+tolerance from the ephemeris uncertainty (10 to 30 arcsec)</p></li>
+</ul>
+</dd>
+<dt><strong>Variable Star Catalog (AAVSO VSX)</strong>:</dt><dd><ul class="simple">
+<li><p>Variable star identification and classification</p></li>
+<li><p>Period information when available</p></li>
+<li><p>Variable star types and characteristics</p></li>
+<li><p>Cross-matching with detected sources</p></li>
+<li><p>Integration with photometric analysis</p></li>
+</ul>
+</dd>
+<dt><strong>Quasar Catalog (Milliquas)</strong>:</dt><dd><ul class="simple">
+<li><p>Quasar and AGN identification</p></li>
+<li><p>Redshift information when available</p></li>
+<li><p>R-band magnitude data</p></li>
+<li><p>Large-scale structure studies support</p></li>
+<li><p>Cross-matching with point sources</p></li>
+</ul>
+</dd>
+<dt><strong>Nearby Stars (10 Parsec Catalog)</strong>:</dt><dd><ul class="simple">
+<li><p>Identification of stars within 10 parsecs</p></li>
+<li><p>G, BP, RP magnitude data</p></li>
+<li><p>Object type classification</p></li>
+<li><p>Available proper motions propagated to the observation epoch</p></li>
+<li><p>Cross-matching with field sources</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+<section id="transient-detection-beta">
+<h2>Transient Detection (Beta)<a class="headerlink" href="#transient-detection-beta" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><strong>Transient Finder</strong>:</dt><dd><ul class="simple">
+<li><p>Automated search for transient candidates</p></li>
+<li><p>Reference-survey and catalog filtering, with integration with PanSTARRS
+(Northern) and SkyMapper (Southern) surveys</p></li>
+<li><p>SExtractor detection (via stdpipe) with flags used to discard unreliable
+detections</p></li>
+<li><p>Seeing-based cross-matching with the pipeline photometry catalog (nearest
+counterpart within the FWHM, clamped to 1-4 arcsec)</p></li>
+<li><p>Calibrated PSF magnitudes, with automatic fallback to the 1.1 x FWHM
+aperture magnitude when PSF photometry is unavailable</p></li>
+<li><p>Brightness-excess test against catalog counterparts (default 2.0 mag
+brighter, <code class="docutils literal notranslate"><span class="pre">mag_threshold</span></code>)</p></li>
+<li><p>Template (HiPS) image retrieval and masking</p></li>
+<li><p>No minimum S/N cutoff is applied to transient candidates; low-S/N
+detections remain eligible if they pass the other filtering steps</p></li>
+<li><p>Candidate visualization with cutouts (Science, Template) for the top 20
+candidates sorted by best signal-to-noise ratio</p></li>
+<li><p>Additional SkyBoT filtering for Solar System object rejection</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+<section id="data-visualization-analysis">
+<h2>Data Visualization &amp; Analysis<a class="headerlink" href="#data-visualization-analysis" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><strong>Image Display</strong>:</dt><dd><ul class="simple">
+<li><p>Dual visualization modes (ZScale and histogram equalization)</p></li>
+<li><p>Automatic contrast optimization</p></li>
+<li><p>Color-mapped display with customizable scales</p></li>
+<li><p>Interactive zoom and pan capabilities</p></li>
+<li><p>Multi-panel layout for comparison</p></li>
+</ul>
+</dd>
+<dt><strong>Interactive Sky Viewer</strong>:</dt><dd><ul class="simple">
+<li><p>Aladin Lite integration for source exploration</p></li>
+<li><p>Overlay of detected sources with catalog information</p></li>
+<li><p>Clickable source markers with detailed information</p></li>
+<li><p>Astro-Colibri cross-matches drawn as larger red squares in their own
+“Astro-Colibri matches” layer</p></li>
+<li><p>Survey selection and coordinate display</p></li>
+<li><p>Export to external sky viewers (ESA Sky)</p></li>
+</ul>
+</dd>
+<dt><strong>Photometric Plots</strong>:</dt><dd><ul class="simple">
+<li><p>FWHM analysis with scatter plots and statistics</p></li>
+<li><p>Magnitude distribution histograms</p></li>
+<li><p>Zero-point calibration plots with residuals</p></li>
+<li><p>Background model visualization</p></li>
+<li><p>PSF model display and analysis</p></li>
+</ul>
+</dd>
+<dt><strong>Source Catalogs</strong>:</dt><dd><ul class="simple">
+<li><p>Comprehensive tabular display of all measurements</p></li>
+<li><p>Multi-aperture photometry results</p></li>
+<li><p>Cross-match results from all catalogs</p></li>
+<li><p>Coordinate information and quality indicators</p></li>
+<li><p>Export capabilities in multiple formats</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+<section id="user-interface-workflow">
+<h2>User Interface &amp; Workflow<a class="headerlink" href="#user-interface-workflow" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><strong>Streamlit Web Interface</strong>:</dt><dd><ul class="simple">
+<li><p>Modern, responsive design accessible via web browser</p></li>
+<li><p>Real-time processing progress indicators</p></li>
+<li><p>Interactive parameter adjustment with immediate feedback</p></li>
+<li><p>Organized sidebar with collapsible sections</p></li>
+<li><p>Mobile-friendly responsive layout</p></li>
+<li><p>Dedicated Start Analysis action after FITS upload and parameter review</p></li>
+</ul>
+</dd>
+<dt><strong>Statistics Display</strong>:</dt><dd><ul class="simple">
+<li><p>Target RA and DEC shown in both decimal degrees and sexagesimal format
+(HH:MM:SS / ±DD:MM:SS) in the Statistics section</p></li>
+<li><p>Dual coordinate format also recorded in the processing log file</p></li>
+</ul>
+</dd>
+<dt><strong>Photometric Visualization</strong>:</dt><dd><ul class="simple">
+<li><p>“Magnitude Error vs Magnitude” scatter plot uses a logarithmic Y-axis for
+better readability across a wide dynamic range of photometric precision</p></li>
+</ul>
+</dd>
+<dt><strong>Configuration Management</strong>:</dt><dd><ul class="simple">
+<li><p>Persistent parameter storage across sessions on both the FastAPI and
+legacy Flask backends</p></li>
+<li><p>Save/load configuration with a single click, including the <em>Max Magnitude
+Error</em> and <em>Detector Gain</em> controls</p></li>
+<li><p>Default parameter sets for common use cases (missing keys are seeded from
+<code class="docutils literal notranslate"><span class="pre">default_analysis_params</span></code>)</p></li>
+<li><p>Parameter validation with helpful error messages</p></li>
+<li><p>Reset options for troubleshooting (session-local, effective in a single press)</p></li>
+</ul>
+</dd>
+<dt><strong>File Management</strong>:</dt><dd><ul class="simple">
+<li><p>Drag-and-drop file upload interface</p></li>
+<li><p>Automatic file format detection and validation</p></li>
+<li><p>Temporary file handling with automatic cleanup</p></li>
+<li><p>Per-session <code class="docutils literal notranslate"><span class="pre">work_&lt;id&gt;</span></code> folders for temporary uploads and intermediate results</p></li>
+<li><p>Archive browser for previous results</p></li>
+<li><p>Batch download options for result sets</p></li>
+<li><p>User-scoped storage paths under <code class="docutils literal notranslate"><span class="pre">rpp_data/fits/</span></code> and <code class="docutils literal notranslate"><span class="pre">rpp_results/</span></code></p></li>
+</ul>
+</dd>
+<dt><strong>Error Handling</strong>:</dt><dd><ul class="simple">
+<li><p>Comprehensive error messages with recovery suggestions</p></li>
+<li><p>Graceful degradation when optional components fail</p></li>
+<li><p>Automatic fallback options for common failure modes</p></li>
+<li><p>Detailed logging for troubleshooting</p></li>
+<li><p>User-friendly error reporting</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+<section id="developer-utilities-and-scripts">
+<h2>Developer Utilities and Scripts<a class="headerlink" href="#developer-utilities-and-scripts" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><strong>Database Migration Utilities</strong>:</dt><dd><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">scripts/migrate_add_wcs_zip_tables.py</span></code> for 1.6.0 tracking tables</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">scripts/migrate_legacy_db.py</span></code> for legacy SQLite migration to the API schema</p></li>
+</ul>
+</dd>
+<dt><strong>Standalone Processing Utilities</strong>:</dt><dd><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">scripts/satellite_trail_detector.py</span></code> for experimental satellite trail masking</p></li>
+<li><p>Script utilities are documented as separate helpers, not as integrated GUI features</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+<section id="output-generation-export">
+<h2>Output Generation &amp; Export<a class="headerlink" href="#output-generation-export" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><strong>Comprehensive Result Files</strong>:</dt><dd><ul class="simple">
+<li><p>CSV and VOTable catalogs with a curated, fixed column order (unique <code class="docutils literal notranslate"><span class="pre">id</span></code> first, matching the Aladin Lite popup ID; Astro-Colibri detections sorted first)</p></li>
+<li><p>Transient candidate CSV sharing the same columns as the catalog</p></li>
+<li><p>FITS files for background and PSF models</p></li>
+<li><p>WCS-solved FITS files with refined astrometric headers</p></li>
+<li><p>PNG plots for all analysis visualizations</p></li>
+<li><p>Text files for headers and processing logs</p></li>
+<li><p>ZIP archives for convenient result distribution</p></li>
+</ul>
+</dd>
+<dt><strong>Data Organization</strong>:</dt><dd><ul class="simple">
+<li><p>User-specific result directories (<code class="docutils literal notranslate"><span class="pre">rpp_results/</span></code>)</p></li>
+<li><p>Dedicated FITS storage with WCS solutions (<code class="docutils literal notranslate"><span class="pre">rpp_data/fits/</span></code>)</p></li>
+<li><p>Timestamped file naming for version control</p></li>
+<li><p>Automatic file categorization by type</p></li>
+<li><p>Metadata preservation in output files</p></li>
+<li><p>Cross-referenced file relationships</p></li>
+</ul>
+</dd>
+<dt><strong>Archive Management</strong>:</dt><dd><ul class="simple">
+<li><p>Automatic result archiving with compression</p></li>
+<li><p>Old file cleanup with configurable retention</p></li>
+<li><p>Automatic removal of stale session folders and temporary uploads older than 24 hours (archived ZIP files are kept)</p></li>
+<li><p>Browse interface for historical results</p></li>
+<li><p>Bulk download options for research workflows</p></li>
+<li><p>Secure multi-user data isolation</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+<section id="performance-scalability">
+<h2>Performance &amp; Scalability<a class="headerlink" href="#performance-scalability" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><strong>Efficient Processing</strong>:</dt><dd><ul class="simple">
+<li><p>Streamlit caching for improved response times</p></li>
+<li><p>Memory-efficient handling of large FITS files</p></li>
+<li><p>Optimized algorithms for typical image sizes</p></li>
+<li><p>Background processing for time-consuming operations</p></li>
+<li><p>Resource monitoring and management</p></li>
+</ul>
+</dd>
+<dt><strong>Multi-User Support</strong>:</dt><dd><ul class="simple">
+<li><p>Concurrent user session handling</p></li>
+<li><p>Isolated workspaces for data security: each browser session, even of the same account, has its own work folders</p></li>
+<li><p>Reset only affects the current session, never other connected users</p></li>
+<li><p>Shared configuration options when appropriate</p></li>
+<li><p>Load balancing for multiple simultaneous analyses</p></li>
+<li><p>Scalable backend architecture</p></li>
+</ul>
+</dd>
+<dt><strong>Quality Assurance</strong>:</dt><dd><ul class="simple">
+<li><p>Comprehensive input validation</p></li>
+<li><p>Automatic quality checks throughout pipeline</p></li>
+<li><p>Robust error recovery mechanisms</p></li>
+<li><p>Extensive testing with real astronomical data</p></li>
+<li><p>Performance benchmarking and optimization</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="user_guide.html" class="btn btn-neutral float-left" title="User Guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="advanced_features.html" class="btn btn-neutral float-right" title="Advanced Features" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024-2026, Pier-Francesco Rocci.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

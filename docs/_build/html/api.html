@@ -1,0 +1,273 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Backend API &mdash; RAPAS Photometry Pipeline (RPP) v1.9.0 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=c4cb232b"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="API Reference" href="api_reference.html" />
+    <link rel="prev" title="Advanced Features" href="advanced_features.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #2980b9" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            RAPAS Photometry Pipeline (RPP)
+              <img src="_static/rapas_logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="user_guide.html">User Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced_features.html">Advanced Features</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Backend API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#authentication-model">Authentication Model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#core-endpoints">Core Endpoints</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#health-and-authentication">Health and Authentication</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#configuration">Configuration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#fits-storage">FITS Storage</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#behavior-notes">Behavior Notes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#configuration-persistence">Configuration Persistence</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#fastapi-backend-recommended">FastAPI backend (recommended)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#legacy-flask-backend">Legacy Flask backend</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#main-backend-modules">Main Backend Modules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#programmatic-use">Programmatic Use</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #2980b9" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">RAPAS Photometry Pipeline (RPP)</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Backend API</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/api.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="backend-api">
+<h1>Backend API<a class="headerlink" href="#backend-api" title="Link to this heading"></a></h1>
+<p>RPP exposes a FastAPI backend in <code class="docutils literal notranslate"><span class="pre">api/main.py</span></code>. The Streamlit frontend uses
+this backend for account management, configuration persistence, and FITS file
+storage. A legacy backend still exists for compatibility, but the FastAPI
+service is the primary documented interface.</p>
+<section id="authentication-model">
+<h2>Authentication Model<a class="headerlink" href="#authentication-model" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Registration and login are initiated through JSON requests.</p></li>
+<li><p>Authenticated routes use the current backend security layer from <code class="docutils literal notranslate"><span class="pre">api/security.py</span></code>.</p></li>
+<li><p>The Streamlit frontend handles credential storage and request formatting through <code class="docutils literal notranslate"><span class="pre">pages/api_client.py</span></code>.</p></li>
+</ul>
+</section>
+<section id="core-endpoints">
+<h2>Core Endpoints<a class="headerlink" href="#core-endpoints" title="Link to this heading"></a></h2>
+<section id="health-and-authentication">
+<h3>Health and Authentication<a class="headerlink" href="#health-and-authentication" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/health</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/register</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/login</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/recovery/request</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/recovery/confirm</span></code></p></li>
+</ul>
+</section>
+<section id="configuration">
+<h3>Configuration<a class="headerlink" href="#configuration" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/config</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/config</span></code></p></li>
+</ul>
+</section>
+<section id="fits-storage">
+<h3>FITS Storage<a class="headerlink" href="#fits-storage" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/upload/fits</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/fits</span></code></p></li>
+</ul>
+</section>
+</section>
+<section id="behavior-notes">
+<h2>Behavior Notes<a class="headerlink" href="#behavior-notes" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>FITS uploads are written to user-scoped storage paths under <code class="docutils literal notranslate"><span class="pre">rpp_data/fits/</span></code>.</p></li>
+<li><p>Configuration blobs are stored per user in the database.</p></li>
+<li><p>Duplicate FITS uploads are rejected when the backend detects the same stored hash.</p></li>
+<li><p>The backend returns schema-driven JSON responses defined in <code class="docutils literal notranslate"><span class="pre">api/schemas.py</span></code>.</p></li>
+<li><p>Every successful <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/login</span></code> (FastAPI) or <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/login</span></code> (legacy)
+writes a timestamped line with the pipeline version to the service log, for
+example
+<code class="docutils literal notranslate"><span class="pre">[2026-10-18</span> <span class="pre">18:46:22]</span> <span class="pre">RPP</span> <span class="pre">v1.9.0</span> <span class="pre">-</span> <span class="pre">User</span> <span class="pre">'intern1'</span> <span class="pre">logged</span> <span class="pre">in</span> <span class="pre">successfully</span> <span class="pre">(FastAPI</span> <span class="pre">backend).</span></code></p></li>
+</ul>
+</section>
+<section id="configuration-persistence">
+<h2>Configuration Persistence<a class="headerlink" href="#configuration-persistence" title="Link to this heading"></a></h2>
+<p>The <strong>Save Settings</strong> button in <code class="docutils literal notranslate"><span class="pre">pages/app.py</span></code> serializes the whole
+<code class="docutils literal notranslate"><span class="pre">analysis_parameters</span></code> dictionary (every sidebar control, including
+<em>Max Magnitude Error</em> <code class="docutils literal notranslate"><span class="pre">mag_err_max</span></code> and <em>Detector Gain</em> <code class="docutils literal notranslate"><span class="pre">effective_gain</span></code>)
+together with <code class="docutils literal notranslate"><span class="pre">observatory_data</span></code> and <code class="docutils literal notranslate"><span class="pre">colibri_api_key</span></code> into a single JSON
+blob:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+  <span class="s2">"analysis_parameters"</span><span class="p">:</span> <span class="p">{</span> <span class="o">...</span> <span class="p">},</span>
+  <span class="s2">"observatory_data"</span><span class="p">:</span> <span class="p">{</span> <span class="o">...</span> <span class="p">},</span>
+  <span class="s2">"colibri_api_key"</span><span class="p">:</span> <span class="s2">"..."</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The frontend picks a persistence path from <code class="docutils literal notranslate"><span class="pre">st.session_state.backend_mode</span></code>.
+On the next login, <code class="docutils literal notranslate"><span class="pre">pages/login.py</span></code> fetches the blob and assigns its
+<code class="docutils literal notranslate"><span class="pre">analysis_parameters</span></code> / <code class="docutils literal notranslate"><span class="pre">observatory_data</span></code> entries back into session state
+(<code class="docutils literal notranslate"><span class="pre">initialize_session_state</span></code> in <code class="docutils literal notranslate"><span class="pre">src/tools_app.py</span></code> then fills in any missing
+defaults). Because the entire parameters dictionary is stored verbatim, every
+sidebar control round-trips without the backend needing to know its individual
+fields.</p>
+<section id="fastapi-backend-recommended">
+<h3>FastAPI backend (recommended)<a class="headerlink" href="#fastapi-backend-recommended" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Selected when <code class="docutils literal notranslate"><span class="pre">backend_mode</span> <span class="pre">==</span> <span class="pre">&quot;api&quot;</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/config</span></code> with body <code class="docutils literal notranslate"><span class="pre">{&quot;config&quot;:</span> <span class="pre">{</span> <span class="pre">...</span> <span class="pre">}}</span></code> writes the blob to the
+<code class="docutils literal notranslate"><span class="pre">users.config_json</span></code> column of the SQLAlchemy-managed database.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/config</span></code> returns <code class="docutils literal notranslate"><span class="pre">{&quot;config&quot;:</span> <span class="pre">{</span> <span class="pre">...</span> <span class="pre">}}</span></code>, or <code class="docutils literal notranslate"><span class="pre">{&quot;config&quot;:</span> <span class="pre">null}</span></code>
+when the user has no stored configuration yet.</p></li>
+<li><p>Authenticated with HTTP Basic; the client helpers are <code class="docutils literal notranslate"><span class="pre">save_config</span></code> /
+<code class="docutils literal notranslate"><span class="pre">get_config</span></code> in <code class="docutils literal notranslate"><span class="pre">pages/api_client.py</span></code>.</p></li>
+<li><p>Implementation: <code class="docutils literal notranslate"><span class="pre">api/main.py</span></code> (<code class="docutils literal notranslate"><span class="pre">save_config</span></code> / <code class="docutils literal notranslate"><span class="pre">get_config</span></code>),
+model in <code class="docutils literal notranslate"><span class="pre">api/models.py</span></code>, schemas in <code class="docutils literal notranslate"><span class="pre">api/schemas.py</span></code>.</p></li>
+</ul>
+</section>
+<section id="legacy-flask-backend">
+<h3>Legacy Flask backend<a class="headerlink" href="#legacy-flask-backend" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Selected when <code class="docutils literal notranslate"><span class="pre">backend_mode</span> <span class="pre">==</span> <span class="pre">&quot;legacy&quot;</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/save_config</span></code> accepts <code class="docutils literal notranslate"><span class="pre">{&quot;username&quot;:</span> <span class="pre">...,</span> <span class="pre">&quot;config_json&quot;:</span> <span class="pre">&quot;&lt;json</span> <span class="pre">string&gt;&quot;}</span></code>
+and stores the string in the <code class="docutils literal notranslate"><span class="pre">users.config_json</span></code> column.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/get_config</span></code> returns the stored JSON string, or <code class="docutils literal notranslate"><span class="pre">{}</span></code> when none is set.</p></li>
+<li><p>Authenticated with HTTP Basic. The server derives the username from the
+credentials via <code class="docutils literal notranslate"><span class="pre">authenticate_request()</span></code>; the <code class="docutils literal notranslate"><span class="pre">username</span></code> body field is
+ignored.</p></li>
+<li><p>Storage: SQLite file <code class="docutils literal notranslate"><span class="pre">users.db</span></code> (<code class="docutils literal notranslate"><span class="pre">users_dev.db</span></code> when
+<code class="docutils literal notranslate"><span class="pre">APP_ENV=development</span></code>), created and migrated by <code class="docutils literal notranslate"><span class="pre">backend.py</span></code>.</p></li>
+<li><p>Note: importing <code class="docutils literal notranslate"><span class="pre">backend.py</span></code> runs <code class="docutils literal notranslate"><span class="pre">init_db()</span></code> at module scope, and the
+module depends on <code class="docutils literal notranslate"><span class="pre">flask</span></code> / <code class="docutils literal notranslate"><span class="pre">flask-cors</span></code>; these are not part of the
+FastAPI install, so the legacy backend should be treated as optional.</p></li>
+</ul>
+<p>Both backends store the blob as text in a <code class="docutils literal notranslate"><span class="pre">config_json</span></code> column, so no schema
+change is required when new sidebar parameters are added to
+<code class="docutils literal notranslate"><span class="pre">analysis_parameters</span></code>. Round-trip coverage for both paths lives in
+<code class="docutils literal notranslate"><span class="pre">tests/test_config_persistence.py</span></code>.</p>
+</section>
+</section>
+<section id="main-backend-modules">
+<h2>Main Backend Modules<a class="headerlink" href="#main-backend-modules" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">api/main.py</span></code></dt><dd><p>FastAPI application, route definitions, upload handling, and response wiring.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">api/models.py</span></code></dt><dd><p>SQLAlchemy ORM models for users, recovery codes, uploaded FITS files, and
+related tracking tables.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">api/schemas.py</span></code></dt><dd><p>Pydantic request and response models used by the API.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">api/storage.py</span></code></dt><dd><p>User-scoped storage-path generation for uploaded FITS files.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">api/database.py</span></code></dt><dd><p>Database engine, session creation, and SQLAlchemy base setup.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">api/security.py</span></code></dt><dd><p>Authentication helpers and dependency wiring for protected routes.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">backend.py</span></code></dt><dd><p>Legacy Flask backend providing equivalent registration, login, recovery and
+configuration endpoints for compatibility with older deployments. Stores its
+data in SQLite (<code class="docutils literal notranslate"><span class="pre">users.db</span></code>) and requires <code class="docutils literal notranslate"><span class="pre">flask</span></code> / <code class="docutils literal notranslate"><span class="pre">flask-cors</span></code>.</p>
+</dd>
+</dl>
+</section>
+<section id="programmatic-use">
+<h2>Programmatic Use<a class="headerlink" href="#programmatic-use" title="Link to this heading"></a></h2>
+<p>For frontend-integrated usage, the simplest client surface is the helper layer
+in <code class="docutils literal notranslate"><span class="pre">pages/api_client.py</span></code>. For broader codebase entry points, see
+<code class="docutils literal notranslate"><span class="pre">api_reference.rst</span></code> for the surrounding module map.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="advanced_features.html" class="btn btn-neutral float-left" title="Advanced Features" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="api_reference.html" class="btn btn-neutral float-right" title="API Reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024-2026, Pier-Francesco Rocci.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

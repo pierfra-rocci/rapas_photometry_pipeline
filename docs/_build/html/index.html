@@ -1,0 +1,355 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RAPAS Photometry Pipeline (RPP) &mdash; RAPAS Photometry Pipeline (RPP) v1.9.0 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=c4cb232b"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Installation Guide" href="installation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #2980b9" >
+
+          
+          
+          <a href="#" class="icon icon-home">
+            RAPAS Photometry Pipeline (RPP)
+              <img src="_static/rapas_logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="user_guide.html">User Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced_features.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #2980b9" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="#">RAPAS Photometry Pipeline (RPP)</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="#" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">RAPAS Photometry Pipeline (RPP)</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="rapas-photometry-pipeline-rpp">
+<h1>RAPAS Photometry Pipeline (RPP)<a class="headerlink" href="#rapas-photometry-pipeline-rpp" title="Link to this heading"></a></h1>
+<p>RAPAS Photometry Pipeline (RPP) is a Streamlit-based astronomical photometry
+application with a FastAPI backend and a legacy compatibility backend. It is
+designed for FITS-based image analysis, photometric calibration, catalog
+cross-matching, transient screening, and result archiving.</p>
+<p>The documentation in this section reflects the current application workflow:
+upload a FITS file, review settings, click <strong>Start Analysis</strong>, and then inspect
+or download the generated results.</p>
+<section id="highlights">
+<h2>Highlights<a class="headerlink" href="#highlights" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Streamlit frontend with backend auto-detection and fallback support</p></li>
+<li><p>FITS upload staging before any scientific processing starts</p></li>
+<li><p>Local WCS validation and optional Astrometry.net solving/refinement</p></li>
+<li><p>Aperture and PSF photometry with propagated uncertainties</p></li>
+<li><p>Catalog enhancement with GAIA, SIMBAD, SkyBoT, VSX, Milliquas, and optional Astro-Colibri</p></li>
+<li><p>Optional transient candidate workflow with PanSTARRS or SkyMapper references</p></li>
+<li><p>SQLite-backed user settings, FITS tracking, and result archive tracking</p></li>
+<li><p>ZIP export of catalogs, logs, plots, and generated intermediate products</p></li>
+</ul>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#minimum-requirements">Minimum Requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#dependency-source">Dependency Source</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#quick-install-powershell">Quick Install (PowerShell)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#quick-install-bash">Quick Install (bash)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#optional-external-tools">Optional External Tools</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#backend-dependencies">Backend Dependencies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#running-the-tests">Running the Tests</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#environment-variables">Environment Variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#verification">Verification</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#support">Support</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="usage.html#quick-start-development">Quick Start (Development)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="usage.html#production-deployment">Production Deployment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="usage.html#logging-and-troubleshooting">Logging and Troubleshooting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="usage.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="user_guide.html">User Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="user_guide.html#getting-started">Getting Started</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide.html#application-layout">Application Layout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide.html#step-1-sign-in">Step 1: Sign In</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide.html#step-2-upload-a-fits-file">Step 2: Upload a FITS File</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide.html#step-3-configure-parameters">Step 3: Configure Parameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide.html#step-4-start-analysis">Step 4: Start Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide.html#psf-photometry">PSF Photometry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide.html#astrometry-behavior">Astrometry Behavior</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide.html#catalog-enhancement">Catalog Enhancement</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide.html#transient-candidates">Transient Candidates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide.html#results-and-downloads">Results and Downloads</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide.html#saved-settings-and-archives">Saved Settings and Archives</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide.html#practical-tips">Practical Tips</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="features.html">Features</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="features.html#user-authentication-multi-user-support">User Authentication &amp; Multi-User Support</a></li>
+<li class="toctree-l2"><a class="reference internal" href="features.html#advanced-image-processing">Advanced Image Processing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="features.html#astrometric-solutions">Astrometric Solutions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="features.html#source-detection-photometry">Source Detection &amp; Photometry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="features.html#photometric-calibration">Photometric Calibration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="features.html#multi-catalog-cross-matching">Multi-Catalog Cross-Matching</a></li>
+<li class="toctree-l2"><a class="reference internal" href="features.html#transient-detection-beta">Transient Detection (Beta)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="features.html#data-visualization-analysis">Data Visualization &amp; Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="features.html#user-interface-workflow">User Interface &amp; Workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="features.html#developer-utilities-and-scripts">Developer Utilities and Scripts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="features.html#output-generation-export">Output Generation &amp; Export</a></li>
+<li class="toctree-l2"><a class="reference internal" href="features.html#performance-scalability">Performance &amp; Scalability</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="advanced_features.html">Advanced Features</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="advanced_features.html#database-tracking-system">Database Tracking System</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced_features.html#migrating-existing-databases">Migrating Existing Databases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced_features.html#inspecting-analysis-history">Inspecting Analysis History</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced_features.html#configuration-persistence">Configuration Persistence</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced_features.html#development-and-testing">Development and Testing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced_features.html#transient-detection">Transient Detection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced_features.html#astrometric-workflows">Astrometric Workflows</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced_features.html#psf-photometry">PSF Photometry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced_features.html#custom-post-processing">Custom Post-Processing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced_features.html#standalone-utilities">Standalone Utilities</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api.html#authentication-model">Authentication Model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#core-endpoints">Core Endpoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#behavior-notes">Behavior Notes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#configuration-persistence">Configuration Persistence</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#main-backend-modules">Main Backend Modules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#programmatic-use">Programmatic Use</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#application-modules">Application Modules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#useful-functions">Useful Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#photometric-formula-conventions">Photometric Formula Conventions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#analysis-result-files">Analysis Result Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#http-api-endpoints">HTTP API Endpoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#maintenance-and-migration-scripts">Maintenance and Migration Scripts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#test-suite">Test Suite</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#basic-photometry-example">Basic Photometry Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#variable-star-analysis">Variable Star Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#asteroids-and-moving-objects">Asteroids and Moving Objects</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#tutorial-complete-photometry-workflow">Tutorial: Complete Photometry Workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#advanced-scripting-with-rpp-functions">Advanced: Scripting with RPP Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#notes-and-next-steps">Notes and Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#installation-setup-issues">Installation &amp; Setup Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#login-registration-issues">Login &amp; Registration Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#image-loading-processing-issues">Image Loading &amp; Processing Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#catalog-query-issues-simbad-skybot-etc">Catalog Query Issues (SIMBAD, SkyBoT, etc.)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#database-and-migration-issues">Database and Migration Issues</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#version-1-9-0">Version 1.9.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#version-1-8-7">Version 1.8.7</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#version-1-8-6">Version 1.8.6</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#version-1-8-5">Version 1.8.5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#version-1-8-4">Version 1.8.4</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#version-1-8-3">Version 1.8.3</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#version-1-8-1">Version 1.8.1</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#version-1-8-0">Version 1.8.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#version-1-7-3">Version 1.7.3</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#version-1-7-2">Version 1.7.2</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#version-1-7-0">Version 1.7.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#version-1-6-0-current">Version 1.6.0 (Current)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#version-1-5-3">Version 1.5.3</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#version-1-5-1">Version 1.5.1</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#version-1-4-7">Version 1.4.7</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#version-1-4-5">Version 1.4.5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#version-0-9-8">Version 0.9.8</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#version-1-0-0-2023-09-01-previous-release">Version 1.0.0 (2023-09-01) - Previous Release</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#version-0-9-0-2023-07-15-beta-release">Version 0.9.0 (2023-07-15) - Beta Release</a></li>
+<li class="toctree-l2"><a class="reference internal" href="changelog.html#development-roadmap">Development Roadmap</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+<section id="quick-start">
+<h2>Quick Start<a class="headerlink" href="#quick-start" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p>Install dependencies with <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-e</span> <span class="pre">.</span></code>.</p></li>
+<li><p>Start the FastAPI backend with <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">uvicorn</span> <span class="pre">api.main:app</span> <span class="pre">--reload</span> <span class="pre">--host</span> <span class="pre">127.0.0.1</span> <span class="pre">--port</span> <span class="pre">8000</span></code>.</p></li>
+<li><p>If needed, start the legacy backend with <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">backend.py</span></code>.</p></li>
+<li><p>Start the frontend with <code class="docutils literal notranslate"><span class="pre">streamlit</span> <span class="pre">run</span> <span class="pre">frontend.py</span></code> or <code class="docutils literal notranslate"><span class="pre">streamlit</span> <span class="pre">run</span> <span class="pre">pages/app.py</span></code>.</p></li>
+<li><p>Log in, upload a FITS file, configure parameters in the sidebar, and click <strong>Start Analysis</strong>.</p></li>
+<li><p>Review the plots, tables, and logs, then download the ZIP archive or revisit archived results later.</p></li>
+</ol>
+</section>
+<section id="system-architecture">
+<h2>System Architecture<a class="headerlink" href="#system-architecture" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><strong>Frontend (Streamlit):</strong></dt><dd><ul class="simple">
+<li><p>Main UI in <code class="docutils literal notranslate"><span class="pre">pages/app.py</span></code> with login flow in <code class="docutils literal notranslate"><span class="pre">pages/login.py</span></code>;
+every successful login is written to the service log with a local
+timestamp and the pipeline version</p></li>
+<li><p>Staged upload flow with explicit processing start</p></li>
+<li><p>Result display, archive browsing, and settings persistence</p></li>
+</ul>
+</dd>
+<dt><strong>Backend:</strong></dt><dd><ul class="simple">
+<li><p><em>FastAPI (recommended):</em> Authentication, config persistence, and FITS storage routes</p></li>
+<li><p><em>Legacy backend:</em> Kept for compatibility with older workflows</p></li>
+<li><p>SQLite-backed user, configuration, and file metadata storage</p></li>
+</ul>
+</dd>
+<dt><strong>Processing Pipeline:</strong></dt><dd><ul class="simple">
+<li><p>FITS loading, header checks, WCS validation, photometry, and catalog enrichment</p></li>
+<li><p>Optional plate solving, refinement, and transient candidate search</p></li>
+<li><p>Graceful handling of remote-service timeouts and partial-result returns</p></li>
+</ul>
+</dd>
+<dt><strong>External Integration:</strong></dt><dd><ul class="simple">
+<li><p>Astrometry.net and optional SCAMP for astrometric workflows</p></li>
+<li><p>GAIA, SIMBAD, SkyBoT, VSX, Milliquas, and Astro-Colibri services</p></li>
+<li><p>Aladin Lite for interactive sky visualization</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+<section id="supported-data-formats">
+<h2>Supported Data Formats<a class="headerlink" href="#supported-data-formats" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>FITS (<code class="docutils literal notranslate"><span class="pre">.fits</span></code>, <code class="docutils literal notranslate"><span class="pre">.fit</span></code>, <code class="docutils literal notranslate"><span class="pre">.fts</span></code>, <code class="docutils literal notranslate"><span class="pre">.fits.gz</span></code>)</p></li>
+<li><p>Multi-extension FITS (MEF)</p></li>
+<li><p>Data cubes, using the first science plane when needed</p></li>
+<li><p>RGB-like FITS content, using the first channel when needed</p></li>
+</ul>
+</section>
+<section id="use-cases">
+<h2>Use Cases<a class="headerlink" href="#use-cases" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><strong>Research</strong>:</dt><dd><ul class="simple">
+<li><p>Variable-star photometry and monitoring</p></li>
+<li><p>Calibrated field-source catalog generation</p></li>
+<li><p>WCS validation and improvement for uploaded images</p></li>
+<li><p>Transient screening and Solar System object rejection</p></li>
+</ul>
+</dd>
+<dt><strong>Survey Work</strong>:</dt><dd><ul class="simple">
+<li><p>Reproducible source extraction and catalog enrichment</p></li>
+<li><p>Batch inspection of archived analysis products</p></li>
+<li><p>Cross-identification against multiple public catalogs</p></li>
+</ul>
+</dd>
+<dt><strong>Educational Use</strong>:</dt><dd><ul class="simple">
+<li><p>Demonstrating practical photometry workflows</p></li>
+<li><p>Teaching FITS handling, calibration, and WCS concepts</p></li>
+<li><p>Exploring catalog cross-matching and result validation</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+<section id="operational-notes">
+<h2>Operational Notes<a class="headerlink" href="#operational-notes" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Performance depends strongly on image size, WCS quality, and whether local astrometry tools are available.</p></li>
+<li><p>Remote catalog queries can be slow or unavailable; when possible, the application continues with partial results and reports the degraded step in the logs.</p></li>
+<li><p>Plate solving and transient workflows depend on optional local and remote services and should be treated as best-effort enhancements rather than hard requirements.</p></li>
+</ul>
+<p>Indices and tables</p>
+<hr class="docutils" />
+<ul class="simple">
+<li><p><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></p></li>
+<li><p><a class="reference internal" href="py-modindex.html"><span class="std std-ref">Module Index</span></a></p></li>
+<li><p><a class="reference internal" href="search.html"><span class="std std-ref">Search Page</span></a></p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="installation.html" class="btn btn-neutral float-right" title="Installation Guide" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024-2026, Pier-Francesco Rocci.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,349 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>User Guide &mdash; RAPAS Photometry Pipeline (RPP) v1.9.0 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=c4cb232b"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Features" href="features.html" />
+    <link rel="prev" title="Usage Guide" href="usage.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #2980b9" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            RAPAS Photometry Pipeline (RPP)
+              <img src="_static/rapas_logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">User Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#getting-started">Getting Started</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#application-layout">Application Layout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-1-sign-in">Step 1: Sign In</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-2-upload-a-fits-file">Step 2: Upload a FITS File</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-3-configure-parameters">Step 3: Configure Parameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-4-start-analysis">Step 4: Start Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#psf-photometry">PSF Photometry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#astrometry-behavior">Astrometry Behavior</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#catalog-enhancement">Catalog Enhancement</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#transient-candidates">Transient Candidates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#results-and-downloads">Results and Downloads</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#saved-settings-and-archives">Saved Settings and Archives</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#practical-tips">Practical Tips</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced_features.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #2980b9" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">RAPAS Photometry Pipeline (RPP)</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">User Guide</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/user_guide.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="user-guide">
+<h1>User Guide<a class="headerlink" href="#user-guide" title="Link to this heading"></a></h1>
+<p>This guide describes the current end-user workflow for RAPAS Photometry
+Pipeline. The application uses a staged interface: uploading a FITS file only
+prepares it for analysis, and the scientific processing starts only after you
+click <strong>Start Analysis</strong>.</p>
+<section id="getting-started">
+<h2>Getting Started<a class="headerlink" href="#getting-started" title="Link to this heading"></a></h2>
+<p>Before opening the Streamlit app, start at least one backend:</p>
+<ul class="simple">
+<li><p>FastAPI backend (recommended): <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">uvicorn</span> <span class="pre">api.main:app</span> <span class="pre">--reload</span> <span class="pre">--host</span> <span class="pre">127.0.0.1</span> <span class="pre">--port</span> <span class="pre">8000</span></code></p></li>
+<li><p>Legacy backend (compatibility mode): <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">backend.py</span></code></p></li>
+</ul>
+<p>Then launch the frontend:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">streamlit</span> <span class="pre">run</span> <span class="pre">frontend.py</span></code></p></li>
+<li><p>or <code class="docutils literal notranslate"><span class="pre">streamlit</span> <span class="pre">run</span> <span class="pre">pages/app.py</span></code></p></li>
+</ul>
+<p>The login page probes the available backends automatically. If the FastAPI
+backend is reachable it is preferred; otherwise the frontend falls back to the
+legacy backend.</p>
+</section>
+<section id="application-layout">
+<h2>Application Layout<a class="headerlink" href="#application-layout" title="Link to this heading"></a></h2>
+<p>The interface is divided into two main areas:</p>
+<ul class="simple">
+<li><p>Sidebar for account actions, observatory settings, analysis parameters, transient options, API key input, settings save, and archived-result browsing</p></li>
+<li><p>Main panel for FITS upload, image preview, processing progress, tables, plots, logs, and downloads</p></li>
+</ul>
+</section>
+<section id="step-1-sign-in">
+<h2>Step 1: Sign In<a class="headerlink" href="#step-1-sign-in" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p>Open the login page.</p></li>
+<li><p>Register a new account, or log in with an existing one using either the
+username or the email address given at registration.</p></li>
+<li><p>Use password recovery if needed. Recovery codes are emailed when SMTP is
+configured, and the submitted address is matched regardless of its
+capitalisation.</p></li>
+<li><p>Each successful sign-in is written to the service logs with a local
+timestamp and the pipeline version, for example
+<code class="docutils literal notranslate"><span class="pre">[2026-10-18</span> <span class="pre">18:46:22]</span> <span class="pre">RPP</span> <span class="pre">v1.9.0</span> <span class="pre">-</span> <span class="pre">User</span> <span class="pre">'intern1'</span> <span class="pre">logged</span> <span class="pre">in</span> <span class="pre">successfully</span> <span class="pre">(FastAPI</span> <span class="pre">backend).</span></code>
+The legacy backend and the frontend emit the same line tagged with their own
+origin (<code class="docutils literal notranslate"><span class="pre">legacy</span> <span class="pre">backend</span></code>, <code class="docutils literal notranslate"><span class="pre">frontend,</span> <span class="pre">FastAPI</span> <span class="pre">backend</span></code> or
+<code class="docutils literal notranslate"><span class="pre">frontend,</span> <span class="pre">legacy</span> <span class="pre">backend</span></code>).</p></li>
+</ol>
+</section>
+<section id="step-2-upload-a-fits-file">
+<h2>Step 2: Upload a FITS File<a class="headerlink" href="#step-2-upload-a-fits-file" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p>Select a science FITS file in the main upload area.</p></li>
+<li><p>After upload, the file is staged and marked as ready.</p></li>
+<li><p>At this stage the app does not yet run FITS loading, astrometry checks, or photometry.</p></li>
+</ol>
+</section>
+<section id="step-3-configure-parameters">
+<h2>Step 3: Configure Parameters<a class="headerlink" href="#step-3-configure-parameters" title="Link to this heading"></a></h2>
+<p>Use the sidebar to review or change:</p>
+<ul class="simple">
+<li><p>Observatory name, latitude, longitude, and elevation</p></li>
+<li><p>Estimated seeing, detection threshold, FWHM radius factor, and border mask size</p></li>
+<li><p><strong>Pixel scale override</strong> (arcsec/pixel), only needed when the FITS header and WCS give no pixel scale; <code class="docutils literal notranslate"><span class="pre">0</span></code> means automatic</p></li>
+<li><p>Calibration filter band (the maximum calibration magnitude is fixed at 21, the GAIA catalogue limit)</p></li>
+<li><p><strong>Astrometry check</strong> to force solving or refining the WCS workflow</p></li>
+<li><p><strong>Transient Candidates</strong> options to enable the transient finder and choose a reference filter</p></li>
+<li><p>Optional Astro-Colibri UID key</p></li>
+</ul>
+<p>If observatory metadata are present in the FITS header, the application may use
+them to prefill the observatory fields.</p>
+</section>
+<section id="step-4-start-analysis">
+<h2>Step 4: Start Analysis<a class="headerlink" href="#step-4-start-analysis" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p>Click <strong>Start Analysis</strong>.</p></li>
+<li><p>The pipeline then performs the full scientific workflow.</p></li>
+</ol>
+<p>Depending on the file and selected options, this can include:</p>
+<ul class="simple">
+<li><p>FITS loading and header validation</p></li>
+<li><p>WCS validation and optional local plate solving</p></li>
+<li><p>Source detection and FWHM estimation</p></li>
+<li><p>Aperture photometry and PSF photometry</p></li>
+<li><p>Catalog-based zero-point calibration and, when colors are available, a simple color-term correction</p></li>
+<li><p>Catalog enhancement through external services</p></li>
+<li><p>Optional transient-candidate search</p></li>
+<li><p>Packaging of outputs into downloadable files</p></li>
+</ul>
+</section>
+<section id="psf-photometry">
+<span id="id1"></span><h2>PSF Photometry<a class="headerlink" href="#psf-photometry" title="Link to this heading"></a></h2>
+<p>PSF photometry builds an empirical PSF (ePSF) from suitable field stars and
+reports PSF-derived fluxes and magnitudes alongside the aperture measurements.
+Candidate stars are filtered for shape, isolation and a flat local background;
+the PSF is fitted in a compact region around each source while the ePSF itself
+is extracted from a larger cutout so its wings are preserved, and the aperture
+correction is derived from the exact model used for the fits.</p>
+<p>If the run cannot use PSF photometry, it continues with calibrated aperture
+photometry and displays the shared warning:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PSF</span> <span class="n">photometry</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">available</span><span class="p">;</span> <span class="n">using</span> <span class="n">calibrated</span> <span class="n">aperture</span> <span class="n">photometry</span> <span class="n">instead</span><span class="o">.</span>
+</pre></div>
+</div>
+<p>The transient finder uses the same base warning for its own fallback and adds
+the aperture it relies on:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PSF</span> <span class="n">photometry</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">available</span><span class="p">;</span> <span class="n">using</span> <span class="n">calibrated</span> <span class="n">aperture</span> <span class="n">photometry</span> <span class="n">instead</span><span class="o">.</span> <span class="n">Transient</span> <span class="n">candidates</span> <span class="n">use</span> <span class="n">the</span> <span class="n">calibrated</span> <span class="mf">1.1</span> <span class="n">x</span> <span class="n">FWHM</span> <span class="n">aperture</span> <span class="n">magnitude</span><span class="o">.</span>
+</pre></div>
+</div>
+<p>This single wording makes it clear that aperture measurements replace PSF
+photometry in both workflows, while the transient message identifies the
+specific 1.1 x FWHM aperture used for its candidates.</p>
+<p>To help verify that the two methods agree, each run reports the median
+<code class="docutils literal notranslate"><span class="pre">psf_mag</span> <span class="pre">-</span> <span class="pre">aperture_mag</span></code> offset per aperture and raises a warning when it
+exceeds 0.15 mag. Because the aperture fluxes are corrected to the same
+total-flux scale as the PSF, the offset should be near zero; a large value
+points to an ePSF shape/normalisation or local-background problem.</p>
+<p>The per-source difference is also written to the catalog for every aperture as
+<code class="docutils literal notranslate"><span class="pre">psf_minus_aperture_mag_X_X</span></code> (with filter-prefixed aliases). It is NaN for
+sources measured by only one of the two methods.</p>
+<p>The results view plots this offset as well: per aperture it shows the offset
+against the calibrated PSF magnitude (with the median and zero lines) next to
+the offset histogram, and saves the figure as <code class="docutils literal notranslate"><span class="pre">&lt;base&gt;_psf_aperture_offset.png</span></code>
+in your results folder.</p>
+</section>
+<section id="astrometry-behavior">
+<h2>Astrometry Behavior<a class="headerlink" href="#astrometry-behavior" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>If a valid WCS is already present, the application can continue with that solution.</p></li>
+<li><p>If WCS is missing or the user enables <strong>Astrometry check</strong>, the app attempts local plate solving.</p></li>
+<li><p>The solver aims for at least 20 detected stars. If fewer are found, the detection threshold is lowered from 3 to 2 and then 1 sigma, and the solve is retried at the deeper threshold if it fails.</p></li>
+<li><p>If forced solving fails but an existing WCS is still valid, the pipeline falls back to the existing WCS rather than stopping the whole run.</p></li>
+</ul>
+</section>
+<section id="catalog-enhancement">
+<h2>Catalog Enhancement<a class="headerlink" href="#catalog-enhancement" title="Link to this heading"></a></h2>
+<p>After photometry, the catalog can be enriched with matches from services such
+as:</p>
+<ul class="simple">
+<li><p>GAIA DR3</p></li>
+<li><p>SIMBAD</p></li>
+<li><p>SkyBoT</p></li>
+<li><p>AAVSO VSX</p></li>
+<li><p>Milliquas</p></li>
+<li><p>Astro-Colibri, when an API key is provided</p></li>
+</ul>
+<p>These services are best-effort integrations. Timeouts, empty responses, or
+temporary network failures are reported in the logs and warnings, and the
+pipeline continues whenever partial results are still usable.</p>
+</section>
+<section id="transient-candidates">
+<h2>Transient Candidates<a class="headerlink" href="#transient-candidates" title="Link to this heading"></a></h2>
+<p>If enabled, the transient workflow runs after the main photometry and catalog
+steps. It compares the detected sources against reference-survey data and then
+applies additional filtering, including Solar System object rejection through
+SkyBoT.</p>
+<p>Survey selection is based on the field declination in the current code path:</p>
+<ul class="simple">
+<li><p>Northern fields use PanSTARRS references</p></li>
+<li><p>Southern fields use SkyMapper references</p></li>
+</ul>
+<p>Candidate finding detects sources with SExtractor and matches them to the pipeline
+photometry catalog within a seeing-based radius (the FWHM, clamped to
+1-4 arcsec), then rejects detections that coincide with reference-survey or
+Vizier sources. Matched detections use the calibrated PSF magnitudes; when PSF
+photometry is unavailable (missing columns or non-finite values), the finder
+falls back to the calibrated 1.1 x FWHM aperture magnitude instead of aborting
+and shows the shared PSF warning described in <a class="reference internal" href="#psf-photometry"><span class="std std-ref">PSF Photometry</span></a>, followed
+by <code class="docutils literal notranslate"><span class="pre">Transient</span> <span class="pre">candidates</span> <span class="pre">use</span> <span class="pre">the</span> <span class="pre">calibrated</span> <span class="pre">1.1</span> <span class="pre">x</span> <span class="pre">FWHM</span> <span class="pre">aperture</span> <span class="pre">magnitude.</span></code>
+The catalog matching radius is half the seeing FWHM, and a source that
+coincides with a catalog entry is kept only when it is a genuine
+brightness excess - more than <code class="docutils literal notranslate"><span class="pre">mag_threshold</span></code> (default 2.0 magnitudes)
+brighter than that entry. Unreliable detections (edge-truncated, deblended,
+or with a bad aperture) are discarded.</p>
+<p>The transient workflow applies no minimum S/N cutoff. Low-S/N detections remain
+eligible if they pass the other catalog, known-source, and Solar System-object
+filters.</p>
+</section>
+<section id="results-and-downloads">
+<h2>Results and Downloads<a class="headerlink" href="#results-and-downloads" title="Link to this heading"></a></h2>
+<p>The main panel can show:</p>
+<ul class="simple">
+<li><p>Image previews and diagnostic plots</p></li>
+<li><p>Source and calibration tables</p></li>
+<li><p>Processing logs</p></li>
+<li><p>Interactive Aladin views</p></li>
+<li><p>Download buttons for result archives</p></li>
+</ul>
+<p><strong>Statistics section</strong>: the target field center RA and DEC are shown in both
+decimal degrees and sexagesimal format (HH:MM:SS / ±DD:MM:SS). The same dual
+format is written into the processing log file.</p>
+<p><strong>Magnitude Error vs Magnitude plot</strong>: the Y-axis uses a logarithmic scale so
+that photometric precision is readable across the full magnitude range of the
+catalog.</p>
+<p>Result ZIP archives typically contain the generated catalogs, logs, plots, and
+other analysis products created during the run.</p>
+<p>When the matched calibration stars include a usable catalog color, the exported
+catalog may also contain additional color-corrected magnitude columns such as
+<code class="docutils literal notranslate"><span class="pre">psf_mag_colorcorr</span></code> or <code class="docutils literal notranslate"><span class="pre">aperture_mag_1_3_colorcorr</span></code>. These are written in
+parallel with the standard zero-point-calibrated magnitudes, not in place of
+them. The catalog may also include trace columns such as <code class="docutils literal notranslate"><span class="pre">source_color</span></code>,
+<code class="docutils literal notranslate"><span class="pre">color_term_label</span></code>, <code class="docutils literal notranslate"><span class="pre">color_term_value</span></code>, and <code class="docutils literal notranslate"><span class="pre">color_term_offset</span></code>.</p>
+</section>
+<section id="saved-settings-and-archives">
+<h2>Saved Settings and Archives<a class="headerlink" href="#saved-settings-and-archives" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Use <strong>Save Settings</strong> to persist observatory and analysis parameters to your account; the FastAPI and legacy backends both store the values, which are restored automatically the next time you log in.</p></li>
+<li><p>Use the archived-results area to review previously stored FITS uploads and ZIP outputs tied to your account.</p></li>
+<li><p>In the archived-results sidebar browser, ZIP content is loaded only when you click to download a specific archive, reducing rerun overhead while keeping the full archive list visible.</p></li>
+</ul>
+</section>
+<section id="practical-tips">
+<h2>Practical Tips<a class="headerlink" href="#practical-tips" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Check the logs first when a catalog or network-backed enrichment step is missing.</p></li>
+<li><p>Install Astrometry.net locally if you want reliable blind solving for files without WCS.</p></li>
+<li><p>Treat remote-service enrichments and transient screening as optional enhancements, not guaranteed steps.</p></li>
+<li><p>If a field is crowded or sparse, adjust the seeing and detection threshold before rerunning the pipeline.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="usage.html" class="btn btn-neutral float-left" title="Usage Guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="features.html" class="btn btn-neutral float-right" title="Features" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024-2026, Pier-Francesco Rocci.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,333 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Advanced Features &mdash; RAPAS Photometry Pipeline (RPP) v1.9.0 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=c4cb232b"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Backend API" href="api.html" />
+    <link rel="prev" title="Features" href="features.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #2980b9" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            RAPAS Photometry Pipeline (RPP)
+              <img src="_static/rapas_logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="user_guide.html">User Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Advanced Features</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#database-tracking-system">Database Tracking System</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#migrating-existing-databases">Migrating Existing Databases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#inspecting-analysis-history">Inspecting Analysis History</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#configuration-persistence">Configuration Persistence</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#development-and-testing">Development and Testing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#transient-detection">Transient Detection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#astrometric-workflows">Astrometric Workflows</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#psf-photometry">PSF Photometry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#custom-post-processing">Custom Post-Processing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#standalone-utilities">Standalone Utilities</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #2980b9" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">RAPAS Photometry Pipeline (RPP)</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Advanced Features</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/advanced_features.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="advanced-features">
+<h1>Advanced Features<a class="headerlink" href="#advanced-features" title="Link to this heading"></a></h1>
+<p>This section collects the current advanced and developer-oriented workflows in
+RAPAS Photometry Pipeline.</p>
+<section id="database-tracking-system">
+<h2>Database Tracking System<a class="headerlink" href="#database-tracking-system" title="Link to this heading"></a></h2>
+<p>RPP stores analysis-history metadata in SQLite so uploaded FITS files and
+generated ZIP archives can be tracked per user.</p>
+<p>The tracking layer uses three linked tables:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>wcs_fits_files
+    Uploaded or generated FITS records tied to a user
+
+zip_archives
+    Result ZIP archives tied to a user
+
+wcs_fits_zip_assoc
+    Association table linking one FITS record to one or more ZIP results
+</pre></div>
+</div>
+<p>This supports:</p>
+<ul class="simple">
+<li><p>One FITS file associated with multiple processing runs</p></li>
+<li><p>Per-user isolation of stored files and metadata</p></li>
+<li><p>Automatic recording after successful result creation</p></li>
+<li><p>Safe re-use of existing records when the same stored filename or archive is encountered again</p></li>
+</ul>
+</section>
+<section id="migrating-existing-databases">
+<h2>Migrating Existing Databases<a class="headerlink" href="#migrating-existing-databases" title="Link to this heading"></a></h2>
+<p>If you are upgrading an older deployment, use the migration scripts in
+<code class="docutils literal notranslate"><span class="pre">scripts/</span></code>.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>scripts/migrate_add_wcs_zip_tables.py<span class="w"> </span>--db-path<span class="w"> </span>/path/to/users.db
+python<span class="w"> </span>scripts/migrate_legacy_db.py
+</pre></div>
+</div>
+<p>The tracking-table migration creates a backup unless told otherwise and is
+designed to be rerunnable.</p>
+</section>
+<section id="inspecting-analysis-history">
+<h2>Inspecting Analysis History<a class="headerlink" href="#inspecting-analysis-history" title="Link to this heading"></a></h2>
+<p>The helper functions in <code class="docutils literal notranslate"><span class="pre">src/db_tracking.py</span></code> expose the recorded history:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">src.db_tracking</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">get_fits_files_for_user</span><span class="p">,</span>
+    <span class="n">get_zip_archives_for_user</span><span class="p">,</span>
+    <span class="n">get_zips_for_fits</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">fits_files</span> <span class="o">=</span> <span class="n">get_fits_files_for_user</span><span class="p">(</span><span class="s2">"alice"</span><span class="p">)</span>
+<span class="n">archives</span> <span class="o">=</span> <span class="n">get_zip_archives_for_user</span><span class="p">(</span><span class="s2">"alice"</span><span class="p">)</span>
+<span class="n">related_zips</span> <span class="o">=</span> <span class="n">get_zips_for_fits</span><span class="p">(</span><span class="n">wcs_fits_id</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="configuration-persistence">
+<h2>Configuration Persistence<a class="headerlink" href="#configuration-persistence" title="Link to this heading"></a></h2>
+<p>The frontend saves user settings as a single JSON blob and reloads it on the
+next login. The blob carries <code class="docutils literal notranslate"><span class="pre">analysis_parameters</span></code> (every sidebar control,
+including <em>Max Magnitude Error</em> <code class="docutils literal notranslate"><span class="pre">mag_err_max</span></code> and <em>Detector Gain</em>
+<code class="docutils literal notranslate"><span class="pre">effective_gain</span></code>), <code class="docutils literal notranslate"><span class="pre">observatory_data</span></code> and <code class="docutils literal notranslate"><span class="pre">colibri_api_key</span></code>.</p>
+<ul class="simple">
+<li><p><strong>Save</strong>: the <strong>Save Settings</strong> button in <code class="docutils literal notranslate"><span class="pre">pages/app.py</span></code> serializes the
+current dictionaries into the blob.</p></li>
+<li><p><strong>Load</strong>: <code class="docutils literal notranslate"><span class="pre">pages/login.py</span></code> restores the dictionaries into session state on
+login; any missing keys are filled from <code class="docutils literal notranslate"><span class="pre">default_analysis_params</span></code> in
+<code class="docutils literal notranslate"><span class="pre">src/tools_app.py</span></code> (both new controls are seeded there).</p></li>
+<li><p><strong>Backends</strong>: FastAPI (<code class="docutils literal notranslate"><span class="pre">GET</span></code>/<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/config</span></code>) or the legacy Flask
+backend (<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/get_config</span></code> / <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/save_config</span></code>). See <a class="reference internal" href="api.html"><span class="doc">Backend API</span></a> for the
+full comparison, payload shapes and storage columns.</p></li>
+</ul>
+<p>Because the whole <code class="docutils literal notranslate"><span class="pre">analysis_parameters</span></code> dictionary is persisted verbatim, new
+sidebar controls round-trip automatically and require no database migration.</p>
+</section>
+<section id="development-and-testing">
+<h2>Development and Testing<a class="headerlink" href="#development-and-testing" title="Link to this heading"></a></h2>
+<p>Tests live in <code class="docutils literal notranslate"><span class="pre">tests/</span></code> and are run with <code class="docutils literal notranslate"><span class="pre">pytest</span></code> from the project root
+(install the dev extras first with <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-e</span> <span class="pre">&quot;.[dev]&quot;</span></code>):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pytest
+</pre></div>
+</div>
+<p>The configuration-persistence behaviour is covered by
+<code class="docutils literal notranslate"><span class="pre">tests/test_config_persistence.py</span></code>:</p>
+<ul class="simple">
+<li><p>the FastAPI <code class="docutils literal notranslate"><span class="pre">/api/config</span></code> save/reload round-trip, including the <code class="docutils literal notranslate"><span class="pre">0</span></code>
+“disable the cut” / “automatic gain” values;</p></li>
+<li><p>the legacy Flask <code class="docutils literal notranslate"><span class="pre">/save_config</span></code> / <code class="docutils literal notranslate"><span class="pre">/get_config</span></code> round-trip (skipped when
+Flask is unavailable, and run with a stub <code class="docutils literal notranslate"><span class="pre">flask-cors</span></code> when only the CORS
+extension is missing);</p></li>
+<li><p>seeding of <code class="docutils literal notranslate"><span class="pre">mag_err_max</span></code> / <code class="docutils literal notranslate"><span class="pre">effective_gain</span></code> in
+<code class="docutils literal notranslate"><span class="pre">default_analysis_params</span></code>; and</p></li>
+<li><p>structural checks that <code class="docutils literal notranslate"><span class="pre">pages/app.py</span></code> writes both controls into the saved
+dictionary and that <code class="docutils literal notranslate"><span class="pre">pages/login.py</span></code> restores <code class="docutils literal notranslate"><span class="pre">analysis_parameters</span></code>.</p></li>
+</ul>
+<p>Both backend suites use an isolated SQLite database in a temporary directory, so
+running the tests never touches the developer’s <code class="docutils literal notranslate"><span class="pre">users.db</span></code>.</p>
+</section>
+<section id="transient-detection">
+<h2>Transient Detection<a class="headerlink" href="#transient-detection" title="Link to this heading"></a></h2>
+<p>The transient workflow is optional and runs after the main photometry and
+catalog-enhancement steps.</p>
+<p>Candidate finding (<code class="docutils literal notranslate"><span class="pre">src.transient.find_candidates</span></code>) works as follows:</p>
+<ul class="simple">
+<li><p>The user enables it from the <strong>Transient Candidates</strong> sidebar section and
+selects the reference filter.</p></li>
+<li><p>The reference survey is chosen from the field declination: PanSTARRS in the
+north, SkyMapper in the south.</p></li>
+<li><p>Sources are detected with SExtractor (via <code class="docutils literal notranslate"><span class="pre">stdpipe</span></code>) and cross-matched against the pipeline
+photometry catalog, taking the <em>nearest</em> counterpart within a seeing-based
+radius (the FWHM in arcsec, clamped to 1-4 arcsec).  Matched detections
+receive the calibrated PSF magnitudes already measured by the pipeline.</p></li>
+<li><p>When PSF photometry is unavailable - the columns are missing, or contain no
+finite value for the matched detections - the finder falls back to the
+calibrated 1.1 x FWHM aperture magnitude (<code class="docutils literal notranslate"><span class="pre">aperture_mag_1_1</span></code> and its error)
+instead of aborting, so transient filtering still runs without an ePSF.</p></li>
+<li><p>Detections flagged as unreliable (object/aperture truncated at the
+frame boundary, deblending overflow, degenerate centroid, or an all-masked /
+non-positive aperture) are discarded.  These are SEP flag bits, so the mask
+passed to stdpipe is <code class="docutils literal notranslate"><span class="pre">SEP_REJECT_FLAGS</span></code> rather than stdpipe’s
+SExtractor-style default (<code class="docutils literal notranslate"><span class="pre">0x7F00</span></code>), which never matches raw SEP flags.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">stdpipe.pipeline.filter_transient_candidates</span></code> rejects detections that
+coincide with reference-survey or Vizier sources.  The positional matching
+radius is half the seeing FWHM (set from <code class="docutils literal notranslate"><span class="pre">fwhm</span></code> and <code class="docutils literal notranslate"><span class="pre">pixscale</span></code>), and a
+coincident source is kept only when it is brighter than its catalog
+counterpart by more than <code class="docutils literal notranslate"><span class="pre">mag_threshold</span></code> (default 2.0 mag, after removing
+the median zero-point offset), i.e. when there is a genuine brightness
+excess.</p></li>
+<li><p>Solar System objects are rejected separately through the SkyBoT service
+(120-second timeout), and candidates whose magnitude error is not finite are
+dropped.</p></li>
+<li><p>No minimum S/N cutoff is applied to transient candidates. Low-S/N detections
+remain eligible if they pass the other catalog, known-source, and Solar
+System-object filters.</p></li>
+<li><p>Cutouts (science and HiPS template) are displayed and saved for the top 20
+candidates, ranked by signal-to-noise ratio.</p></li>
+</ul>
+<p>This workflow should be treated as best-effort. Reference data, remote catalog
+services, and transient filtering may degrade gracefully when an external
+dependency is unavailable.</p>
+</section>
+<section id="astrometric-workflows">
+<h2>Astrometric Workflows<a class="headerlink" href="#astrometric-workflows" title="Link to this heading"></a></h2>
+<p>RPP supports several WCS-related paths:</p>
+<ul class="simple">
+<li><p>Validation and reuse of an existing WCS already present in the header</p></li>
+<li><p>Forced astrometry checks from the sidebar when the user wants a fresh solve attempt</p></li>
+<li><p>Local blind solving through Astrometry.net and <code class="docutils literal notranslate"><span class="pre">stdpipe</span></code></p></li>
+<li><p>Optional refinement workflows when the local toolchain is available</p></li>
+</ul>
+<p>If a new forced solve fails but the file already had a valid WCS, the frontend
+falls back to that valid solution so the rest of the pipeline can continue.</p>
+</section>
+<section id="psf-photometry">
+<h2>PSF Photometry<a class="headerlink" href="#psf-photometry" title="Link to this heading"></a></h2>
+<p>PSF photometry complements the aperture measurements and is useful when:</p>
+<ul class="simple">
+<li><p>sources are crowded,</p></li>
+<li><p>aperture measurements become unstable, or</p></li>
+<li><p>a PSF-based comparison is desirable.</p></li>
+</ul>
+<p>The pipeline builds an empirical PSF model from suitable stars and then reports
+PSF-derived fluxes and magnitudes alongside the aperture results when the fit is
+successful. Candidate stars are filtered on flux, S/N, shape, isolation and
+local-background flatness; the PSF is fitted in a compact region around each
+source while the ePSF itself is extracted from a larger cutout so its wings are
+preserved, and the aperture correction is derived from the exact model used for
+the fits.</p>
+<p>After photometry the pipeline cross-checks the two methods: PSF and aperture
+sources are matched by position and the median <code class="docutils literal notranslate"><span class="pre">psf_mag</span> <span class="pre">−</span> <span class="pre">aperture_mag</span></code> is
+reported for each aperture. Because the aperture fluxes are placed on the same
+total-flux scale as the PSF (see <code class="docutils literal notranslate"><span class="pre">docs/PHOTOMETRY_FORMULAS.md</span></code>), the offset
+should be near zero; a median larger than
+<code class="docutils literal notranslate"><span class="pre">PSF_APERTURE_CONSISTENCY_THRESHOLD</span></code> (0.15 mag) raises a warning and the
+per-aperture diagnostics are stored in
+<code class="docutils literal notranslate"><span class="pre">st.session_state[&quot;psf_aperture_consistency&quot;]</span></code>.</p>
+<p>The results view plots these offsets with <code class="docutils literal notranslate"><span class="pre">plot_photometry_offsets</span></code>: one
+panel shows the offset against the calibrated PSF magnitude with per-aperture
+median and zero lines, the other the offset histogram, and the figure is saved
+as <code class="docutils literal notranslate"><span class="pre">&lt;base&gt;_psf_aperture_offset.png</span></code>.</p>
+</section>
+<section id="custom-post-processing">
+<h2>Custom Post-Processing<a class="headerlink" href="#custom-post-processing" title="Link to this heading"></a></h2>
+<p>The generated CSV catalogs and ZIP archives can be reused in external scripts or
+notebooks for tasks such as:</p>
+<ul class="simple">
+<li><p>light-curve construction,</p></li>
+<li><p>differential photometry,</p></li>
+<li><p>cross-run source aggregation,</p></li>
+<li><p>custom filtering, or</p></li>
+<li><p>publication-ready plotting.</p></li>
+</ul>
+<p>For most programmatic entry points, prefer the modules summarized in
+<code class="docutils literal notranslate"><span class="pre">api_reference.rst</span></code> and the concrete pipeline helpers under <code class="docutils literal notranslate"><span class="pre">src/</span></code>.</p>
+</section>
+<section id="standalone-utilities">
+<h2>Standalone Utilities<a class="headerlink" href="#standalone-utilities" title="Link to this heading"></a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">scripts/</span></code> directory contains maintenance or utility scripts that are not
+part of the normal Streamlit button flow:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">migrate_add_wcs_zip_tables.py</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">migrate_legacy_db.py</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">satellite_trail_detector.py</span></code></p></li>
+</ul>
+<p>These are intended for administration, migration, or offline workflows rather
+than day-to-day frontend use.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="features.html" class="btn btn-neutral float-left" title="Features" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="api.html" class="btn btn-neutral float-right" title="Backend API" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024-2026, Pier-Francesco Rocci.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
