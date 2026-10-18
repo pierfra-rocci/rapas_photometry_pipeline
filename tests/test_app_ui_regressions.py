@@ -158,14 +158,32 @@ def test_key_pipeline_status_messages_use_expected_levels() -> None:
         for message in success_messages
     )
 
-    assert (
-        "Using aperture photometry only (PSF photometry not available)."
-        in warning_messages
-    )
+    warning_arg_names = {
+        call.args[0].id
+        for call in _streamlit_calls("warning")
+        if call.args and isinstance(call.args[0], ast.Name)
+    }
+    assert "PSF_FALLBACK_MESSAGE" in warning_arg_names
     assert (
         "Catalog data is available but cannot be displayed in interactive viewer."
         in warning_messages
     )
+
+
+def test_transient_finder_warns_when_aperture_fallback_is_used() -> None:
+    """The results view must explain transient magnitudes that use the 1.1 x FWHM fallback."""
+    warning_arg_names = {
+        call.args[0].id
+        for call in _streamlit_calls("warning")
+        if call.args and isinstance(call.args[0], ast.Name)
+    }
+    assert "TRANSIENT_PSF_FALLBACK_MESSAGE" in warning_arg_names
+
+    referenced_names = {
+        node.id for node in ast.walk(_app_tree()) if isinstance(node, ast.Name)
+    }
+    assert "TRANSIENT_MAGNITUDE_SOURCE_META" in referenced_names
+    assert "TRANSIENT_APERTURE_FALLBACK_SOURCE" in referenced_names
 
 
 def test_app_renders_psf_aperture_offset_diagnostic() -> None:

@@ -421,3 +421,181 @@ def test_refine_wcs_with_scamp_retries_with_wider_tolerances(monkeypatch):
     assert refined == "wcs"
     assert calls[0] == {} and "POSITION_MAXERR" in calls[1]
     assert diagnostics["attempts"] == 2
+
+
+def _fake_source_table(n):
+    return Table(
+        {
+            "x": np.arange(n, dtype=float),
+            "y": np.arange(n, dtype=float),
+            "flux": np.linspace(1000.0, 100.0, n),
+        }
+    )
+
+
+def _patch_detection(monkeypatch, counts_by_thresh):
+    """Make detection return a table whose size depends on the threshold."""
+    used = []
+
+    def fake_get_objects(image, thresh=None, **_kwargs):
+        used.append(thresh)
+        return _fake_source_table(counts_by_thresh.get(thresh, 0))
+
+    monkeypatch.setattr(
+        astrometry_module.photometry, "get_objects_sextractor", fake_get_objects
+    )
+    monkeypatch.setattr(
+        astrometry_module.photometry,
+        "measure_objects",
+        lambda sources, *_a, **_k: sources,
+    )
+    monkeypatch.setattr(
+        astrometry_module, "resolve_effective_gain", lambda *_a, **_k: 1.0
+    )
+    return used
+
+
+def test_detection_ladder_lowers_threshold_until_target_reached(monkeypatch):
+    used = _patch_detection(monkeypatch, {3.0: 8, 2.0: 14, 1.0: 35})
+
+    sources = astrometry_module._try_source_detection_improved(
+        np.zeros((64, 64)), {}, min_sources=20
+    )
+
+    assert len(sources) == 35
+    assert sources.meta["detection_thresh"] == 1.0
+    assert used[0] == 3.0
+    assert 2.0 in used and used[-1] == 1.0
+
+
+def test_detection_ladder_keeps_standard_threshold_when_enough_stars(
+    monkeypatch,
+):
+    used = _patch_detection(monkeypatch, {3.0: 140})
+
+    sources = astrometry_module._try_source_detection_improved(
+        np.zeros((64, 64)), {}, min_sources=20
+    )
+
+    assert len(sources) == 140
+    assert sources.meta["detection_thresh"] == 3.0
+    assert used == [3.0]
+
+
+def test_detection_tries_2_sigma_when_fewer_than_100_sources_at_3_sigma(
+    monkeypatch,
+):
+    used = _patch_detection(monkeypatch, {3.0: 40, 2.0: 90})
+
+    sources = astrometry_module._try_source_detection_improved(
+        np.zeros((64, 64)), {}, min_sources=20
+    )
+
+    assert len(sources) == 90
+    assert sources.meta["detection_thresh"] == 2.0
+    assert used == [3.0, 2.0]
+
+
+def test_detection_keeps_3_sigma_when_2_sigma_finds_no_more(monkeypatch):
+    used = _patch_detection(monkeypatch, {3.0: 40, 2.0: 30, 1.0: 25})
+
+    sources = astrometry_module._try_source_detection_improved(
+        np.zeros((64, 64)), {}, min_sources=20
+    )
+
+    assert len(sources) == 40
+    assert sources.meta["detection_thresh"] == 3.0
+    assert 2.0 in used
+    assert 1.0 not in used or used.index(1.0) > used.index(2.0)
+
+
+def test_detection_ladder_returns_best_effort_for_sparse_field(monkeypatch):
+    _patch_detection(monkeypatch, {3.0: 6, 2.0: 9, 1.0: 12})
+
+    sources = astrometry_module._try_source_detection_improved(
+        np.zeros((64, 64)), {}, min_sources=20
+    )
+
+    assert len(sources) == 12
+    assert sources.meta["detection_thresh"] == 1.0
+
+
+def test_detection_ladder_fails_below_fallback_minimum(monkeypatch):
+    _patch_detection(monkeypatch, {3.0: 2, 2.0: 3, 1.0: 4})
+
+    assert (
+        astrometry_module._try_source_detection_improved(
+            np.zeros((64, 64)), {}, min_sources=20
+        )
+        is None
+    )
+
+
+def test_detection_max_thresh_restricts_ladder(monkeypatch):
+    used = _patch_detection(monkeypatch, {3.0: 50, 2.0: 50, 1.0: 50})
+
+    astrometry_module._try_source_detection_improved(
+        np.zeros((64, 64)), {}, min_sources=20, max_thresh=2.0
+    )
+
+    assert used == [2.0]
+
+
+def test_solve_retries_with_deeper_detection_when_solve_fails(
+    tmp_path, monkeypatch
+):
+    image_path = tmp_path / "image.fits"
+    fits.PrimaryHDU(data=np.zeros((32, 32))).writeto(image_path)
+
+    wcs = WCS(_make_valid_header())
+    detections = []
+
+    def fake_detect(_image, _header, min_sources=20, max_thresh=None, **_kw):
+        detections.append(max_thresh)
+        thresh = 3.0 if max_thresh is None else max_thresh
+        table = _fake_source_table(25 if max_thresh is None else 40)
+        table.meta["detection_thresh"] = thresh
+        return table
+
+    solve_calls = []
+
+    def fake_solve(sources, *_args, **_kwargs):
+        solve_calls.append(len(sources))
+        return (wcs, []) if len(solve_calls) == 2 else (None, ["ERROR: fail"])
+
+    monkeypatch.setattr(
+        astrometry_module, "_try_source_detection_improved", fake_detect
+    )
+    monkeypatch.setattr(
+        astrometry_module, "solve_with_enhanced_strategy", fake_solve
+    )
+    monkeypatch.setattr(
+        astrometry_module.astrometry,
+        "get_frame_center",
+        lambda **_kwargs: (150.0, 2.0, 0.01),
+    )
+    monkeypatch.setattr(
+        astrometry_module.astrometry,
+        "get_pixscale",
+        lambda **_kwargs: 1 / 3600,
+    )
+    monkeypatch.setattr(
+        astrometry_module.catalogs,
+        "get_cat_vizier",
+        lambda *_a, **_k: None,
+    )
+    monkeypatch.setattr(
+        astrometry_module,
+        "refine_wcs_with_scamp",
+        lambda *_a, **_k: (None, {"reason": "disabled for test"}),
+    )
+
+    solved_wcs, _header, messages, error = (
+        astrometry_module.solve_with_astrometrynet(str(image_path))
+    )
+
+    assert error is None
+    assert solved_wcs is wcs
+    assert detections == [None, 2.0]
+    assert solve_calls == [25, 40]
+    assert any("retrying with detection threshold 2 sigma" in m for m in messages)

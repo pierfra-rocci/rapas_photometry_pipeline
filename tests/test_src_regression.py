@@ -450,9 +450,9 @@ class TestAirmassFromHeader:
 
 class TestAdaptiveMinSources:
     def test_small_image(self):
-        # 800 x 600 = 480_000 px -> small bucket, floor 10
+        # 800 x 600 = 480_000 px -> small bucket, floor 20
         assert get_adaptive_min_sources((600, 800)) == max(
-            10, min(25, 480_000 // 20_000)
+            20, min(25, 480_000 // 20_000)
         )
 
     def test_medium_image(self):
@@ -466,7 +466,7 @@ class TestAdaptiveMinSources:
         assert get_adaptive_min_sources((6000, 6000)) == 50
 
     def test_tiny_image_hits_floor(self):
-        assert get_adaptive_min_sources((100, 100)) == 10
+        assert get_adaptive_min_sources((100, 100)) == 20
 
 
 class TestEstimatePixelScaleRobust:

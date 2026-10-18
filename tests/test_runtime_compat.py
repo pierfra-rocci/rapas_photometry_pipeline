@@ -7,13 +7,15 @@ from types import ModuleType
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
 
-streamlit_module = ModuleType("streamlit")
-streamlit_module.warning = lambda *args, **kwargs: None
-streamlit_module.info = lambda *args, **kwargs: None
-streamlit_module.success = lambda *args, **kwargs: None
-streamlit_module.error = lambda *args, **kwargs: None
-streamlit_module.write = lambda *args, **kwargs: None
-sys.modules.setdefault("streamlit", streamlit_module)
+def _stub_streamlit() -> ModuleType:
+    """Build a minimal stand-in so the pipeline can be imported without Streamlit."""
+    module = ModuleType("streamlit")
+    module.warning = lambda *args, **kwargs: None
+    module.info = lambda *args, **kwargs: None
+    module.success = lambda *args, **kwargs: None
+    module.error = lambda *args, **kwargs: None
+    module.write = lambda *args, **kwargs: None
+    return module
 
 
 def test_pyproject_pins_compatible_setuptools() -> None:
@@ -28,13 +30,13 @@ def test_pyproject_pins_compatible_setuptools() -> None:
     assert any(dep == "setuptools==71.0.0" for dep in dependencies)
 
 
-def test_requirements_pin_compatible_setuptools() -> None:
-    requirements = (ROOT_DIR / "requirements.txt").read_text(encoding="utf-8")
-
-    assert "setuptools==71.0.0" in requirements
-
-
-def test_solve_with_astrometrynet_fails_gracefully_without_stdpipe_runtime() -> None:
+def test_solve_with_astrometrynet_fails_gracefully_without_stdpipe_runtime(
+    monkeypatch,
+) -> None:
+    # Install the stub only for this test: replacing ``streamlit`` in
+    # ``sys.modules`` at import time would leak into every other test module
+    # collected in the same pytest process.
+    monkeypatch.setitem(sys.modules, "streamlit", _stub_streamlit())
     import src.astrometry as astrometry_module
 
     original_error = astrometry_module.STDPIPE_IMPORT_ERROR

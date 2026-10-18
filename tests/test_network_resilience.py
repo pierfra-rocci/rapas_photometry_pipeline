@@ -7,6 +7,8 @@ import json
 import re
 from contextlib import nullcontext
 
+import numpy as np
+import pytest
 import requests
 import pandas as pd
 from astropy import units as u
@@ -19,7 +21,7 @@ from xml.parsers.expat import ExpatError
 import src.xmatch_catalogs as xmatch_catalogs
 from src.tools_app import display_catalog_in_aladin
 from src.transient import filter_skybot_candidates
-from src.utils import safe_catalog_query
+from src.utils import ensure_source_ids, safe_catalog_query
 from src.xmatch_catalogs import cross_match_with_gaia, enhance_catalog
 
 
@@ -443,3 +445,320 @@ def test_aladin_popup_includes_skybot_and_10pc_matches(monkeypatch):
         "SkyBoT": "Asteroid",
         "10 Parsec": "Nearby star",
     }
+
+def test_aladin_popup_id_matches_id_column(monkeypatch):
+    """The Aladin source ID must be the ``id`` column of the exported files."""
+    table = pd.DataFrame(
+        {
+            "ra": [150.0, 150.1, 150.2],
+            "dec": [2.0, 2.1, 2.2],
+            "id": [7, 3, None],
+        }
+    )
+    rendered_html = []
+    monkeypatch.setattr("src.tools_app.st.spinner", lambda *_args: nullcontext())
+    monkeypatch.setattr(
+        "src.tools_app.st.iframe",
+        lambda html, **_kwargs: rendered_html.append(html),
+    )
+
+    display_catalog_in_aladin(table, ra_center=150.0, dec_center=2.0)
+
+    encoded_data = re.search(
+        r'JSON.parse\(atob\("([^"]+)"\)\)', rendered_html[0]
+    ).group(1)
+    sources = json.loads(base64.b64decode(encoded_data))
+
+    expected = [str(i) for i in ensure_source_ids(table)["id"]]
+    assert [s["catalog_id"] for s in sources] == expected
+    assert expected[:2] == ["7", "3"]
+
+
+def test_aladin_popup_creates_id_when_column_missing(monkeypatch):
+    table = pd.DataFrame({"ra": [150.0, 150.1], "dec": [2.0, 2.1]})
+    rendered_html = []
+    monkeypatch.setattr("src.tools_app.st.spinner", lambda *_args: nullcontext())
+    monkeypatch.setattr(
+        "src.tools_app.st.iframe",
+        lambda html, **_kwargs: rendered_html.append(html),
+    )
+
+    display_catalog_in_aladin(table, ra_center=150.0, dec_center=2.0)
+
+    encoded_data = re.search(
+        r'JSON.parse\(atob\("([^"]+)"\)\)', rendered_html[0]
+    ).group(1)
+    sources = json.loads(base64.b64decode(encoded_data))
+    assert [s["catalog_id"] for s in sources] == ["1", "2"]
+
+
+def _run_astrocolibri_match(monkeypatch, offsets_arcsec):
+    """Run enhance_catalog with Astro-Colibri events offset from sources."""
+    n = len(offsets_arcsec)
+    ras = [150.0 + 0.01 * i for i in range(n)]
+    final_table = pd.DataFrame({"ra": ras, "dec": [2.0] * n})
+    events = [
+        {
+            "ra": ra,
+            "dec": 2.0 + off / 3600.0,
+            "source_name": f"EVT{i}",
+            "type": "GRB",
+            "classification": "Transient",
+            "observatory": "Swift",
+            "trigger_id": f"T{i}",
+            "err": 0.001,
+            "timestamp": 1750203847000,
+        }
+        for i, (ra, off) in enumerate(zip(ras, offsets_arcsec))
+    ]
+    header = {
+        "CRVAL1": 150.0,
+        "CRVAL2": 2.0,
+        "NAXIS1": 100,
+        "NAXIS2": 100,
+        "DATE-OBS": "2025-06-17T23:44:07",
+    }
+
+    class AstroResponse:
+        status_code = 200
+        content = b""
+
+        def json(self):
+            return {"voevents": events}
+
+    class FailedResponse:
+        status_code = 503
+        text = ""
+        content = b""
+
+    monkeypatch.setattr(
+        type(xmatch_catalogs.Simbad), "query_region", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        type(xmatch_catalogs.Vizier), "query_region", lambda *_a, **_k: []
+    )
+    monkeypatch.setattr(
+        type(xmatch_catalogs.Vizier), "query_constraints", lambda *_a, **_k: []
+    )
+    monkeypatch.setattr(
+        "src.xmatch_catalogs.requests.post",
+        lambda *_a, **_k: AstroResponse(),
+    )
+    monkeypatch.setattr(
+        "src.xmatch_catalogs.requests.get", lambda *_a, **_k: FailedResponse()
+    )
+    return enhance_catalog(
+        "key", final_table, None, header, pixel_scale_arcsec=1.0
+    )
+
+
+def test_astrocolibri_match_radius_helper():
+    from src.xmatch_catalogs import astrocolibri_match_radius
+
+    assert astrocolibri_match_radius(0.5) == 5.0
+    assert astrocolibri_match_radius(7.0) == 10.0
+    assert astrocolibri_match_radius(14.9) == 15.0
+    assert astrocolibri_match_radius(15.0) == 20.0
+    assert astrocolibri_match_radius(19.9) == 20.0
+    assert astrocolibri_match_radius(20.0) is None
+
+
+def test_astrocolibri_progressive_radius_matches_up_to_20_arcsec(monkeypatch):
+    enhanced, log_messages = _run_astrocolibri_match(
+        monkeypatch, [3.0, 12.0, 18.0, 25.0]
+    )
+
+    assert enhanced.loc[0, "astrocolibri_name"] == "EVT0"
+    assert enhanced.loc[1, "astrocolibri_name"] == "EVT1"
+    assert enhanced.loc[2, "astrocolibri_name"] == "EVT2"
+    assert enhanced["astrocolibri_name"].iloc[3] is None
+    line = next(m for m in log_messages if "Astro-Colibri:" in m and "matched" in m)
+    assert "3 source(s) matched within 20 arcsec" in line
+    assert '5" x1' in line and '15" x1' in line and '20" x1' in line
+
+
+def test_astrocolibri_warns_for_15_and_20_arcsec_tiers(monkeypatch):
+    _, log_messages = _run_astrocolibri_match(monkeypatch, [3.0, 7.0, 18.0])
+    warnings = [m for m in log_messages if m.startswith("WARNING: Astro-Colibri:")]
+    assert len(warnings) == 1 and "20 arcsec tier" in warnings[0]
+
+    _, log_messages = _run_astrocolibri_match(monkeypatch, [3.0, 7.0, 12.0, 18.0])
+    warnings = [m for m in log_messages if m.startswith("WARNING: Astro-Colibri:")]
+    assert len(warnings) == 2
+    assert any("15 arcsec tier" in m for m in warnings)
+    assert any("20 arcsec tier" in m for m in warnings)
+
+    _, log_messages = _run_astrocolibri_match(monkeypatch, [3.0, 7.0])
+    assert not [m for m in log_messages if m.startswith("WARNING: Astro-Colibri:")]
+
+
+def test_astrocolibri_events_table_has_extra_fields(monkeypatch):
+    enhanced, _ = _run_astrocolibri_match(monkeypatch, [3.0])
+    events = enhanced.attrs["astrocolibri_events"]
+    assert events.loc[0, "observatory"] == "Swift"
+    assert events.loc[0, "trigger_id"] == "T0"
+    assert events.loc[0, "err_arcsec"] == pytest.approx(3.6)
+    assert events.loc[0, "date"] == "2025-06-17 23:44:07"
+
+
+def test_astrocolibri_event_coordinates_and_events_table(monkeypatch):
+    enhanced, _ = _run_astrocolibri_match(monkeypatch, [3.0, 12.0, 20.0])
+
+    # Event RA/Dec are stored on the matched sources only
+    assert enhanced.loc[0, "astrocolibri_ra"] == pytest.approx(150.0)
+    assert enhanced.loc[0, "astrocolibri_dec"] == pytest.approx(2.0 + 3.0 / 3600.0)
+    assert enhanced.loc[1, "astrocolibri_dec"] == pytest.approx(2.0 + 12.0 / 3600.0)
+    assert np.isnan(enhanced.loc[2, "astrocolibri_ra"])
+
+    # The events table lists every source returned by the API
+    events = enhanced.attrs["astrocolibri_events"]
+    assert list(events["source_name"]) == ["EVT0", "EVT1", "EVT2"]
+    assert list(events["matched"]) == [True, True, False]
+    assert events.loc[0, "separation_arcsec"] == pytest.approx(3.0, abs=0.05)
+    assert np.isnan(events.loc[2, "separation_arcsec"])
+
+
+def test_astrocolibri_events_without_coordinates_are_listed(monkeypatch):
+    final_table = pd.DataFrame({"ra": [150.0], "dec": [2.0]})
+    events = [
+        {"ra": 150.0, "dec": 2.0, "source_name": "WITH", "type": "GRB"},
+        {"source_name": "NOCOORD", "type": "SN"},
+        {"ra": None, "dec": None, "source_name": "NONE", "type": "FRB"},
+    ]
+
+    class AstroResponse:
+        status_code = 200
+        content = b""
+
+        def json(self):
+            return {"voevents": events}
+
+    monkeypatch.setattr(
+        type(xmatch_catalogs.Simbad), "query_region", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        type(xmatch_catalogs.Vizier), "query_region", lambda *_a, **_k: []
+    )
+    monkeypatch.setattr(
+        type(xmatch_catalogs.Vizier), "query_constraints", lambda *_a, **_k: []
+    )
+    monkeypatch.setattr(
+        "src.xmatch_catalogs.requests.post", lambda *_a, **_k: AstroResponse()
+    )
+    monkeypatch.setattr(
+        "src.xmatch_catalogs.requests.get",
+        lambda *_a, **_k: type("R", (), {"status_code": 503, "text": "", "content": b""})(),
+    )
+    header = {"CRVAL1": 150.0, "CRVAL2": 2.0, "NAXIS1": 100, "NAXIS2": 100}
+
+    enhanced, _ = enhance_catalog("key", final_table, None, header, 1.0)
+
+    table = enhanced.attrs["astrocolibri_events"]
+    assert list(table["source_name"]) == ["WITH", "NOCOORD", "NONE"]
+    assert list(table["matched"]) == [True, False, False]
+    assert enhanced.loc[0, "astrocolibri_name"] == "WITH"
+
+
+def test_format_astrocolibri_events_orders_matched_first():
+    from src.tools_app import format_astrocolibri_events
+
+    events = pd.DataFrame(
+        {
+            "source_name": ["B", "A", "C"],
+            "ra": [1.0, 2.0, np.nan],
+            "dec": [3.0, 4.0, np.nan],
+            "type": ["x", "y", "z"],
+            "classification": [None, None, None],
+            "matched": [False, True, False],
+            "separation_arcsec": [np.nan, 2.5, np.nan],
+        }
+    )
+    view = format_astrocolibri_events(events)
+    assert list(view["Name"]) == ["A", "B", "C"]
+    assert list(view["Matched"]) == ["Yes", "No", "No"]
+    assert format_astrocolibri_events(None).empty
+    assert format_astrocolibri_events(pd.DataFrame()).empty
+
+
+def test_aladin_flags_astrocolibri_matches(monkeypatch):
+    table = pd.DataFrame(
+        {
+            "ra": [150.0, 150.1],
+            "dec": [2.0, 2.1],
+            "astrocolibri_name": ["GRB 250617A", None],
+        }
+    )
+    rendered_html = []
+    monkeypatch.setattr("src.tools_app.st.spinner", lambda *_args: nullcontext())
+    monkeypatch.setattr(
+        "src.tools_app.st.iframe",
+        lambda html, **_kwargs: rendered_html.append(html),
+    )
+
+    display_catalog_in_aladin(table, ra_center=150.0, dec_center=2.0)
+
+    html = rendered_html[0]
+    encoded_data = re.search(r'JSON.parse\(atob\("([^"]+)"\)\)', html).group(1)
+    sources = json.loads(base64.b64decode(encoded_data))
+    assert [s["is_astrocolibri"] for s in sources] == [True, False]
+    assert "Astro-Colibri matches" in html
+    assert "shape: 'square'" in html
+
+
+def test_skybot_cone_search_retries_transient_failures(monkeypatch):
+    from src.utils import skybot_cone_search
+
+    calls = []
+
+    class OkResponse:
+        status_code = 200
+        text = "<VOTABLE/>"
+
+    def _flaky(_url, *, params, timeout):
+        calls.append(params)
+        if len(calls) < 3:
+            raise requests.exceptions.ConnectionError("down")
+        return OkResponse()
+
+    monkeypatch.setattr("requests.get", _flaky)
+    result, problem = skybot_cone_search(
+        10.0, 20.0, 50.0, 2461000.5, lambda _r: "TABLE"
+    )
+
+    assert result == "TABLE" and problem is None
+    assert len(calls) == 3
+    assert calls[0]["-rd"] == 10.0 and calls[0]["-from"] == "RPP"
+
+
+def test_skybot_cone_search_gives_up_after_retries(monkeypatch):
+    from src.utils import skybot_cone_search
+
+    calls = []
+
+    def _down(*_a, **_k):
+        calls.append(1)
+        raise requests.exceptions.Timeout("slow")
+
+    monkeypatch.setattr("requests.get", _down)
+    with pytest.raises(requests.exceptions.Timeout):
+        skybot_cone_search(10.0, 20.0, 0.1, 2461000.5, lambda _r: None)
+    assert len(calls) == 3
+
+
+def test_skybot_cone_search_rejects_out_of_range_epoch_and_http_errors(monkeypatch):
+    from src.utils import skybot_cone_search
+
+    def _must_not_be_called(*_a, **_k):
+        raise AssertionError("no request expected")
+
+    monkeypatch.setattr("requests.get", _must_not_be_called)
+    result, problem = skybot_cone_search(10.0, 20.0, 0.1, 2400000.0, lambda _r: None)
+    assert result is None and "epochs between" in problem
+
+    class BadRequest:
+        status_code = 400
+        text = "bad parameters"
+
+    monkeypatch.setattr("requests.get", lambda *_a, **_k: BadRequest())
+    result, problem = skybot_cone_search(10.0, 20.0, 0.1, 2461000.5, lambda _r: None)
+    assert result is None and "HTTP 400" in problem

@@ -246,7 +246,7 @@ def test_login_restores_analysis_parameters_from_stored_config():
 # ---------------------------------------------------------------------------
 # Legacy Flask backend: /save_config and /get_config
 # ---------------------------------------------------------------------------
-# The legacy backend is optional: Flask is not in requirements.txt and
+# The legacy backend is optional: Flask is not a dependency in pyproject.toml and
 # flask-cors is only used to attach the CORS middleware, which is irrelevant to
 # configuration persistence. Skip cleanly when Flask itself is unavailable and
 # stub flask-cors when only it is missing, so the endpoint logic is still

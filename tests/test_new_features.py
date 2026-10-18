@@ -28,9 +28,10 @@ import pandas as pd
 import pytest
 
 # ── Stub out optional heavy dependencies before src.transient is imported ─────
-# stdpipe transitively imports sip_tpv which requires pkg_resources (setuptools),
-# which is absent in this test environment.  Inject MagicMock stand-ins for
-# every module in the chain so the import succeeds without the real libraries.
+# Inject MagicMock stand-ins for the heavy modules src.transient needs so its
+# unit tests do not require the real libraries.  Do not stub ``sip_tpv``: it is
+# imported by ``src.astrometry`` and stubbing it here would leak into later
+# tests and turn the SIP-to-TPV conversion into a no-op.
 _STUB_MODULES = [
     "stdpipe",
     "stdpipe.pipeline",
@@ -41,7 +42,6 @@ _STUB_MODULES = [
     "stdpipe.plots",
     "stdpipe.astrometry",
     "sep",
-    "sip_tpv",
     "astroquery",
     "astroquery.imcce",
     "streamlit",
@@ -629,6 +629,327 @@ class TestTransientCandidateChecker:
         xobj = Table({"mag_calib": [17.0, 18.0]})
         mask = checker_fn(xobj, xcat, "foo", filter_mag="r")
         assert mask.tolist() == [True, True]
+
+
+class TestCalibrationBandAssociation:
+    """Calibration band -> catalogue column association in the finder."""
+
+    @pytest.mark.parametrize(
+        "band,expected",
+        [
+            ("phot_g_mean_mag", "G"),
+            ("phot_bp_mean_mag", "BP"),
+            ("phot_rp_mean_mag", "RP"),
+            ("u_jkc_mag", "U"),
+            ("v_jkc_mag", "V"),
+            ("b_jkc_mag", "B"),
+            ("r_jkc_mag", "R"),
+            ("i_jkc_mag", "I"),
+            ("u_sdss_mag", "u"),
+            ("gmag", "g"),
+            ("rmag", "r"),
+            ("imag", "i"),
+            ("zmag", "z"),
+            ("r", "r"),
+            (None, "r"),
+        ],
+    )
+    def test_normalize_calibration_filter(self, band, expected):
+        from src.transient import normalize_calibration_filter
+
+        assert normalize_calibration_filter(band) == expected
+
+    def test_gaia_rp_is_not_mistaken_for_r(self):
+        from astropy.table import Table
+
+        from src.transient import checker_fn
+
+        xcat = Table(
+            {
+                "Gmag": [15.0],
+                "BPmag": [15.5],
+                "RPmag": [14.4],
+                "gmag": [15.4],
+                "rmag": [14.9],
+            }
+        )
+        xobj = Table({"mag_calib": [17.0]})
+        # RP detection of 17.0 vs RPmag 14.4 -> 2.6 mag fainter-than-cat is fine
+        # but vs rmag 14.9 would differ; only RPmag must be used.
+        mask = checker_fn(xobj, xcat, "gaiaedr3", filter_mag="phot_rp_mean_mag")
+        assert mask.tolist() == [True]
+        xobj = Table({"mag_calib": [11.0]})
+        # 3.4 mag brighter than RPmag (> 2) -> kept; vs rmag it would be 3.9
+        assert checker_fn(
+            xobj, xcat, "gaiaedr3", filter_mag="phot_rp_mean_mag"
+        ).tolist() == [False]
+
+    @pytest.mark.parametrize(
+        "band,column",
+        [
+            ("phot_g_mean_mag", "Gmag"),
+            ("phot_bp_mean_mag", "BPmag"),
+            ("phot_rp_mean_mag", "RPmag"),
+        ],
+    )
+    def test_gaia_bands_use_native_gaia_columns(self, band, column):
+        from astropy.table import Table
+
+        from src.transient import guess_catalogue_mag_columns, normalize_calibration_filter
+
+        cat = Table({n: [1.0] for n in ["Gmag", "BPmag", "RPmag", "gmag", "rmag"]})
+        fname = normalize_calibration_filter(band)
+        assert guess_catalogue_mag_columns(fname, cat)[0] == column
+
+    def test_gaia_g_and_r_consistent_between_vizier_and_xmatch(self):
+        from astropy.table import Table
+
+        from src.transient import guess_catalogue_mag_columns
+
+        vizier = Table({n: [1.0] for n in ["Gmag", "BPmag", "RPmag"]})
+        xmatch = Table(
+            {n: [1.0] for n in ["phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"]}
+        )
+        for filt in ("g", "G", "r", "R", "V"):
+            col_v = guess_catalogue_mag_columns(filt, vizier)[0]
+            col_x = guess_catalogue_mag_columns(filt, xmatch)[0]
+            if filt == "g":
+                assert (col_v, col_x) == ("BPmag", "phot_g_mean_mag")
+            else:
+                assert (col_v, col_x) == ("Gmag", "phot_g_mean_mag")
+
+    def test_finder_default_threshold_is_1_5(self):
+        import inspect
+
+        from src.transient import TRANSIENT_DETECT_THRESH, find_candidates
+
+        assert TRANSIENT_DETECT_THRESH == 1.5
+        sig = inspect.signature(find_candidates)
+        assert sig.parameters["detect_thresh"].default == 1.5
+
+
+class TestTransientAladinSources:
+    def test_builds_markers_with_ids_and_magnitudes(self):
+        from src.tools_app import build_transient_aladin_sources
+
+        df = pd.DataFrame(
+            {
+                "id": [12.0, np.nan],
+                "ra": [10.5, 10.6],
+                "dec": [20.5, np.nan],
+                "psf_mag": [18.2, 19.0],
+                "psf_mag_err": [0.05, 0.1],
+            }
+        )
+        out = build_transient_aladin_sources(df)
+        assert len(out) == 1  # row without Dec skipped
+        assert out[0]["label"] == "12"
+        assert out[0]["psf_mag"] == pytest.approx(18.2)
+
+    def test_label_falls_back_and_prefixed_mag_used(self):
+        from src.tools_app import build_transient_aladin_sources
+
+        df = pd.DataFrame(
+            {"ra": [1.0], "dec": [2.0], "rapasg_psf_mag": [17.0], "psf_mag": [99.0]}
+        )
+        out = build_transient_aladin_sources(df, "phot_g_mean_mag")
+        assert out[0]["label"] == "T1"
+        assert out[0]["psf_mag"] == pytest.approx(17.0)
+        assert out[0]["psf_mag_err"] is None
+
+    def test_empty_or_invalid_input(self):
+        from src.tools_app import build_transient_aladin_sources
+
+        assert build_transient_aladin_sources(None) == []
+        assert build_transient_aladin_sources(pd.DataFrame()) == []
+        assert build_transient_aladin_sources(pd.DataFrame({"x": [1]})) == []
+
+
+def _run_transient_finder(monkeypatch, photometry_table):
+    """Run find_candidates() with detection/catalog/filtering mocked out.
+
+    Returns ``(obj_passed_to_filter, result)`` so tests can inspect the
+    photometry attached to the detections before stdpipe filtering.
+    """
+    from astropy.table import Table
+    from astropy.wcs import WCS
+
+    import src.transient as transient_module
+
+    wcs = WCS(naxis=2)
+    wcs.wcs.crpix = [32.0, 32.0]
+    wcs.wcs.cdelt = [-0.0002777778, 0.0002777778]
+    wcs.wcs.crval = [150.0, 2.0]
+    wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+    header = wcs.to_header()
+
+    detections = Table(
+        {
+            "x": [10.0],
+            "y": [12.0],
+            "ra": [150.0],
+            "dec": [2.0],
+            "flux": [1000.0],
+            "fluxerr": [10.0],
+            "flags": [0],
+        }
+    )
+    captured = {}
+
+    monkeypatch.setattr(
+        transient_module.photometry,
+        "get_objects_sextractor",
+        lambda *args, **kwargs: detections,
+    )
+    monkeypatch.setattr(transient_module, "fix_header", lambda h: (header, None))
+    monkeypatch.setattr(
+        transient_module, "resolve_effective_gain", lambda *args, **kwargs: 1.0
+    )
+    monkeypatch.setattr(
+        transient_module.stdpipe_astrometry,
+        "spherical_match",
+        lambda *args, **kwargs: (np.array([0]), np.array([0]), np.array([0.0])),
+    )
+    catalog = Table({"_RAJ2000": [150.0], "_DEJ2000": [2.0], "rmag": [19.0]})
+    monkeypatch.setattr(
+        transient_module.catalogs,
+        "get_cat_vizier",
+        lambda *args, **kwargs: catalog,
+    )
+
+    def fake_filter(obj, **kwargs):
+        captured["obj"] = obj.copy()
+        return obj[:0]
+
+    monkeypatch.setattr(
+        transient_module.pipeline, "filter_transient_candidates", fake_filter
+    )
+
+    with patch("src.transient.st"):
+        result = transient_module.find_candidates(
+            photometry_table,
+            np.zeros((64, 64)),
+            header,
+            fwhm=3.0,
+            pixel_scale=1.0,
+            ra_center=150.0,
+            dec_center=2.0,
+            sr=0.1,
+            filter_cat="phot_g_mean_mag",
+            filter_name="r",
+        )
+
+    return captured.get("obj"), result
+
+
+class TestTransientFinderPhotometryFallback:
+    """The finder must keep working without PSF photometry."""
+
+    def test_prefixed_psf_columns_are_preferred(self, monkeypatch):
+        table = pd.DataFrame(
+            {
+                "ra": [150.0],
+                "dec": [2.0],
+                "rapasg_psf_mag": [17.2],
+                "rapasg_psf_mag_err": [0.04],
+                "rapasg_aperture_mag_1_1": [18.4],
+                "rapasg_aperture_mag_err_1_1": [0.08],
+            }
+        )
+        from src.transient import (
+            TRANSIENT_MAGNITUDE_SOURCE_META,
+            TRANSIENT_PSF_SOURCE,
+        )
+
+        obj, result = _run_transient_finder(monkeypatch, table)
+        assert np.asarray(obj["mag_calib"])[0] == pytest.approx(17.2)
+        assert np.asarray(obj["mag_calib_err"])[0] == pytest.approx(0.04)
+        assert result.meta[TRANSIENT_MAGNITUDE_SOURCE_META] == TRANSIENT_PSF_SOURCE
+
+    def test_falls_back_to_1_1_aperture_when_psf_columns_missing(self, monkeypatch):
+        table = pd.DataFrame(
+            {
+                "ra": [150.0],
+                "dec": [2.0],
+                "rapasg_aperture_mag_1_1": [18.4],
+                "rapasg_aperture_mag_err_1_1": [0.08],
+            }
+        )
+        from src.transient import (
+            TRANSIENT_APERTURE_FALLBACK_SOURCE,
+            TRANSIENT_MAGNITUDE_SOURCE_META,
+        )
+
+        obj, result = _run_transient_finder(monkeypatch, table)
+        assert np.asarray(obj["mag_calib"])[0] == pytest.approx(18.4)
+        assert np.asarray(obj["mag_calib_err"])[0] == pytest.approx(0.08)
+        assert (
+            result.meta[TRANSIENT_MAGNITUDE_SOURCE_META]
+            == TRANSIENT_APERTURE_FALLBACK_SOURCE
+        )
+
+    def test_legacy_aperture_columns_are_accepted(self, monkeypatch):
+        table = pd.DataFrame(
+            {
+                "ra": [150.0],
+                "dec": [2.0],
+                "aperture_mag_1_1": [18.1],
+                "aperture_mag_err_1_1": [0.09],
+            }
+        )
+        from src.transient import (
+            TRANSIENT_APERTURE_FALLBACK_SOURCE,
+            TRANSIENT_MAGNITUDE_SOURCE_META,
+        )
+
+        obj, result = _run_transient_finder(monkeypatch, table)
+        assert np.asarray(obj["mag_calib"])[0] == pytest.approx(18.1)
+        assert np.asarray(obj["mag_calib_err"])[0] == pytest.approx(0.09)
+        assert (
+            result.meta[TRANSIENT_MAGNITUDE_SOURCE_META]
+            == TRANSIENT_APERTURE_FALLBACK_SOURCE
+        )
+
+    def test_falls_back_when_psf_values_are_not_finite(self, monkeypatch):
+        table = pd.DataFrame(
+            {
+                "ra": [150.0],
+                "dec": [2.0],
+                "rapasg_psf_mag": [np.nan],
+                "rapasg_psf_mag_err": [np.nan],
+                "rapasg_aperture_mag_1_1": [18.6],
+                "rapasg_aperture_mag_err_1_1": [0.07],
+            }
+        )
+        from src.transient import (
+            TRANSIENT_APERTURE_FALLBACK_SOURCE,
+            TRANSIENT_MAGNITUDE_SOURCE_META,
+        )
+
+        obj, result = _run_transient_finder(monkeypatch, table)
+        assert np.asarray(obj["mag_calib"])[0] == pytest.approx(18.6)
+        assert np.asarray(obj["mag_calib_err"])[0] == pytest.approx(0.07)
+        assert (
+            result.meta[TRANSIENT_MAGNITUDE_SOURCE_META]
+            == TRANSIENT_APERTURE_FALLBACK_SOURCE
+        )
+
+    def test_returns_no_candidates_without_psf_or_aperture(self, monkeypatch):
+        table = pd.DataFrame({"ra": [150.0], "dec": [2.0]})
+        obj, result = _run_transient_finder(monkeypatch, table)
+        assert obj is None
+        assert result == []
+
+    def test_psf_fallback_warning_is_shared_with_main_pipeline(self):
+        from src.tools_pipeline import (
+            PSF_FALLBACK_MESSAGE,
+            format_psf_fallback_message,
+        )
+        from src.transient import TRANSIENT_PSF_FALLBACK_MESSAGE
+
+        assert format_psf_fallback_message() == PSF_FALLBACK_MESSAGE
+        assert TRANSIENT_PSF_FALLBACK_MESSAGE.startswith(PSF_FALLBACK_MESSAGE)
+        assert "1.1 x FWHM aperture" in TRANSIENT_PSF_FALLBACK_MESSAGE
 
 
 class TestAstrocolibriPrefixedMagnitude:

@@ -26,3 +26,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 matplotlib.use("Agg", force=True)
+
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _no_skybot_retry_delay(monkeypatch):
+    """Retry SkyBoT immediately so failure-path tests stay fast."""
+    monkeypatch.setattr("src.utils.SKYBOT_RETRY_DELAY_SECONDS", 0.0)
