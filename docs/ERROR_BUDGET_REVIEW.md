@@ -365,8 +365,8 @@ is a real contribution.
 
 As documented, with data in ADU and an unknown true gain `g`, setting
 `g_eff = 1` overestimates the source Poisson variance by `g`, i.e. bright-source
-magnitude errors by up to `sqrt(g)`. The ordering (header -> user -> empirical ->
-1) and the `BUNIT` check are sound. No change needed; keep the warning.
+magnitude errors by up to `sqrt(g)`. The ordering (header -> user -> empirical
+-> 1) and the `BUNIT` check are sound. No change needed; keep the warning.
 
 ### F10 — Naming / observability nits (info) — **FIXED**
 
@@ -447,27 +447,27 @@ This section records changes made after the review above. They concern PSF
 photometry reliability and the ePSF geometry rather than the calibrated error
 budget, which is unchanged.
 
-*   **PSF star selection** no longer uses the `sqrt(flux)` approximation for a
-    hard 50% S/N cut, and the saturation filter no longer rejects the brightest
-    unsaturated stars. On a clean 121-star field this goes from 14 selected
-    stars (below the 15-star minimum, so the whole PSF step was skipped) to 49,
-    with photometry on all 121 sources.
-*   **ePSF geometry**: the fitting region is rounded (`int(3·FWHM)` was biasing
-    the effective radius by up to half a pixel), the ePSF is extracted from a
-    larger ≈5× FWHM cutout so its wings are not truncated/normalised away, the
-    model centre is `(N − 1)/2`, and the aperture-correction model is the exact
-    object used for the fits (including any re-centering).
-*   **PSF-vs-aperture diagnostic**: `check_psf_aperture_consistency()` reports
-    the median `psf_mag − aperture_mag` per aperture and warns above
-    `PSF_APERTURE_CONSISTENCY_THRESHOLD` (0.15 mag). This makes the class of
-    ePSF shape/normalisation offset discussed for PSF photometry directly
-    observable instead of having to be inferred from the catalog.
-*   **Crowded local background** was investigated as a possible "double
-    subtraction" of the background. It is not a real flux bias in photutils
-    3.0 (per-source `local_bkg` is subtracted once from each source's own
-    cutout); zeroing it for overlapping sources would bias crowded fluxes
-    ~5-7% high, so no guard was applied. See
-    `docs/PHOTOMETRY_FORMULAS.md` for the numbers.
+* **PSF star selection** no longer uses the `sqrt(flux)` approximation for a
+  hard 50% S/N cut, and the saturation filter no longer rejects the brightest
+  unsaturated stars. On a clean 121-star field this goes from 14 selected
+  stars (below the 15-star minimum, so the whole PSF step was skipped) to 49,
+  with photometry on all 121 sources.
+* **ePSF geometry**: the fitting region is rounded (`int(3·FWHM)` was biasing
+  the effective radius by up to half a pixel), the ePSF is extracted from a
+  larger ≈5× FWHM cutout so its wings are not truncated/normalised away, the
+  model centre is `(N − 1)/2`, and the aperture-correction model is the exact
+  object used for the fits (including any re-centering).
+* **PSF-vs-aperture diagnostic**: `check_psf_aperture_consistency()` reports
+  the median `psf_mag − aperture_mag` per aperture and warns above
+  `PSF_APERTURE_CONSISTENCY_THRESHOLD` (0.15 mag). This makes the class of
+  ePSF shape/normalisation offset discussed for PSF photometry directly
+  observable instead of having to be inferred from the catalog.
+* **Crowded local background** was investigated as a possible "double
+  subtraction" of the background. It is not a real flux bias in photutils
+  3.0 (per-source `local_bkg` is subtracted once from each source's own
+  cutout); zeroing it for overlapping sources would bias crowded fluxes
+  ~5-7% high, so no guard was applied. See
+  `docs/PHOTOMETRY_FORMULAS.md` for the numbers.
 
 ---
 

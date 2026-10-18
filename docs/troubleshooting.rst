@@ -12,6 +12,7 @@ Installation & Setup Issues
 *   **Problem**: The project is tested against Python 3.12, but a different
     Python version is active.
 *   **Solution**:
+
     1.  Check your Python version: ``python --version``
     2.  Install Python 3.12 from python.org or your package manager.
     3.  Create a new virtual environment with Python 3.12:
@@ -24,6 +25,7 @@ Installation & Setup Issues
 *   **Problem**: Required Python packages are not installed or are not found in
     the current environment.
 *   **Solution**:
+
     1.  Ensure your virtual environment is activated.
     2.  Verify you are using Python 3.12.
     3.  Run ``pip install -e .`` from the project root.
@@ -33,6 +35,7 @@ Installation & Setup Issues
 
 *   **Problem**: The selected backend is not running or is inaccessible.
 *   **Solution**:
+
     1.  Open a separate terminal in the project root.
     2.  Activate the virtual environment.
     3.  Start either ``python -m uvicorn api.main:app --reload --host 127.0.0.1 --port 8000``
@@ -53,6 +56,7 @@ Installation & Setup Issues
     for example ``gunicorn api.main:app``, so requests such as ``GET /health``
     fail before they reach FastAPI.
 *   **Solution**:
+
     1.  Start the API with Uvicorn directly: ``python -m uvicorn api.main:app --host 127.0.0.1 --port 8000``.
     2.  Or start it with Gunicorn using the ASGI worker:
         ``gunicorn -k uvicorn.workers.UvicornWorker api.main:app``.
@@ -80,17 +84,30 @@ Login & Registration Issues
 *   **Problem**: Incorrect password, or an identifier that does not match any
     account.
 *   **Solution**:
+
     1.  The *Login* field accepts the account username **or** the email address
         used at registration. Try the email if you no longer remember the
         username.
     2.  Verify the password, and use the password recovery option if you forgot
         it.
 
+**Where can I see who logged in?**
+
+*   **Solution**: every successful login writes a timestamped line with the
+    pipeline version to the service log, for example
+    ``[2026-10-18 18:46:22] RPP v1.9.0 - User 'intern1' logged in successfully (FastAPI backend).``
+    The FastAPI backend, the legacy backend and the frontend each emit their
+    own line, so a login appears in both the backend and frontend logs.
+    Administrators can also open the in-app *Pipeline Logs* page
+    (``pages/showlogs.py``) to read the last 200 lines of
+    ``fastapi_backend.log`` and ``streamlit_frontend.log``.
+
 **Error: "Email already registered." while the account cannot be reached**
 
 *   **Problem**: The address is already attached to an account, but the login
     identifier does not match it.
 *   **Solution**:
+
     1.  Log in with the email address itself instead of a username.
     2.  Reset the password through *Password Recovery*, then log in with the
         email address and the new password.
@@ -99,6 +116,7 @@ Login & Registration Issues
 
 *   **Problem**: Email sending is not configured correctly on the backend.
 *   **Solution**:
+
     1.  Ensure the active backend is running.
     2.  Verify that SMTP settings are correctly configured, especially
         ``SMTP_SERVER``, ``SMTP_PORT``, ``SMTP_USER``, and
@@ -123,6 +141,7 @@ Image Loading & Processing Issues
 *   **Problem**: The file is corrupted, not a valid FITS file, or uses an
     unsupported format or compression mode.
 *   **Solution**:
+
     *   Verify the file opens correctly in other FITS viewers.
     *   Ensure the file has a standard extension such as ``.fits`` or
         ``.fits.gz``.
@@ -134,6 +153,7 @@ Image Loading & Processing Issues
 *   **Problem**: The preview shows a header or file that is not the one you
     just uploaded.
 *   **Solution**:
+
     *   Click **Reset** once. The uploader is re-created on every reset, so
         the previous file is dropped immediately; a second press is no longer
         needed.
@@ -148,6 +168,7 @@ Image Loading & Processing Issues
 
 *   **Problem**: This is expected behavior in the current interface.
 *   **Solution**:
+
     *   Uploading stages the file only.
     *   Click **Start Analysis** to trigger FITS loading, WCS checks,
         astrometry, and photometry.
@@ -157,6 +178,7 @@ Image Loading & Processing Issues
 *   **Problem**: The FITS header lacks the necessary keywords for
     ``astropy.wcs`` to build a coordinate system.
 *   **Solution**:
+
     *   Enable plate solving using Astrometry.net.
     *   Alternatively, use external software to add WCS information to the FITS
         header before uploading.
@@ -166,11 +188,17 @@ Image Loading & Processing Issues
 *   **Problem**: The SCAMP refinement or blind-solving process could not
     find enough matches, or the initial WCS was too inaccurate.
 *   **Solution**:
+
     *   Ensure the initial WCS is roughly correct.
     *   Ensure the ``scamp`` binary is installed and on ``PATH``, or point
         ``RPP_SCAMP_EXECUTABLE`` at it. The refinement runs SCAMP directly.
     *   Check internet connectivity when catalog access is needed.
     *   Try adjusting the seeing parameter, as it affects detection.
+    *   The solver already lowers its detection threshold (3, 2, then 1 sigma)
+        to reach about 20 stars (it also tries 2 sigma when 3 sigma gives
+        fewer than 100 sources); fewer than 20 stars (or fewer than 5, which
+        is fatal) means the field is too sparse, too short an exposure, or
+        the image is saturated or out of focus.
     *   If the field is very sparse or very crowded, refinement may struggle.
     *   If **Astrometry Check** was enabled on an image that already had valid
         WCS, the app may fall back to the original WCS when the forced solve
@@ -189,6 +217,7 @@ service.
 
 *   **Problem**: Detection parameters may be unsuitable for the image.
 *   **Solution**:
+
     *   Lower the detection threshold to detect fainter sources.
     *   Ensure the seeing estimate is reasonable.
     *   Check if the border mask is too large.
@@ -199,6 +228,7 @@ service.
 *   **Problem**: The app could not match detected sources to the GAIA catalog
     or calculate a reliable zero point.
 *   **Solution**:
+
     *   Verify WCS accuracy.
     *   Check internet connectivity for GAIA queries.
     *   Adjust the filter magnitude limit.
@@ -215,6 +245,7 @@ service.
     rather than an e-/ADU conversion factor: QHY uses a 0-100 scale (a QHY268M
     at ``GAIN=56`` is ≈0.77 e-/ADU) and ZWO ASI uses a 0.1 dB value.
 *   **Solution**:
+
     *   RPP already recognises QHY/ZWO/ASI cameras (see
         ``DRIVER_GAIN_INSTRUMENT_PATTERNS``) and ignores their bare ``GAIN``,
         falling back to ``EGAIN``/``CVF``, the frame's photon-transfer estimate,
@@ -234,6 +265,7 @@ Catalog Query Issues (SIMBAD, SkyBoT, etc.)
 *   **Problem**: A temporary network issue occurred or the external catalog
     service is down or slow.
 *   **Solution**:
+
     *   Wait and try processing the image again later.
     *   Check your internet connection.
     *   Review the generated log file to see which catalog step timed out or was
@@ -252,6 +284,7 @@ Catalog Query Issues (SIMBAD, SkyBoT, etc.)
 *   **Problem**: SkyBoT returned a malformed or non-XML payload for the query,
     so parsing failed.
 *   **Solution**:
+
     *   The pipeline now treats this as a warning and continues without SkyBoT
         matches.
     *   Re-run later to retry the external service response.
@@ -267,10 +300,15 @@ Catalog Query Issues (SIMBAD, SkyBoT, etc.)
 *   **Problem**: Invalid or missing API key, network issue, or no recent events
     in the field.
 *   **Solution**:
+
     *   Ensure you have entered the correct Astro-Colibri UID key in the
         sidebar.
     *   Check internet connectivity.
     *   Check the Astro-Colibri service status.
+    *   HTTP 429 means the daily quota (100 requests/day) is exhausted; the
+        log message states the reason returned by the API.
+    *   A warning about the 15 or 20 arcsec tier means the association is
+        loose: check it visually in Aladin.
 
 Database and Migration Issues
 -----------------------------
@@ -280,6 +318,7 @@ Database and Migration Issues
 *   **Problem**: Older databases may not contain the WCS FITS and ZIP archive
     tracking tables.
 *   **Solution**:
+
     *   Run ``python scripts/migrate_add_wcs_zip_tables.py``.
     *   Keep the generated backup before applying changes to production data.
 
@@ -288,6 +327,7 @@ Database and Migration Issues
 *   **Problem**: A legacy database layout may not match the SQLAlchemy-backed
     FastAPI schema.
 *   **Solution**:
+
     *   Run ``python scripts/migrate_legacy_db.py`` with the appropriate
         arguments.
     *   Prefer a dry run and backup before migrating live data.

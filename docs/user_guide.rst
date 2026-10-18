@@ -40,6 +40,12 @@ Step 1: Sign In
 3. Use password recovery if needed. Recovery codes are emailed when SMTP is
    configured, and the submitted address is matched regardless of its
    capitalisation.
+4. Each successful sign-in is written to the service logs with a local
+   timestamp and the pipeline version, for example
+   ``[2026-10-18 18:46:22] RPP v1.9.0 - User 'intern1' logged in successfully (FastAPI backend).``
+   The legacy backend and the frontend emit the same line tagged with their own
+   origin (``legacy backend``, ``frontend, FastAPI backend`` or
+   ``frontend, legacy backend``).
 
 Step 2: Upload a FITS File
 --------------------------
@@ -81,6 +87,8 @@ Depending on the file and selected options, this can include:
 - Optional transient-candidate search
 - Packaging of outputs into downloadable files
 
+.. _psf-photometry:
+
 PSF Photometry
 --------------
 
@@ -90,6 +98,20 @@ Candidate stars are filtered for shape, isolation and a flat local background;
 the PSF is fitted in a compact region around each source while the ePSF itself
 is extracted from a larger cutout so its wings are preserved, and the aperture
 correction is derived from the exact model used for the fits.
+
+If the run cannot use PSF photometry, it continues with calibrated aperture
+photometry and displays the shared warning::
+
+    PSF photometry is not available; using calibrated aperture photometry instead.
+
+The transient finder uses the same base warning for its own fallback and adds
+the aperture it relies on::
+
+    PSF photometry is not available; using calibrated aperture photometry instead. Transient candidates use the calibrated 1.1 x FWHM aperture magnitude.
+
+This single wording makes it clear that aperture measurements replace PSF
+photometry in both workflows, while the transient message identifies the
+specific 1.1 x FWHM aperture used for its candidates.
 
 To help verify that the two methods agree, each run reports the median
 ``psf_mag - aperture_mag`` offset per aperture and raises a warning when it
@@ -111,6 +133,7 @@ Astrometry Behavior
 
 - If a valid WCS is already present, the application can continue with that solution.
 - If WCS is missing or the user enables **Astrometry check**, the app attempts local plate solving.
+- The solver aims for at least 20 detected stars. If fewer are found, the detection threshold is lowered from 3 to 2 and then 1 sigma, and the solve is retried at the deeper threshold if it fails.
 - If forced solving fails but an existing WCS is still valid, the pipeline falls back to the existing WCS rather than stopping the whole run.
 
 Catalog Enhancement
@@ -146,8 +169,13 @@ Survey selection is based on the field declination in the current code path:
 Candidate finding detects sources with SExtractor and matches them to the pipeline
 photometry catalog within a seeing-based radius (the FWHM, clamped to
 1-4 arcsec), then rejects detections that coincide with reference-survey or
-Vizier sources. The catalog matching radius is half the seeing FWHM, and a
-source that coincides with a catalog entry is kept only when it is a genuine
+Vizier sources. Matched detections use the calibrated PSF magnitudes; when PSF
+photometry is unavailable (missing columns or non-finite values), the finder
+falls back to the calibrated 1.1 x FWHM aperture magnitude instead of aborting
+and shows the shared PSF warning described in :ref:`psf-photometry`, followed
+by ``Transient candidates use the calibrated 1.1 x FWHM aperture magnitude.``
+The catalog matching radius is half the seeing FWHM, and a source that
+coincides with a catalog entry is kept only when it is a genuine
 brightness excess - more than ``mag_threshold`` (default 2.0 magnitudes)
 brighter than that entry. Unreliable detections (edge-truncated, deblended,
 or with a bad aperture) are discarded.

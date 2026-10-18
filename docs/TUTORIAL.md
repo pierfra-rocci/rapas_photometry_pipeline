@@ -47,7 +47,6 @@ enter the key without adding it to shell history:
 read -s -p "Astrometry.net API key: " ASTROMETRY_API_KEY
 echo
 export ASTROMETRY_API_KEY
-streamlit run frontend.py
 ```
 
 The app tries the local solver first. The online fallback runs only after a
@@ -58,15 +57,15 @@ Without a configured key, the online fallback is skipped.
 
 ## 4. (Optional) Astro-Colibri API Key
 
-Enter your Astro-Colibri API key in the sidebar to enable transient and variable source cross-matching. After the cross-match, the app reports how many pipeline sources matched an Astro-Colibri event (within 10 arcsec), that none matched, or that the service was unavailable. For each match, postage-stamp cutouts (science frame and HiPS template, PanSTARRS in the north, SkyMapper in the south with automatic fallback to the other survey) show the source with its calibrated magnitude.
+Enter your Astro-Colibri API key in the sidebar to enable transient and variable source cross-matching. After the cross-match, the app reports how many pipeline sources matched an Astro-Colibri event (progressive radius 5, 10, 15 then 20 arcsec; a warning is displayed when a match is only found at 15 or 20 arcsec), that none matched, or that the service was unavailable. The sources returned by Astro-Colibri for the field are listed in a table (name, RA/Dec, type, classification, observatory, trigger ID, position error, date, redshift, matched or not, separation), and the event coordinates of matched sources are exported as `astrocolibri_ra` and `astrocolibri_dec`. In the Aladin Lite viewer, cross-matched sources are drawn as larger red squares (layer "Astro-Colibri matches") so they stand out immediately. For each match, postage-stamp cutouts (science frame and HiPS template, PanSTARRS in the north, SkyMapper in the south with automatic fallback to the other survey) show the source with its calibrated magnitude.
 
 ## 5. (Optional) Transient Candidates
 
 Expand the "Transient Candidates" section in the sidebar:
 
-- **Enable Transient Finder**: Activates the transient search, which compares detected sources against reference surveys (PanSTARRS1 for north, SkyMapper for south) and rejects known catalog and Solar System objects.
+- **Enable Transient Finder**: Activates the transient search, which compares detected sources against reference surveys (PanSTARRS1 for north, SkyMapper for south) and rejects known catalog and Solar System objects. Sources are detected directly at 1.5 sigma to favour faint objects, and the candidates are shown as yellow stars in the Aladin viewer for visual checking.
 - **Reference Filter**: Select the filter band for the reference comparison and the HiPS template cutouts.
-- Detections are cross-matched with the reference catalogs within half the seeing FWHM, and a source coincident with a catalog entry is kept only if it is more than 2 magnitudes brighter (a genuine brightness excess). Sources are detected with SExtractor, and unreliable detections (edge-truncated, deblended, bad aperture) are discarded.
+- Detections are cross-matched with the reference catalogs within half the seeing FWHM, and a source coincident with a catalog entry is kept only if it is more than 2 magnitudes brighter (a genuine brightness excess). Sources are detected with SExtractor, and unreliable detections (edge-truncated, deblended, bad aperture) are discarded. If the photometry table has no usable PSF magnitudes, the finder falls back to the calibrated 1.1 x FWHM aperture magnitude instead of returning no candidates.
 - The transient finder applies no minimum S/N cutoff. Low-S/N detections remain
   eligible if they pass the other catalog, known-source, and Solar System object
   filters.
@@ -91,17 +90,23 @@ even when a valid WCS is already present. If local solving fails and an online
 key is configured, the app tries Astrometry.net online. If both attempts fail,
 it tries to restore and continue with the original WCS when possible.
 
+The plate solver aims for at least 20 detected stars. When fewer are found (small
+or sparse field), the detection threshold is lowered from 3 to 2 and then 1 sigma;
+if the solve still fails, it is retried with the deeper detection before falling
+back to the online solver.
+
 ## 7. Download and Interpret Results
 
 After processing, download the ZIP archive containing the catalog, text headers,
 processing log, and generated PNG diagnostics. The archive excludes all FITS
 files.
 
-- `*_catalog.csv` / `.vot`: Source catalog with photometry, errors, flags, and cross-matches. Each aperture produces `aperture_mag_X_X`, `aperture_mag_err_X_X`, `snr_X_X`, and `quality_flag_X_X` columns (fixed apertures `_1_1`, `_1_3`; user-defined aperture, for example `_1_5` at FWHM Radius Factor 1.5). The catalog also includes the local background RMS per pixel (`background_rms_per_pixel_X_X`), centroid contribution to the flux error (`centroid_flux_err_X_X`), aperture-correction factor (`apcorr_X_X`), and encircled-energy fraction (`ee_fraction_X_X`). The total background-subtracted flux error (`aperture_sum_bkg_corr_err_X_X`) drives the magnitude errors but is not exported. Each aperture exports the correction uncertainty as `apcorr_mag_err_X_X`.
+- `*_catalog.csv` / `.vot`: Source catalog restricted to a curated set of columns, in this order: `id`, `ra`, `dec`, `astrocolibri_name`, `astrocolibri_type`, `astrocolibri_classification`, `astrocolibri_ra`, `astrocolibri_dec`, `simbad_main_id`, `simbad_otype`, `simbad_B`, `simbad_V`, `skybot_NAME`, `skybot_OBJECT_TYPE`, `skybot_MAGV`, `aavso_Name`, `aavso_Type`, `aavso_Period`, `catalog_matches`, `x_center`, `y_center`, then `snr_X_X`, the aperture magnitudes `aperture_mag_X_X` (each followed by its `quality_flag_X_X`), the PSF magnitude `psf_mag`, the errors `aperture_mag_err_X_X` and `psf_mag_err`, and the offsets `psf_minus_aperture_mag_X_X`. The apertures are the fixed `_1_1` and `_1_3` plus the user-defined one (for example `_1_5` at FWHM Radius Factor 1.5), so the last suffix follows your choice. Columns that do not exist for a run (for example without an Astro-Colibri key) are omitted.
 
-  Magnitude errors are split into per-source `*_random` and field-common `*_correlated` components. For aperture measurements, the random component includes statistical flux error and aperture-correction uncertainty; for PSF measurements, it is the PSF-fitting statistical error. The correlated component contains the zero-point uncertainty and systematic floor. When a filter prefix applies, calibrated magnitudes and errors use prefixed names such as `rapasg_psf_mag` and `rapasg_aperture_mag_err_1_5`; corresponding legacy unprefixed magnitude columns are dropped. Without a matching prefix, legacy names are retained.
+  `id` is a unique integer source number; it is the same ID displayed in the Aladin Lite popups, so you can find any source of the viewer in the files. If Astro-Colibri sources are detected, their rows are sorted by `astrocolibri_name` and appear at the very top of the CSV and VOT files.
 
-  When the matched calibration stars contain a usable catalog color, the export may also include additional color-corrected magnitude columns such as `psf_mag_colorcorr` or `aperture_mag_1_3_colorcorr`, plus tracing fields like `source_color`, `color_term_label`, `color_term_value`, and `color_term_offset`. These extra columns do not replace the standard zero-point-calibrated magnitudes; they are written in parallel so the baseline workflow remains unchanged. The color-corrected magnitude columns are likewise exported under filter-prefixed aliases derived from the selected calibration band, for example `rapasg_psf_mag_colorcorr` or `r_aperture_mag_1_3_colorcorr`. Each color-corrected magnitude is accompanied by its propagated uncertainty `*_colorcorr_err` (with the matching filter-prefixed alias), which combines the baseline calibrated error of that magnitude with the uncertainty of the fitted color-term offset evaluated at the source's color.
+  When a filter prefix applies, magnitudes and errors use prefixed names such as `rapasg_psf_mag` and `rapasg_aperture_mag_err_1_5` (the legacy unprefixed names are used otherwise). Magnitude errors combine the per-source random part and the field-common correlated part (zero-point uncertainty and systematic floor). Colour-corrected magnitudes (`*_colorcorr`), aperture-correction factors, background RMS and the other internal diagnostics are used during the run but are not written to these files.
+- `*_transients.csv`: Transient candidates (when the transient finder is enabled), with the same columns as the catalog, including `id`, so each candidate can be traced back to its catalog row. Candidates without a catalog counterpart keep their own coordinates, pixel position and calibrated PSF magnitude.
 - `*_header.txt`: Input FITS header
 - `*_wcs_header.txt`: Astrometric solution header, when a WCS is available
 - `*.log`: Processing log

@@ -3,12 +3,119 @@ Changelog
 
 This document records all notable changes to RAPAS Photometry Pipeline.
 
-Version 1.8.9
+Version 1.9.0
 -------------
 
 **Released: October 15, 2026**
 
-(Version 1.8.8 was not released; 1.8.9 follows 1.8.7 directly.)
+(Version 1.8.8 was not released; Version 1.8.9 followed 1.8.7 directly.)
+
+**Login audit log**
+
+*   Every successful login writes a timestamped line with the pipeline version
+    to the service log:
+    ``[YYYY-MM-DD HH:MM:SS] RPP vX.Y.Z - User '<username>' logged in successfully (<origin>).``
+*   ``api/main.py`` (FastAPI backend), ``backend.py`` (legacy backend) and
+    ``pages/login.py`` (frontend) each emit their own line; the origin suffix
+    tells them apart. The version is read at runtime from
+    ``src/__version__.py``, so the message follows future releases
+    automatically.
+
+**Curated catalog export**
+
+*   **Fixed export columns.** ``*_catalog.csv`` and ``*_catalog.vot`` now contain
+    only ``id``, ``ra``, ``dec``, the Astro-Colibri, SIMBAD, SkyBoT and AAVSO
+    matches, ``catalog_matches``, ``x_center``, ``y_center``, ``snr_*``, the
+    aperture magnitudes with their ``quality_flag_*``, the PSF magnitude, the
+    magnitude errors and the ``psf_minus_aperture_mag_*`` offsets, in that
+    order. Radius suffixes (third aperture = user choice) and the filter prefix
+    (for example ``rapasg_``) are resolved dynamically; absent columns are
+    skipped. Colour-corrected columns and internal diagnostics are no longer
+    written to the files (they remain available in the session).
+*   **Astro-Colibri first.** Rows with an ``astrocolibri_name`` are sorted at
+    the top of both files.
+*   **Unique source ``id``.** ``id`` is the first column, complete (PSF-only
+    sources get new numbers) and unique; ``x_center``/``y_center`` are filled
+    from the detection centroid for PSF-only sources.
+*   **Aladin ID.** The ID shown in the Aladin Lite popup is always the ``id``
+    column of the files (created when missing).
+*   **Transient CSV.** ``*_transients.csv`` reuses the catalog columns, matching
+    each candidate to its catalog source by sky position (the previous match by
+    rounded pixel coordinates could silently miss sources).
+*   New helpers ``ensure_source_ids``, ``build_export_columns`` and
+    ``prepare_export_table`` in ``src/utils.py``, ``build_transient_table`` in
+    ``src/transient.py``, and ``tests/test_export_catalog.py``.
+
+**Transient finder filter association, sparse-field detection**
+
+*   **Calibration band -> catalogue column fix.** The transient finder guessed
+    the filter from the calibration column name with a substring search, so
+    Gaia RP was read as ``r`` (PS1 ``rmag``), Gaia BP and the Johnson V/B
+    bands matched nothing (every match was then silently confirmed) and Gaia G
+    was compared with the PS1-transformed ``gmag``. A new
+    ``normalize_calibration_filter`` maps each calibration band explicitly
+    (``phot_g/bp/rp_mean_mag`` -> G/BP/RP, ``*_jkc_mag`` -> U/V/B/R/I,
+    ``u_sdss_mag`` -> u, ``gmag``... -> g...) so the native Gaia columns are used.
+*   **Gaia r vs g consistency.** For raw Vizier Gaia tables ``r``/``R``/``V``
+    now map to ``Gmag`` (as in the XMatch branch) instead of ``BPmag``.
+*   **Astrometry: 2 sigma when 3 sigma is sparse.** A 3 sigma detection with
+    fewer than 100 sources is no longer accepted directly: 2 sigma is tried and
+    kept when it finds more sources (otherwise the 3 sigma list is used).
+*   **Transient candidates in Aladin.** Candidates are drawn as yellow stars in
+    a dedicated "Transient candidates" overlay of the Aladin Lite widget (popup
+    with the catalogue ``id``, coordinates and PSF magnitude) for visual
+    checking, next to the red Astro-Colibri squares.
+*   **Transient finder at 1.5 sigma.** Detection now starts directly at
+    1.5 sigma (``TRANSIENT_DETECT_THRESH``) with a minimum S/N of 2 (3 above
+    2 sigma) to be more sensitive to faint sources. Candidates are still
+    required to match the photometry table.
+*   **Transient finder without PSF photometry.** When the photometry table has
+    no PSF magnitude columns, or when the matched detections have no finite
+    PSF value, ``find_candidates()`` now falls back to the calibrated
+    1.1 x FWHM aperture magnitude (``aperture_mag_1_1`` and its error) instead
+    of aborting with "No transient candidates found". The app displays a
+    warning when candidates rely on this fallback, using the same
+    PSF-unavailable wording as the main pipeline. The shared warning is
+    ``PSF photometry is not available; using calibrated aperture photometry instead.``;
+    the full transient variant is
+    ``PSF photometry is not available; using calibrated aperture photometry instead. Transient candidates use the calibrated 1.1 x FWHM aperture magnitude.``
+
+**Finer astrometry and Astro-Colibri radius**
+
+*   **Detection ladder 3 -> 2 -> 1 sigma.** The blind solve now targets at
+    least 20 stars (Astrometry.net has no hard minimum: it builds quads from
+    the brightest sources first, so about 20 well-measured stars is the
+    practical target). The detection threshold is lowered from 3 to 2 and then
+    1 sigma until the target is reached, with the measurement S/N relaxed
+    accordingly (5, 3, 2). The small-image floor is raised from 10 to 20.
+*   **Best effort on sparse fields.** If no threshold reaches the target, the
+    richest detection with at least 5 stars is used instead of failing, with a
+    warning in the log.
+*   **Retry on failure.** When the local solve fails, detection is repeated at
+    the next lower threshold and the solve is retried before the online
+    fallback.
+*   **Astro-Colibri progressive radius.** Events are matched at 5 arcsec, then
+    10, 15 and 20 arcsec (was a fixed 10 arcsec); the log lists how many events
+    were matched at each radius, and a WARNING is raised for matches only found
+    at the 15 or 20 arcsec tier. New ``astrocolibri_match_radius`` helper and
+    tests in ``tests/test_robustness_astrometry.py`` and
+    ``tests/test_network_resilience.py``.
+*   **Astro-Colibri sources listed and highlighted.** The event RA/Dec are
+    kept (``astrocolibri_ra`` / ``astrocolibri_dec`` columns, exported after
+    ``astrocolibri_classification``), every event returned for the field is
+    displayed in a table (including events without coordinates), and
+    cross-matched sources are drawn as larger red squares in a dedicated
+    Aladin Lite layer.
+*   **Richer Astro-Colibri events and errors.** The events table now also shows
+    observatory, trigger ID, position error (arcsec), date and redshift when
+    the API provides them; ``sources`` / ``xsources`` / ``icecat`` entries
+    are reported in the log; HTTP 401/403/429 answers give an explicit reason
+    and the response is parsed defensively.
+*   **More robust SkyBoT queries.** New shared ``skybot_cone_search`` helper
+    (``src/utils.py``) used by the catalog cross-match and the transient
+    filter: 3 attempts on network errors and HTTP 429/5xx, ``-from`` label,
+    epoch range check, HTTP error reporting, mid-exposure epoch and a per-object
+    match tolerance of 10 to 30 arcsec derived from the ephemeris ``Err``.
 
 **PSF, Transients and Messages**
 

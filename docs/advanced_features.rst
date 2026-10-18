@@ -123,6 +123,10 @@ Candidate finding (``src.transient.find_candidates``) works as follows:
   photometry catalog, taking the *nearest* counterpart within a seeing-based
   radius (the FWHM in arcsec, clamped to 1-4 arcsec).  Matched detections
   receive the calibrated PSF magnitudes already measured by the pipeline.
+- When PSF photometry is unavailable - the columns are missing, or contain no
+  finite value for the matched detections - the finder falls back to the
+  calibrated 1.1 x FWHM aperture magnitude (``aperture_mag_1_1`` and its error)
+  instead of aborting, so transient filtering still runs without an ePSF.
 - Detections flagged as unreliable (object/aperture truncated at the
   frame boundary, deblending overflow, degenerate centroid, or an all-masked /
   non-positive aperture) are discarded.  These are SEP flag bits, so the mask

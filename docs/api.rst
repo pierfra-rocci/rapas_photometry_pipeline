@@ -44,6 +44,10 @@ Behavior Notes
 - Configuration blobs are stored per user in the database.
 - Duplicate FITS uploads are rejected when the backend detects the same stored hash.
 - The backend returns schema-driven JSON responses defined in ``api/schemas.py``.
+- Every successful ``POST /api/login`` (FastAPI) or ``POST /login`` (legacy)
+  writes a timestamped line with the pipeline version to the service log, for
+  example
+  ``[2026-10-18 18:46:22] RPP v1.9.0 - User 'intern1' logged in successfully (FastAPI backend).``
 
 Configuration Persistence
 -------------------------

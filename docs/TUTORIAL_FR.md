@@ -44,7 +44,6 @@ pouvez saisir la clé sans l'ajouter à l'historique du shell :
 read -s -p "Clé API Astrometry.net : " ASTROMETRY_API_KEY
 echo
 export ASTROMETRY_API_KEY
-streamlit run frontend.py
 ```
 
 Le pipeline essaie d'abord le solveur local. Le repli en ligne ne s'active
@@ -55,7 +54,7 @@ Sans clé configurée, cette tentative en ligne est ignorée.
 
 ## 4. (Optionnel) Clé API Astro-Colibri
 
-Entrez votre clé API dans la section **🔑 Astro-Colibri** de la barre latérale (**UID Key**) pour activer le croisement avec les sources transitoires. Après le croisement, l'application indique le nombre de sources du pipeline associées à un événement Astro-Colibri (dans un rayon de 10 secondes d'arc), l'absence d'association, ou l'indisponibilité du service. Pour chaque association, des vignettes (image scientifique et modèle HiPS, PanSTARRS au nord, SkyMapper au sud avec repli automatique sur l'autre relevé) montrent la source avec sa magnitude calibrée.
+Entrez votre clé API dans la section **🔑 Astro-Colibri** de la barre latérale (**UID Key**) pour activer le croisement avec les sources transitoires. Après le croisement, l'application indique le nombre de sources du pipeline associées à un événement Astro-Colibri (rayon progressif de 5, 10, 15 puis 20 secondes d'arc ; un avertissement est affiché lorsqu'une association n'est trouvée qu'à 15 ou 20 secondes d'arc), l'absence d'association, ou l'indisponibilité du service. Les sources renvoyées par Astro-Colibri pour le champ sont listées dans un tableau (nom, RA/Dec, type, classification, observatoire, identifiant de déclenchement, erreur de position, date, redshift, associée ou non, séparation), et les coordonnées de l'événement des sources associées sont exportées dans `astrocolibri_ra` et `astrocolibri_dec`. Dans Aladin Lite, les sources associées sont dessinées en carrés rouges plus grands (couche « Astro-Colibri matches ») pour être repérées d'un coup d'œil. Pour chaque association, des vignettes (image scientifique et modèle HiPS, PanSTARRS au nord, SkyMapper au sud avec repli automatique sur l'autre relevé) montrent la source avec sa magnitude calibrée.
 
 ## 5. (Optionnel) Candidats Transitoires
 
@@ -63,7 +62,7 @@ Développez la section **Transient Candidates** dans la barre latérale :
 
 - **Enable Transient Finder** : Lance la recherche de transitoires, qui compare les sources détectées aux relevés de référence (PanSTARRS1 au nord, SkyMapper au sud) et rejette les objets connus des catalogues et du Système solaire.
 - **Reference Filter** : Sélectionnez la bande pour la comparaison avec le relevé de référence et les vignettes du gabarit HiPS.
-- Les détections sont croisées avec les catalogues de référence dans un rayon d'une demi-largeur à mi-hauteur (FWHM), et une source confondue avec une entrée de catalogue n'est conservée que si elle est au moins 2 magnitudes plus brillante (excès de brillance réel). Les sources sont détectées avec SExtractor, et les détections peu fiables (tronquées en bord de champ, issues d'un dédoublement, ou avec une ouverture défectueuse) sont écartées.
+- Les détections sont croisées avec les catalogues de référence dans un rayon d'une demi-largeur à mi-hauteur (FWHM), et une source confondue avec une entrée de catalogue n'est conservée que si elle est au moins 2 magnitudes plus brillante (excès de brillance réel). Les sources sont détectées avec SExtractor, et les détections peu fiables (tronquées en bord de champ, issues d'un dédoublement, ou avec une ouverture défectueuse) sont écartées. Si le tableau de photométrie ne contient pas de magnitude PSF exploitable, le détecteur se rabat sur la magnitude d'ouverture calibrée à 1,1 x FWHM au lieu de ne retourner aucun candidat.
 - Le détecteur de transitoires n'applique aucun seuil minimal de S/N. Les
   détections à faible S/N restent admissibles si elles passent les autres
   filtres de catalogue, de sources connues et d'objets du Système solaire.
@@ -88,17 +87,24 @@ puis Astrometry.net en ligne si le solveur local échoue et qu'une clé API est
 configurée. Si les deux tentatives échouent, elle essaie de continuer avec le
 WCS d'origine lorsqu'il est disponible.
 
+Le solveur vise au moins 20 étoiles détectées ; si le seuil de 3 sigma donne moins
+de 100 sources, le seuil de 2 sigma est essayé d'abord. Si le champ est petit ou pauvre, le
+seuil de détection est abaissé de 3 à 2 puis 1 sigma ; si la résolution échoue
+encore, elle est relancée avec la détection plus profonde avant de passer au
+solveur en ligne.
+
 ## 7. Télécharger et Interpréter les Résultats
 
 Après le traitement, téléchargez l'archive ZIP contenant le catalogue, les
 en-têtes texte, le journal et les graphiques PNG générés. Les fichiers FITS ne
 sont pas inclus dans l'archive.
 
-- `*_catalog.csv` / `.vot` : Catalogue des sources avec photométrie, erreurs, indicateurs et croisements. Chaque ouverture produit les colonnes `aperture_mag_X_X`, `aperture_mag_err_X_X`, `snr_X_X` et `quality_flag_X_X` (ouvertures fixes `_1_1`, `_1_3` ; ouverture utilisateur, par exemple `_1_5` pour un facteur 1,5). Le catalogue inclut aussi le bruit de fond local par pixel (`background_rms_per_pixel_X_X`), la contribution du centroïdage (`centroid_flux_err_X_X`), le facteur de correction d'ouverture (`apcorr_X_X`) et la fraction d'énergie encerclée (`ee_fraction_X_X`). L'erreur totale de flux corrigé du fond (`aperture_sum_bkg_corr_err_X_X`) détermine les erreurs de magnitude, mais n'est pas exportée. Chaque ouverture exporte l'incertitude de correction dans `apcorr_mag_err_X_X`.
+- `*_catalog.csv` / `.vot` : Catalogue des sources limité à un jeu de colonnes choisi, dans cet ordre : `id`, `ra`, `dec`, `astrocolibri_name`, `astrocolibri_type`, `astrocolibri_classification`, `astrocolibri_ra`, `astrocolibri_dec`, `simbad_main_id`, `simbad_otype`, `simbad_B`, `simbad_V`, `skybot_NAME`, `skybot_OBJECT_TYPE`, `skybot_MAGV`, `aavso_Name`, `aavso_Type`, `aavso_Period`, `catalog_matches`, `x_center`, `y_center`, puis `snr_X_X`, les magnitudes d'ouverture `aperture_mag_X_X` (chacune suivie de son `quality_flag_X_X`), la magnitude PSF `psf_mag`, les erreurs `aperture_mag_err_X_X` et `psf_mag_err`, et les écarts `psf_minus_aperture_mag_X_X`. Les ouvertures sont les ouvertures fixes `_1_1` et `_1_3` plus celle de l'utilisateur (par exemple `_1_5` pour un facteur 1,5) : le dernier suffixe dépend donc de votre choix. Les colonnes inexistantes pour une exécution (par exemple sans clé Astro-Colibri) sont omises.
 
-  Les erreurs de magnitude sont séparées en une composante propre à la source (`*_random`) et une composante commune au champ (`*_correlated`). Pour l'ouverture, la composante aléatoire inclut l'erreur statistique du flux et l'incertitude de correction ; pour la PSF, elle correspond à l'erreur statistique de l'ajustement PSF. La composante corrélée comprend l'incertitude du point zéro et le plancher systématique. Lorsqu'un préfixe de filtre s'applique, les magnitudes et erreurs calibrées utilisent des noms préfixés, par exemple `rapasg_psf_mag` et `rapasg_aperture_mag_err_1_5` ; les noms historiques non préfixés correspondants sont retirés. Sans préfixe, les noms historiques sont conservés.
+  `id` est un numéro de source entier unique ; c'est le même identifiant que celui affiché dans les fenêtres d'Aladin Lite, ce qui permet de retrouver dans les fichiers n'importe quelle source du visualiseur. Si des sources Astro-Colibri sont détectées, leurs lignes sont triées par `astrocolibri_name` et apparaissent tout au début des fichiers CSV et VOT.
 
-  Lorsque les étoiles de calibration possèdent une couleur de catalogue exploitable, l'export peut aussi contenir des colonnes de magnitude corrigée du terme de couleur en parallèle, par exemple `psf_mag_colorcorr` ou `aperture_mag_1_3_colorcorr`, ainsi que des colonnes de suivi comme `source_color`, `color_term_label`, `color_term_value` et `color_term_offset`. Ces colonnes supplémentaires ne remplacent pas les magnitudes calibrées standard par point zéro ; elles s'ajoutent au catalogue. Les colonnes de magnitude corrigée du terme de couleur sont elles aussi exportées sous des alias préfixés par le filtre sélectionné, par exemple `rapasg_psf_mag_colorcorr` ou `r_aperture_mag_1_3_colorcorr`. Chaque magnitude corrigée du terme de couleur est accompagnée de son incertitude propagée `*_colorcorr_err` (avec l'alias préfixé correspondant), qui combine l'erreur calibrée de base de cette magnitude et l'incertitude du décalage de terme de couleur ajusté, évaluée à la couleur de la source.
+  Lorsqu'un préfixe de filtre s'applique, les magnitudes et erreurs utilisent des noms préfixés, par exemple `rapasg_psf_mag` et `rapasg_aperture_mag_err_1_5` (les noms historiques sans préfixe sinon). Les erreurs de magnitude combinent la part aléatoire propre à la source et la part corrélée commune au champ (incertitude du point zéro et plancher systématique). Les magnitudes corrigées de la couleur (`*_colorcorr`), les facteurs de correction d'ouverture, le bruit de fond et les autres diagnostics internes servent pendant l'exécution mais ne sont pas écrits dans ces fichiers.
+- `*_transients.csv` : Candidats transitoires (si le détecteur de transitoires est activé), avec les mêmes colonnes que le catalogue, dont `id`, ce qui permet de relier chaque candidat à sa ligne du catalogue. Les candidats sans correspondance dans le catalogue conservent leurs propres coordonnées, leur position en pixels et leur magnitude PSF calibrée.
 - `*_header.txt` : En-tête FITS d'origine
 - `*_wcs_header.txt` : En-tête de la solution astrométrique, si un WCS est disponible
 - `*.log` : Journal de traitement détaillé

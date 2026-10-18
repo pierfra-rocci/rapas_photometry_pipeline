@@ -77,7 +77,7 @@ Quick Start (Development)
    - Uploading a FITS file stages it in the interface and immediately shows a
      raw header preview.
    - Full FITS loading, header/WCS checks, and astrometry are run only after
-   you click **Start Analysis**.
+     you click **Start Analysis**.
    - If **Astrometry Check** is enabled, the app forces a new plate-solving
      attempt even when a valid WCS already exists.
 
@@ -105,6 +105,12 @@ Logging and Troubleshooting
 
 - Backend logs are printed to the console. Check for database initialization
   messages about the database schema and startup.
+- Every successful login writes a timestamped line with the pipeline version to
+  the service log, for example
+  ``[2026-10-18 18:46:22] RPP v1.9.0 - User 'intern1' logged in successfully (FastAPI backend).``
+  The FastAPI backend, the legacy backend and the frontend each emit their own
+  line. With ``run_all_linux.sh`` the lines go to ``fastapi_backend.log`` and
+  ``streamlit_frontend.log``; started by hand, they go to the terminal.
 - If email-based features fail, confirm SMTP settings are configured,
   especially ``SMTP_SERVER``, ``SMTP_PORT``, ``SMTP_USER``, and
   ``SMTP_PASS_ENCODED``.

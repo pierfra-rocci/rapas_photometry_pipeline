@@ -3,6 +3,7 @@
 This document provides detailed mathematical documentation for the photometric calculations used in the pipeline.
 
 ## Table of Contents
+
 1. [Signal-to-Noise Ratio (S/N)](#signal-to-noise-ratio-sn)
 2. [Magnitude Error Calculation](#magnitude-error-calculation)
 3. [Error Propagation](#error-propagation)
@@ -20,6 +21,7 @@ S/N = flux / flux_error
 ```
 
 Where:
+
 - `flux`: Source flux (background-corrected and aperture-corrected, see below)
 - `flux_error`: Uncertainty in flux measurement (σ_flux), including the
   uncertainty of the local background estimate
@@ -27,6 +29,7 @@ Where:
 ### Implementation Details
 
 **Aperture Photometry:**
+
 - Computes the background-corrected flux `aperture_sum_bkg_corr` from a robust
   sigma-clipped median annulus and uses it for the magnitude, its error and the
   S/N (a single, consistent flux)
@@ -37,6 +40,7 @@ Where:
 - No rounding applied to preserve precision
 
 **PSF Photometry:**
+
 - Uses `flux_fit` from PSF model fitting
 - `flux_err` from PSFPhotometry is already the standard deviation (not variance)
 - A **local background** is subtracted per source before fitting. A
@@ -138,6 +142,7 @@ snr = flux / flux_error  # = 100.0
 ```
 
 Where:
+
 - `σ_mag`: Magnitude error (instrumental)
 - `σ_flux`: Flux uncertainty
 - `flux`: Source flux
@@ -146,11 +151,13 @@ Where:
 ### Mathematical Derivation
 
 Given the magnitude-flux relation:
+
 ```
 mag = -2.5 × log₁₀(flux)
 ```
 
 Using error propagation:
+
 ```
 σ_mag = |∂mag/∂flux| × σ_flux
       = |-2.5 / (flux × ln(10))| × σ_flux
@@ -169,11 +176,13 @@ section), which does not cancel in the flux ratio:
 ### Relationship to S/N
 
 For high signal-to-noise sources (S/N > 5), the statistical term reduces to:
+
 ```
 σ_mag(stat) ≈ 1.0857 / S/N
 ```
 
 This is valid because:
+
 ```
 σ_mag(stat) = 1.0857 × (σ_flux / flux)
             = 1.0857 × (1 / (flux / σ_flux))
@@ -297,6 +306,7 @@ mag_calib = mag_inst + zero_point
 ```
 
 The error propagates as:
+
 ```
 σ_mag_calib = √(σ_mag_inst² + σ_zero_point² + σ_sys²)
 ```
@@ -345,6 +355,7 @@ aperture_mag_err_1_3_random     = per-source statistical error plus the
                                    aperture-correction systematic
 _aperture_mag_err_1_3_correlated = sqrt(σ_zp^2 + σ_sys^2)          (field-common)
 ```
+
 The same `_random` / `_correlated` suffixes exist for `psf_mag_err`, but the
 PSF random component is the PSF-fitting statistical error; it has no
 aperture-correction term. For relative photometry, quote `_random`; for absolute
@@ -385,9 +396,11 @@ The effective gain (counts per data unit) is resolved in this order:
    environment variable for headless runs (0 or empty means *automatic*);
 3. **empirical photon-transfer estimate** from the frame itself: for boxes of
    pure sky the pixel variance grows linearly with the mean signal,
+
    ```
    var(box) ≈ read_noise² + mean(box) / gain
    ```
+
    so `1 / slope` of a robust fit to (mean, variance) is the effective gain.
    The estimate is accepted only when the frame really constrains it: enough
    source-free boxes (sigma clipping removes < 10% of the pixels), a sky level
@@ -430,15 +443,18 @@ both the source and the annulus photometry.
 ### Atmospheric Extinction (Optional)
 
 If atmospheric extinction is applied:
+
 ```
 mag_calib = mag_inst + zero_point - k × airmass
 ```
 
 Where:
+
 - `k`: Extinction coefficient (mag/airmass)
 - `airmass`: Air mass during observation
 
 Error propagation becomes:
+
 ```
 σ_mag_calib = √(σ_mag_inst² + σ_zero_point² + σ_sys² + (airmass × σ_k)²)
 ```
@@ -450,21 +466,25 @@ apply a simple linear color-term correction after the standard zero-point
 calibration.
 
 Baseline calibrated magnitude:
+
 ```
 mag_calib = mag_inst + zero_point
 ```
 
 Color-corrected calibrated magnitude:
+
 ```
 mag_calib_colorcorr = mag_calib + color_term_offset
 ```
 
 The fitted offset is modeled as:
+
 ```
 color_term_offset = intercept + C × (color - color_ref)
 ```
 
 Where:
+
 - `C`: fitted color-term coefficient
 - `color`: per-source catalog color, for example `BP-RP` or `g-r`
 - `color_ref`: median color of the retained calibration stars
@@ -546,7 +566,7 @@ usable_sources = df[df['quality_flag_1_1'].isin(['good', 'marginal'])]
 | Sky RMS | MAD of the sigma-clipped box (`MADStdBackgroundRMS`) | per-pixel noise |
 | Magnitude Error | `√((1.0857·σ_flux/flux)² + σ_apcorr²)` | 0.01–0.3 mag |
 | Aperture Correction | `flux_total = flux_aperture / EE(r)` | 1.00–1.15 |
-| Aperture-correction systematic | `σ_apcorr = 1.0857 · f_apcorr · |apcorr−1| / apcorr` | 0.01–0.05 mag |
+| Aperture-correction systematic | `σ_apcorr = 1.0857 · f_apcorr · \|apcorr−1\| / apcorr` | 0.01–0.05 mag |
 | Calibrated Mag Error | `√(σ_inst² + σ_zp² + σ_sys²)` | 0.02–0.35 mag |
 | Zero-point uncertainty | `√(π/2) × scatter_untrimmed / √N` | 0.01–0.2 mag |
 | Effective gain | `EGAIN`/`CCDGAIN`/`1/CVF` → user → `1/slope(var vs mean)` → `1` | e-/ADU |
@@ -606,6 +626,7 @@ The implementation handles several edge cases:
 ### Testing
 
 Run the test suite to verify calculations:
+
 ```bash
 pytest tests/test_photometry.py -v
 ```

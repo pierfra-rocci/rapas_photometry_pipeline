@@ -13,14 +13,17 @@ This example demonstrates how to perform basic photometry on a single FITS image
 1. Log in to the application.
 2. Upload a science image using the main uploader.
 3. Configure parameters in the sidebar such as seeing, threshold, border mask,
-    filter band, and optional Astrometry Check.
+   filter band, and optional Astrometry Check.
 4. Click **Start Analysis**.
 5. Review the results (plots, tables, Aladin viewer).
 6. Download the results using the ZIP download controls.
 
-.. image:: _static/basic_example.png
-   :width: 100%
-   :alt: Basic photometry example (Needs update if UI changed)
+.. note::
+   Every successful login writes a timestamped line with the pipeline version
+   to the service log, for example
+   ``[2026-10-18 18:46:22] RPP v1.9.0 - User 'intern1' logged in successfully (FastAPI backend).``
+   The FastAPI backend, the legacy backend and the frontend each emit their
+   own line, so a login appears in both the backend and the frontend logs.
 
 Variable Star Analysis
 ----------------------
@@ -141,12 +144,12 @@ This example demonstrates how to identify potential moving objects:
 
 1. Upload an image suspected to contain solar system objects.
 2. Run the analysis with **Start Analysis**. The pipeline
-    automatically queries SkyBoT.
+   automatically queries SkyBoT.
 3. Review the "Matched Objects Summary" table or the full catalog (`*_catalog.csv`).
 4. Look for the SkyBoT identification in the Aladin popup or the `skybot_NAME`
-    column in the exported catalog.
+   column in the exported catalog.
 5. SkyBoT service failures are logged and do not imply that the field contains
-    no moving objects.
+   no moving objects.
 
 Tutorial: Complete Photometry Workflow
 --------------------------------------
@@ -154,29 +157,36 @@ Tutorial: Complete Photometry Workflow
 This step-by-step tutorial covers a complete workflow:
 
 1. **Preparation**
+
    * Ensure the backend server is running.
    * Have your science image(s) ready.
    * Know your approximate observatory location.
    * Obtain an Astro-Colibri UID key if you want transient matching.
 
 2. **Login & Configuration**
-   * Launch the frontend (`streamlit run frontend.py`) and log in.
+
+   * Launch the frontend (`streamlit run frontend.py`) and log in. Each
+     successful sign-in is written to the service logs with a local timestamp
+     and the pipeline version, tagged with its origin (backend or frontend).
    * Upload your science image.
-    * Configure observatory values, analysis parameters, transient options, and
-      the Astro-Colibri key in the sidebar.
+   * Configure observatory values, analysis parameters, transient options, and
+     the Astro-Colibri key in the sidebar.
    * Click "Save Configuration" to store settings.
 
 3. **Run Pipeline**
-    * Click **Start Analysis**.
+
+   * Click **Start Analysis**.
    * Monitor progress messages in the main panel.
 
 4. **Analysis & Review**
+
    * Examine the image display and plots (Background, FWHM, PSF, Zero Point).
    * Review the matched sources tables (GAIA calibration, Catalog Matches Summary).
    * Explore objects in the Aladin viewer.
    * Check the log output for details or warnings.
 
 5. **Results**
+
    * Download the complete results using the ZIP button.
    * Use the `*_catalog.csv` file for your scientific analysis.
 
@@ -193,33 +203,33 @@ used in standalone Python scripts if dependencies are managed correctly.
 
 .. code-block:: python
 
-     from astropy.io import fits
+    from astropy.io import fits
 
-     from src.header_utils import select_science_header
-     from src.tools_pipeline import extract_pixel_scale, safe_wcs_create
+    from src.header_utils import select_science_header
+    from src.tools_pipeline import extract_pixel_scale, safe_wcs_create
 
-     file_path = "my_image.fits"
+    file_path = "my_image.fits"
 
-     with fits.open(file_path) as hdul:
-             image_data = hdul[0].data
-             header = hdul[0].header
+    with fits.open(file_path) as hdul:
+        image_data = hdul[0].data
+        header = hdul[0].header
 
-     wcs_obj, wcs_error, log_messages = safe_wcs_create(header)
-     pixel_scale_arcsec, pixel_scale_source = extract_pixel_scale(header)
+    wcs_obj, wcs_error, log_messages = safe_wcs_create(header)
+    pixel_scale_arcsec, pixel_scale_source = extract_pixel_scale(header)
 
-     print("WCS OK:", wcs_obj is not None)
-     print("WCS error:", wcs_error)
-     print("Pixel scale:", pixel_scale_arcsec, pixel_scale_source)
-     print("Log messages:")
-     for message in log_messages:
-             print(" -", message)
+    print("WCS OK:", wcs_obj is not None)
+    print("WCS error:", wcs_error)
+    print("Pixel scale:", pixel_scale_arcsec, pixel_scale_source)
+    print("Log messages:")
+    for message in log_messages:
+        print(" -", message)
 
 Notes and Next Steps
 --------------------
 
 - Use :doc:`installation` and :doc:`usage` to set up the frontend/backend
-    stack before trying the UI examples.
+  stack before trying the UI examples.
 - Use the generated ``*_catalog.csv`` and log files for downstream scientific
-    workflows such as light-curve building or object triage.
+  workflows such as light-curve building or object triage.
 - When scripting with internal functions, prefer modules under ``src/`` and
-    avoid directly depending on Streamlit page code.
+  avoid directly depending on Streamlit page code.

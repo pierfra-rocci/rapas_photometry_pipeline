@@ -1,11 +1,6 @@
 RAPAS Photometry Pipeline (RPP)
 ===============================
 
-.. image:: _static/rpp_logo.png
-   :width: 200px
-   :align: right
-   :alt: RAPAS Photometry Pipeline logo
-
 RAPAS Photometry Pipeline (RPP) is a Streamlit-based astronomical photometry
 application with a FastAPI backend and a legacy compatibility backend. It is
 designed for FITS-based image analysis, photometric calibration, catalog
@@ -37,6 +32,7 @@ Highlights
    features
    advanced_features
    api
+   api_reference
    examples
    troubleshooting
    changelog
@@ -57,7 +53,9 @@ System Architecture
 -------------------
 
 **Frontend (Streamlit):**
-   - Main UI in ``pages/app.py`` with login flow in ``pages/login.py``
+   - Main UI in ``pages/app.py`` with login flow in ``pages/login.py``;
+     every successful login is written to the service log with a local
+     timestamp and the pipeline version
    - Staged upload flow with explicit processing start
    - Result display, archive browsing, and settings persistence
 

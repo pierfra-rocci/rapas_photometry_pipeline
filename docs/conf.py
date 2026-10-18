@@ -19,8 +19,8 @@ copyright = "2024-2026, Pier-Francesco Rocci"
 author = "Pier-Francesco Rocci"
 
 # The full version, including alpha/beta/rc tags
-release = "1.8.9"
-version = "1.8"
+release = "1.9.0"
+version = "1.9"
 
 
 # -- General configuration ---------------------------------------------------
@@ -62,7 +62,6 @@ html_theme = "sphinx_rtd_theme"
 html_theme_options = {
     "canonical_url": "",
     "analytics_id": "",
-    "display_version": True,
     "prev_next_buttons_location": "bottom",
     "style_external_links": False,
     "style_nav_header_background": "#2980b9",
@@ -73,11 +72,6 @@ html_theme_options = {
     "includehidden": True,
     "titles_only": False,
 }
-
-# Add any paths that contain custom static files (such as style sheets) here,
-# relative to this directory. They are copied after the builtin static files,
-# so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ["_static"]
 
 # Custom sidebar templates, must be a dictionary that maps document names
 # to template names.
@@ -125,7 +119,6 @@ intersphinx_mapping = {
     "photutils": ("https://photutils.readthedocs.io/en/stable/", None),
     "astroquery": ("https://astroquery.readthedocs.io/en/latest/", None),
     "pandas": ("https://pandas.pydata.org/docs/", None),
-    "streamlit": ("https://docs.streamlit.io/", None),
     "flask": ("https://flask.palletsprojects.com/", None),
 }
 
@@ -154,7 +147,7 @@ mathjax3_config = {
 # HTML output settings
 html_title = f"{project} v{release} Documentation"
 html_short_title = "RPP Documentation"
-html_logo = None
+html_logo = "../rapas_logo.png"
 html_favicon = None
 
 # LaTeX output settings

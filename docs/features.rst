@@ -14,6 +14,9 @@ User Authentication & Multi-User Support
    - Automatic frontend fallback from FastAPI to the legacy backend when needed
    - Individual user workspaces with isolated data storage
    - Session management with automatic logout options
+   - Successful logins are recorded in the service logs with a local timestamp
+     and the pipeline version (the FastAPI backend, the legacy backend and the
+     frontend each emit their own line)
 
 **Configuration Persistence**:
    - User-specific settings stored in backend database
@@ -89,6 +92,9 @@ Astrometric Solutions
    - Scale estimation from focal length and pixel size
    - Solution validation and coordinate range checking
    - Forced re-solve option when the user enables Astrometry Check
+   - Target of at least 20 detected stars; the detection threshold is lowered
+     3 -> 2 -> 1 sigma on small or sparse fields (best effort down to 5 stars)
+   - Automatic retry of the solve with a deeper detection when it fails
 
 **WCS Refinement**:
    - SCAMP integration for high-precision astrometry
@@ -127,7 +133,7 @@ Source Detection & Photometry
    - Two fixed aperture radii: 1.1× and 1.3× FWHM (optimized for most use cases)
    - User-configurable third aperture (FWHM Radius Factor, 0.5–2.0× FWHM, default 1.5×); values 1.1 and 1.3 collapse back to two apertures without duplication
    - All three apertures produce the same set of output columns: flux, background-corrected flux, S/N, instrumental magnitude, calibrated magnitude, magnitude error, and quality flag
-    - Column naming follows ``aperture_mag_X_X`` / ``snr_X_X`` / ``aperture_mag_err_X_X`` / ``quality_flag_X_X`` (e.g. ``_1_1``, ``_1_3``, ``_1_5``)
+   - Column naming follows ``aperture_mag_X_X`` / ``snr_X_X`` / ``aperture_mag_err_X_X`` / ``quality_flag_X_X`` (e.g. ``_1_1``, ``_1_3``, ``_1_5``)
    - When the selected calibration band defines a prefix, the exported
       calibrated magnitude and error columns use the filter-prefixed names
       (for example ``rapasg_psf_mag`` or ``rapasg_aperture_mag_1_5``) in place of
@@ -148,9 +154,9 @@ Source Detection & Photometry
      the correction factor is exported in ``apcorr_X_X`` and the underlying
      encircled-energy fraction in ``ee_fraction_X_X``
    - Quality flags: 'good' (S/N>10), 'marginal' (5<S/N≤10), 'poor' (S/N≤5)
-    - Magnitude calibration against the fitted catalog zero-point
-    - Optional parallel ``*_colorcorr`` magnitude columns when a usable catalog
-       color is available for the selected calibration band
+   - Magnitude calibration against the fitted catalog zero-point
+   - Optional parallel ``*_colorcorr`` magnitude columns when a usable catalog
+     color is available for the selected calibration band
 
 **PSF Photometry**:
    - Empirical PSF model construction using EPSFBuilder
@@ -242,16 +248,16 @@ Photometric Calibration
    - Correct column name lookup for error columns
 
 **Color-Term Calibration**:
-    - First-order color term fitted from the matched calibration stars after the
-       scalar zero-point calibration
-    - Uses simple catalog colors when available: Gaia ``BP-RP`` and Sloan-style
-       ``g-r``, ``r-i``, or ``i-z`` depending on the selected calibration band
-    - Writes parallel ``*_colorcorr`` magnitude columns instead of replacing the
-       baseline calibrated magnitudes, together with ``*_colorcorr_err`` errors
-       that combine the baseline calibrated error with the color-term fit
-       uncertainty
-    - Automatically skipped when the selected filter is unsupported or when the
-       final catalog lacks usable color information for a source
+   - First-order color term fitted from the matched calibration stars after the
+     scalar zero-point calibration
+   - Uses simple catalog colors when available: Gaia ``BP-RP`` and Sloan-style
+     ``g-r``, ``r-i``, or ``i-z`` depending on the selected calibration band
+   - Writes parallel ``*_colorcorr`` magnitude columns instead of replacing the
+     baseline calibrated magnitudes, together with ``*_colorcorr_err`` errors
+     that combine the baseline calibrated error with the color-term fit
+     uncertainty
+   - Automatically skipped when the selected filter is unsupported or when the
+     final catalog lacks usable color information for a source
 
 **Magnitude Systems**:
    - GAIA G, BP, RP photometric bands
@@ -288,8 +294,14 @@ Multi-Catalog Cross-Matching
      each stamp shows the HiPS template (PanSTARRS north, SkyMapper south, with
      automatic fallback to the other survey), the circled source and its
      calibrated magnitude
-   - Cross-match radius of 10 arcsec (nearest event per source); the match
-     outcome is displayed in the app
+   - Progressive cross-match radius 5 -> 10 -> 15 -> 20 arcsec (nearest event per
+     source, radius reached reported in the log); matches found only at the
+     15 or 20 arcsec tier raise a warning; the match outcome is displayed in
+     the app
+   - Every source returned by Astro-Colibri for the field is listed (name,
+     RA/Dec, type, classification, observatory, trigger ID, position error,
+     date, redshift, matched flag, separation); the event
+     RA/Dec are exported as ``astrocolibri_ra`` / ``astrocolibri_dec``
 
 **Solar System Objects (SkyBoT)**:
    - Moving object identification and ephemeris
@@ -298,6 +310,9 @@ Multi-Catalog Cross-Matching
    - Time-dependent position calculations
    - Integration with observation timestamps
    - Graceful handling of timeout or network failures during catalog access
+   - Shared request helper: 3 attempts with growing delay on network errors
+     and HTTP 429/5xx, epoch range check, mid-exposure epoch and per-object
+     tolerance from the ephemeris uncertainty (10 to 30 arcsec)
 
 **Variable Star Catalog (AAVSO VSX)**:
    - Variable star identification and classification
@@ -331,6 +346,8 @@ Transient Detection (Beta)
      detections
    - Seeing-based cross-matching with the pipeline photometry catalog (nearest
      counterpart within the FWHM, clamped to 1-4 arcsec)
+   - Calibrated PSF magnitudes, with automatic fallback to the 1.1 x FWHM
+     aperture magnitude when PSF photometry is unavailable
    - Brightness-excess test against catalog counterparts (default 2.0 mag
      brighter, ``mag_threshold``)
    - Template (HiPS) image retrieval and masking
@@ -354,6 +371,8 @@ Data Visualization & Analysis
    - Aladin Lite integration for source exploration
    - Overlay of detected sources with catalog information
    - Clickable source markers with detailed information
+   - Astro-Colibri cross-matches drawn as larger red squares in their own
+     "Astro-Colibri matches" layer
    - Survey selection and coordinate display
    - Export to external sky viewers (ESA Sky)
 
@@ -432,7 +451,8 @@ Output Generation & Export
 --------------------------
 
 **Comprehensive Result Files**:
-   - CSV catalogs with complete photometric measurements
+   - CSV and VOTable catalogs with a curated, fixed column order (unique ``id`` first, matching the Aladin Lite popup ID; Astro-Colibri detections sorted first)
+   - Transient candidate CSV sharing the same columns as the catalog
    - FITS files for background and PSF models
    - WCS-solved FITS files with refined astrometric headers
    - PNG plots for all analysis visualizations

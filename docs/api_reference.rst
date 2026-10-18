@@ -17,7 +17,10 @@ Frontend and UI
    photometry, cross-matching, result export, and transient finding.
 
 ``pages/login.py``
-   Login, registration, password recovery, and backend selection workflow.
+   Login, registration, password recovery, and backend selection workflow. Every
+   successful sign-in is written to the Streamlit log as
+   ``[YYYY-MM-DD HH:MM:SS] RPP vX.Y.Z - User '<username>' logged in
+   successfully (frontend, <backend> backend).``
 
 ``pages/api_client.py``
    Thin HTTP client used by the Streamlit frontend to talk to the FastAPI
@@ -76,7 +79,10 @@ Database and API Modules
 
 ``api/main.py``
    FastAPI application with health, authentication, config persistence, and
-   FITS upload/listing endpoints.
+   FITS upload/listing endpoints. A successful ``POST /api/login`` writes
+   ``[YYYY-MM-DD HH:MM:SS] RPP vX.Y.Z - User '<username>' logged in
+   successfully (FastAPI backend).`` to the service log; the legacy backend
+   (``backend.py``) emits the same line tagged ``(legacy backend)``.
 
 ``api/models.py``
    SQLAlchemy ORM models for users, FITS storage, recovery codes, and tracking
@@ -210,41 +216,41 @@ part of the downloadable archive.
     :widths: 25 35 25 15
 
     * - File pattern
-       - Contents
-       - Generation / writer
-       - In ZIP
+      - Contents
+      - Generation / writer
+      - In ZIP
     * - ``*_catalog.csv`` and ``*_catalog.vot``
-       - Final source photometry and catalog matches in CSV and VOTable formats
-       - After photometry and catalog enrichment; ``src.utils.save_catalog_files``
-       - Yes
+      - Curated columns only (``id`` first, then coordinates, Astro-Colibri/SIMBAD/SkyBoT/AAVSO matches, S/N, aperture and PSF photometry); Astro-Colibri sources sorted first
+      - After photometry and catalog enrichment; ``src.utils.save_catalog_files`` (columns chosen by ``build_export_columns``/``prepare_export_table``)
+      - Yes
     * - ``*_header.txt``
-       - Input FITS header
-       - When a science header is available; ``src.utils.save_header_to_txt``
-       - Yes
+      - Input FITS header
+      - When a science header is available; ``src.utils.save_header_to_txt``
+      - Yes
     * - ``*_wcs_header.txt``
-       - Header containing the available astrometric solution
-       - When a WCS solution is available; ``src.utils.save_header_to_txt``
-       - Yes
+      - Header containing the available astrometric solution
+      - When a WCS solution is available; ``src.utils.save_header_to_txt``
+      - Yes
     * - ``*.log``
-       - Processing log
-       - At the end of analysis; ``pages/app.py``
-       - Yes
+      - Processing log
+      - At the end of analysis; ``pages/app.py``
+      - Yes
     * - ``*_*.png``
-       - Image and diagnostic plots (for example magnitude and PSF/aperture-offset plots)
-       - Depending on the plots produced; ``pages/app.py``
-       - Yes
+      - Image and diagnostic plots (for example magnitude and PSF/aperture-offset plots)
+      - Depending on the plots produced; ``pages/app.py``
+      - Yes
     * - ``*_transients.csv``
-       - Transient candidate table
-       - When transient candidates are returned; ``pages/app.py``
-       - Yes
+      - Transient candidate table with the same columns as the catalog (including ``id``)
+      - When transient candidates are returned; ``src.transient.build_transient_table``
+      - Yes
     * - ``*_psf.fits``
-       - Empirical PSF model
-       - When the ePSF model is saved; ``src/psf.py``
-       - No
+      - Empirical PSF model
+      - When the ePSF model is saved; ``src/psf.py``
+      - No
     * - ``*_wcs.fits``
-       - Original image with the updated WCS header
-       - When WCS solving succeeds; ``src.utils.save_fits_with_wcs``. Also copied to ``rpp_data/fits/``.
-       - No
+      - Original image with the updated WCS header
+      - When WCS solving succeeds; ``src.utils.save_fits_with_wcs``. Also copied to ``rpp_data/fits/``.
+      - No
 
 HTTP API Endpoints
 ------------------

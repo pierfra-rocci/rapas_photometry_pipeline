@@ -15,6 +15,14 @@ Minimum Requirements
 - At least 5 GB free disk space, with more recommended for large image sets and
   temporary processing files
 
+Dependency Source
+-----------------
+
+``pyproject.toml`` is the sole source of dependency pins for this project,
+covering both runtime and development extras. Install everything through pip
+with ``pip install -e .`` (or ``pip install -e ".[dev]"`` for the test suite);
+there is no separate ``requirements.txt`` file to install or keep in sync.
+
 Quick Install (PowerShell)
 --------------------------
 
