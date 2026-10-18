@@ -1,11 +1,13 @@
 import os
 import json
 import warnings
+import time
 
 import requests  # type: ignore[import]
 import streamlit as st
 
 from pages.api_client import ApiClient, ApiError, detect_backend
+from src.__version__ import version
 
 warnings.filterwarnings("ignore")
 
@@ -162,6 +164,11 @@ Besoin d'aide ou vous avez trouvé un bug ? Contactez [rpp_support](mailto:rpp_s
                             "password": login_password,
                             "base_url": st.session_state.api_base_url,
                         }
+                        print(
+                            f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] RPP v{version} - "
+                            f"User '{st.session_state.username}' logged in successfully "
+                            f"(frontend, FastAPI backend)."
+                        )
                         st.rerun()
                 else:
                     legacy_url = st.session_state.legacy_backend_url
@@ -182,6 +189,11 @@ Besoin d'aide ou vous avez trouvé un bug ? Contactez [rpp_support](mailto:rpp_s
                                 "username": login_username,
                                 "password": login_password,
                             }
+                            print(
+                                f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] RPP v{version} - "
+                                f"User '{st.session_state.username}' logged in successfully "
+                                f"(frontend, legacy backend)."
+                            )
                             st.rerun()
                         else:
                             st.error(response.text)

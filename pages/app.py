@@ -37,12 +37,12 @@ from src.header_utils import select_science_header, copy_header_or_none, recover
 # Local Application Imports
 from src.tools_pipeline import (
     GAIA_BANDS,
+    PSF_FALLBACK_MESSAGE,
     extract_coordinates,
     extract_pixel_scale,
     safe_wcs_create,
     add_calibrated_magnitudes,
     drop_legacy_magnitude_columns,
-    get_filter_prefix,
     merge_photometry_catalogs,
     clean_photometry_table,
     apply_color_term_correction,
@@ -64,6 +64,7 @@ from src.utils import (
     zip_results_on_exit,
     save_header_to_txt,
     save_catalog_files,
+    ensure_source_ids,
     save_fits_with_wcs,
 )
 from src.db_tracking import record_analysis_result
@@ -78,7 +79,14 @@ from src.pipeline import (
 
 from src.astrometry import solve_with_astrometrynet
 from src.xmatch_catalogs import cross_match_with_gaia, enhance_catalog
-from src.transient import find_candidates, plot_astrocolibri_cutouts
+from src.transient import (
+    TRANSIENT_APERTURE_FALLBACK_SOURCE,
+    TRANSIENT_MAGNITUDE_SOURCE_META,
+    TRANSIENT_PSF_FALLBACK_MESSAGE,
+    find_candidates,
+    build_transient_table,
+    plot_astrocolibri_cutouts,
+)
 
 from src.__version__ import version
 
@@ -1587,9 +1595,7 @@ if _run_analysis_now:
                                         )
                                     else:
                                         # No PSF photometry - use aperture photometry only
-                                        st.warning(
-                                            "Using aperture photometry only (PSF photometry not available)."
-                                        )
+                                        st.warning(PSF_FALLBACK_MESSAGE)
                                         final_table = phot_table_df.copy()
 
                                         # Add calibrated magnitudes
@@ -1794,7 +1800,11 @@ if _run_analysis_now:
                                         )
                                         handle_log_messages(log_messages)
                                         show_astrocolibri_status(
-                                            log_messages, final_table
+                                            log_messages,
+                                            final_table,
+                                            events=final_table.attrs.get(
+                                                "astrocolibri_events"
+                                            ),
                                         )
                                         final_table = apply_color_term_correction(
                                             final_table,
@@ -1814,9 +1824,13 @@ if _run_analysis_now:
                                 final_table_export = drop_legacy_magnitude_columns(
                                     final_table.copy(), filter_band
                                 )
+                                final_table_export = ensure_source_ids(final_table_export)
                                 st.session_state["final_phot_table"] = final_table_export
                                 success_messages, error_messages = save_catalog_files(
-                                    final_table_export, base_filename, output_dir
+                                    final_table_export,
+                                    base_filename,
+                                    output_dir,
+                                    filter_band=filter_band,
                                 )
                                 for msg in success_messages:
                                     st.success(msg)
@@ -1903,6 +1917,8 @@ if _run_analysis_now:
                                 f"Could not generate Astro-Colibri cutouts: {e}"
                             )
 
+                transient_candidates_df = None
+
                 # Run Transient Finder if enabled
                 if st.session_state.analysis_parameters.get("run_transient_finder"):
                     if (
@@ -1915,7 +1931,6 @@ if _run_analysis_now:
                             try:
                                 candidates = find_candidates(
                                     final_phot_table,
-                                    zero_point_value,
                                     science_data,
                                     st.session_state["calibrated_header"],
                                     fwhm_estimate,
@@ -1931,139 +1946,24 @@ if _run_analysis_now:
                                         "transient_filter", "r"
                                     ),
                                 )
+                                if (
+                                    getattr(candidates, "meta", {}).get(
+                                        TRANSIENT_MAGNITUDE_SOURCE_META
+                                    )
+                                    == TRANSIENT_APERTURE_FALLBACK_SOURCE
+                                ):
+                                    st.warning(TRANSIENT_PSF_FALLBACK_MESSAGE)
                                 if candidates:
                                     st.subheader("Transient Candidates Found")
-                                    # Create a DataFrame from the candidates
-                                    import pandas as pd
-
-                                    transient_filter_band = (
-                                        st.session_state.analysis_parameters.get(
+                                    candidates_df = build_transient_table(
+                                        candidates,
+                                        final_phot_table,
+                                        filter_band=st.session_state.analysis_parameters.get(
                                             "filter_band"
-                                        )
-                                    )
-                                    transient_filter_prefix = get_filter_prefix(
-                                        transient_filter_band
-                                    )
-                                    transient_mag_col = (
-                                        f"{transient_filter_prefix}_psf_mag"
-                                        if transient_filter_prefix
-                                        else "psf_mag"
-                                    )
-                                    transient_mag_err_col = (
-                                        f"{transient_filter_prefix}_psf_mag_err"
-                                        if transient_filter_prefix
-                                        else "psf_mag_err"
+                                        ),
                                     )
 
-                                    candidates_df = pd.DataFrame(
-                                        {
-                                            "ID": range(1, len(candidates) + 1),
-                                            "RA (deg)": [c["ra"] for c in candidates],
-                                            "DEC (deg)": [c["dec"] for c in candidates],
-                                            transient_mag_col: [
-                                                c.get("mag_calib", None)
-                                                for c in candidates
-                                            ],
-                                            transient_mag_err_col: [
-                                                c.get("mag_calib_err", None)
-                                                for c in candidates
-                                            ],
-                                            "X (pix)": [
-                                                c.get("x", None) for c in candidates
-                                            ],
-                                            "Y (pix)": [
-                                                c.get("y", None) for c in candidates
-                                            ],
-                                        }
-                                    )
-
-                                    if (
-                                        final_phot_table is not None
-                                        and not final_phot_table.empty
-                                    ):
-                                        phot_x_col = next(
-                                            (
-                                                col
-                                                for col in [
-                                                    "xcenter",
-                                                    "x_center",
-                                                    "X (pix)",
-                                                ]
-                                                if col in final_phot_table.columns
-                                            ),
-                                            None,
-                                        )
-                                        phot_y_col = next(
-                                            (
-                                                col
-                                                for col in [
-                                                    "ycenter",
-                                                    "y_center",
-                                                    "Y (pix)",
-                                                ]
-                                                if col in final_phot_table.columns
-                                            ),
-                                            None,
-                                        )
-
-                                        if phot_x_col is not None and phot_y_col is not None:
-                                            photometry_columns = [
-                                                col
-                                                for col in final_phot_table.columns
-                                                if (
-                                                    "mag" in col.lower()
-                                                    or "snr" in col.lower()
-                                                    or col == "phot_method"
-                                                )
-                                            ]
-                                            photometry_columns = [
-                                                col
-                                                for col in photometry_columns
-                                                if col not in candidates_df.columns
-                                            ]
-
-                                            photometry_export = (
-                                                final_phot_table[
-                                                    [phot_x_col, phot_y_col, *photometry_columns]
-                                                ]
-                                                .copy()
-                                                .rename(
-                                                    columns={
-                                                        phot_x_col: "X (pix)",
-                                                        phot_y_col: "Y (pix)",
-                                                    }
-                                                )
-                                            )
-                                            photometry_export["_x_round"] = (
-                                                pd.to_numeric(
-                                                    photometry_export["X (pix)"],
-                                                    errors="coerce",
-                                                ).round(2)
-                                            )
-                                            photometry_export["_y_round"] = (
-                                                pd.to_numeric(
-                                                    photometry_export["Y (pix)"],
-                                                    errors="coerce",
-                                                ).round(2)
-                                            )
-                                            photometry_export = photometry_export.drop(
-                                                columns=["X (pix)", "Y (pix)"]
-                                            )
-
-                                            candidates_df["_x_round"] = pd.to_numeric(
-                                                candidates_df["X (pix)"], errors="coerce"
-                                            ).round(2)
-                                            candidates_df["_y_round"] = pd.to_numeric(
-                                                candidates_df["Y (pix)"], errors="coerce"
-                                            ).round(2)
-                                            candidates_df = candidates_df.merge(
-                                                photometry_export,
-                                                on=["_x_round", "_y_round"],
-                                                how="left",
-                                            )
-                                            candidates_df = candidates_df.drop(
-                                                columns=["_x_round", "_y_round"]
-                                            )
+                                    transient_candidates_df = candidates_df
 
                                     # Display the DataFrame in Streamlit
                                     st.dataframe(
@@ -2101,6 +2001,7 @@ if _run_analysis_now:
                             filter_band=st.session_state.analysis_parameters.get(
                                 "filter_band"
                             ),
+                            transient_table=transient_candidates_df,
                             id_cols=[
                                 "id",
                                 "simbad_main_id",
