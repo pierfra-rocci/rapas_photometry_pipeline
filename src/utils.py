@@ -1,13 +1,17 @@
 # Standard Library Imports
 import os
 import json
+import re
 import zipfile
 from io import StringIO
 from datetime import datetime
 
 # Third-Party Imports
 import requests
+from xml.parsers.expat import ExpatError
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 from astropy.io import fits
 from astropy.table import Table
 from astropy.io.votable import from_table, writeto
@@ -698,7 +702,146 @@ def save_fits_with_wcs(original_path, updated_header, output_dir,
         return None, f"Failed to save FITS with WCS: {str(e)}", None
 
 
-def save_catalog_files(final_table, catalog_name, output_dir):
+EXPORT_HEAD_COLUMNS = [
+    "id",
+    "ra",
+    "dec",
+    "astrocolibri_name",
+    "astrocolibri_type",
+    "astrocolibri_classification",
+    "astrocolibri_ra",
+    "astrocolibri_dec",
+    "simbad_main_id",
+    "simbad_otype",
+    "simbad_B",
+    "simbad_V",
+    "skybot_NAME",
+    "skybot_OBJECT_TYPE",
+    "skybot_MAGV",
+    "aavso_Name",
+    "aavso_Type",
+    "aavso_Period",
+    "catalog_matches",
+    "x_center",
+    "y_center",
+]
+
+
+def _is_blank(series):
+    """Boolean mask of missing / empty-string / 'nan' / 'None' entries."""
+    as_str = series.astype(str).str.strip()
+    return series.isna() | as_str.isin(["", "nan", "None", "<NA>", "NaN"])
+
+
+def ensure_source_ids(table):
+    """Return a copy of ``table`` with a complete, unique integer ``id`` column.
+
+    The ``id`` column (1-based source number, first column of the exported
+    files and the identifier shown in the Aladin widget) is created when
+    absent. Missing values (e.g. PSF-only sources) are filled with new numbers
+    above the current maximum; if the existing ids contain duplicates the
+    column is renumbered ``1..N``.
+    """
+    if table is None or len(table) == 0:
+        return table
+
+    result = table.copy()
+    if "id" in result.columns:
+        ids = pd.to_numeric(result["id"], errors="coerce")
+    else:
+        ids = pd.Series(np.nan, index=result.index, dtype="float64")
+
+    missing = ids.isna()
+    if missing.all() or ids[~missing].duplicated().any():
+        new_ids = pd.Series(np.arange(1, len(result) + 1), index=result.index)
+    else:
+        start = int(ids.max()) + 1 if (~missing).any() else 1
+        new_ids = ids.copy()
+        new_ids[missing] = np.arange(start, start + int(missing.sum()))
+
+    result["id"] = new_ids.astype("Int64")
+    return result
+
+
+def _radius_suffixes(columns):
+    """Aperture radius suffixes (e.g. ``1_1``) found in ``snr_*`` columns, sorted by radius."""
+    found = []
+    for col in columns:
+        match = re.fullmatch(r"snr_(\d+_\d+)", str(col))
+        if match:
+            found.append(match.group(1))
+    return sorted(set(found), key=lambda s: float(s.replace("_", ".")))
+
+
+def build_export_columns(columns, filter_band=None):
+    """Ordered list of columns kept in the exported CSV/VOT files.
+
+    Radius suffixes are discovered from the table (the third aperture radius
+    follows the user's choice) and magnitude columns use the filter prefix
+    (e.g. ``rapasg_``) when present, falling back to the legacy names.
+    """
+    from src.tools_pipeline import get_filter_prefix
+
+    available = set(columns)
+    prefix = get_filter_prefix(filter_band)
+    suffixes = _radius_suffixes(columns)
+
+    def pick(name):
+        candidates = [f"{prefix}_{name}"] if prefix else []
+        candidates.append(name)
+        for cand in candidates:
+            if cand in available:
+                return cand
+        return None
+
+    ordered = list(EXPORT_HEAD_COLUMNS)
+    ordered += [f"snr_{s}" for s in suffixes]
+    for s in suffixes:
+        ordered.append(pick(f"aperture_mag_{s}"))
+        ordered.append(f"quality_flag_{s}")
+    ordered.append(pick("psf_mag"))
+    ordered += [pick(f"aperture_mag_err_{s}") for s in suffixes]
+    ordered.append(pick("psf_mag_err"))
+    ordered += [pick(f"psf_minus_aperture_mag_{s}") for s in suffixes]
+
+    kept = []
+    for col in ordered:
+        if col and col in available and col not in kept:
+            kept.append(col)
+    return kept
+
+
+def prepare_export_table(table, filter_band=None):
+    """Select/order export columns and put Astro-Colibri detections first."""
+    if table is None or len(table) == 0:
+        return table
+
+    df = ensure_source_ids(table).reset_index(drop=True)
+
+    for centre, fallback in (("x_center", "xcenter"), ("y_center", "ycenter")):
+        if fallback in df.columns:
+            if centre in df.columns:
+                df[centre] = df[centre].where(df[centre].notna(), df[fallback])
+            else:
+                df[centre] = df[fallback]
+
+    df = df[build_export_columns(df.columns, filter_band)]
+
+    if "astrocolibri_name" in df.columns:
+        has_name = ~_is_blank(df["astrocolibri_name"])
+        if has_name.any():
+            names = df["astrocolibri_name"].astype(str)
+            order = (
+                pd.DataFrame({"named": ~has_name, "name": names.where(has_name, "")})
+                .sort_values(["named", "name"], kind="stable")
+                .index
+            )
+            df = df.loc[order].reset_index(drop=True)
+
+    return df
+
+
+def save_catalog_files(final_table, catalog_name, output_dir, filter_band=None):
     """
     Save the final photometry table as both VOTable (XML) and CSV files.
 
@@ -706,6 +849,11 @@ def save_catalog_files(final_table, catalog_name, output_dir):
         final_table (pd.DataFrame): The photometry results table.
         catalog_name (str): The base name for the catalog files.
         output_dir (str): The directory to save the files in.
+        filter_band (str, optional): Calibration filter, used to resolve the
+            filter-prefixed magnitude column names (e.g. ``rapasg_``).
+
+    Only the curated export columns are written (see ``build_export_columns``),
+    with ``id`` first and Astro-Colibri detections sorted at the top.
 
     Returns:
         tuple (list[str], list[str])
@@ -720,6 +868,8 @@ def save_catalog_files(final_table, catalog_name, output_dir):
         return success_messages, error_messages
 
     try:
+        final_table = prepare_export_table(final_table, filter_band)
+
         # Clean the DataFrame before conversion to handle problematic columns
         df_for_votable = final_table.copy()
 
@@ -775,3 +925,80 @@ def save_catalog_files(final_table, catalog_name, output_dir):
         error_messages.append(f"Error preparing VOTable download: {e}")
 
     return success_messages, error_messages
+
+
+SKYBOT_URL = "https://ssp.imcce.fr/webservices/skybot/api/conesearch.php"
+SKYBOT_MAX_RADIUS_DEG = 10.0
+SKYBOT_JD_RANGE = (2411320.0, 2473540.0)
+SKYBOT_ATTEMPTS = 3
+SKYBOT_RETRY_DELAY_SECONDS = 2.0
+SKYBOT_TIMEOUT_SECONDS = 120
+
+
+def skybot_cone_search(ra_deg, dec_deg, radius_deg, epoch_jd, parser):
+    """Query the IMCCE SkyBoT cone-search API with retries and sanity checks.
+
+    ``parser`` converts the HTTP response into a table (astroquery's
+    ``Skybot._parse_result``). Transient failures (network errors, HTTP 429/5xx)
+    are retried with a growing delay; the last exception is re-raised so the
+    caller keeps its own failure handling.
+
+    Returns
+    -------
+    tuple (table | None, str | None)
+        ``(table, None)`` on success (``table`` is None when nothing was found),
+        ``(None, message)`` when the query was skipped or the answer unusable.
+    """
+    import time
+
+    if not (SKYBOT_JD_RANGE[0] <= float(epoch_jd) <= SKYBOT_JD_RANGE[1]):
+        return None, (
+            f"SkyBoT supports epochs between JD {SKYBOT_JD_RANGE[0]:.0f} and "
+            f"{SKYBOT_JD_RANGE[1]:.0f}; got JD {float(epoch_jd):.1f}"
+        )
+
+    params = {
+        "-ra": float(ra_deg),
+        "-dec": float(dec_deg),
+        "-rd": min(float(radius_deg), SKYBOT_MAX_RADIUS_DEG),
+        "-ep": str(epoch_jd),
+        "-observer": "500",
+        "-filter": 120,
+        "-objFilter": "111",
+        "-refsys": "EQJ2000",
+        "-output": "all",
+        "-mime": "votable",
+        "-from": "RPP",
+    }
+
+    response = None
+    for attempt in range(1, SKYBOT_ATTEMPTS + 1):
+        try:
+            response = requests.get(
+                SKYBOT_URL, params=params, timeout=SKYBOT_TIMEOUT_SECONDS
+            )
+            status = getattr(response, "status_code", 200)
+            if status == 429 or status >= 500:
+                raise requests.exceptions.HTTPError(
+                    f"SkyBoT answered HTTP {status}"
+                )
+            break
+        except requests.exceptions.RequestException:
+            if attempt == SKYBOT_ATTEMPTS:
+                raise
+            time.sleep(SKYBOT_RETRY_DELAY_SECONDS * attempt)
+
+    status = getattr(response, "status_code", 200)
+    if status == 204 or not response.text.strip():
+        return None, None
+    if status >= 400:
+        preview = response.text.strip().replace("\n", " ")[:120]
+        return None, f"SkyBoT answered HTTP {status}: {preview}"
+    try:
+        return parser(response), None
+    except (ExpatError, ValueError) as parse_error:
+        preview = response.text.strip().replace("\n", " ")[:120]
+        return None, (
+            f"SkyBoT returned an unreadable response ({parse_error}). "
+            f"Response preview: {preview}"
+        )

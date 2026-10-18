@@ -1,8 +1,7 @@
 import os
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import requests
-from xml.parsers.expat import ExpatError
 
 import numpy as np
 import pandas as pd
@@ -18,7 +17,7 @@ from astroquery.vizier import Vizier
 from astroquery.imcce import Skybot
 
 from src.tools_pipeline import URL
-from src.utils import safe_catalog_query
+from src.utils import safe_catalog_query, skybot_cone_search
 
 # Timeout (seconds) for outbound HTTP requests so a slow service cannot hang a run
 HTTP_TIMEOUT_SECONDS = 30
@@ -662,8 +661,34 @@ def cross_match_with_gaia(
         return None, [f"ERROR: Error during cross-matching: {e}"]
 
 
-# Maximum separation between an Astro-Colibri event and a detected source.
-ASTROCOLIBRI_MATCH_RADIUS_ARCSEC = 10.0
+# Progressive cross-match radii (arcsec) between an Astro-Colibri event and a
+# detected source: the tightest radius is tried first, then the next ones.
+ASTROCOLIBRI_MATCH_RADII_ARCSEC = (5.0, 10.0, 15.0, 20.0)
+ASTROCOLIBRI_MATCH_RADIUS_ARCSEC = max(ASTROCOLIBRI_MATCH_RADII_ARCSEC)
+# Matches at or beyond this radius are loose and flagged with a WARNING
+ASTROCOLIBRI_WARN_RADIUS_ARCSEC = 15.0
+ASTROCOLIBRI_HTTP_ERRORS = {
+    401: "invalid or missing API key",
+    403: "access forbidden for this API key",
+    429: "daily request quota exceeded (100 requests/day)",
+}
+
+
+def _finite_or_none(value):
+    """Return ``value`` as a finite float, or None when missing/invalid."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if np.isfinite(number) else None
+
+
+def astrocolibri_match_radius(separation_arcsec, radii=ASTROCOLIBRI_MATCH_RADII_ARCSEC):
+    """Return the smallest radius in ``radii`` containing the separation, else None."""
+    for radius in sorted(radii):
+        if separation_arcsec < radius:
+            return radius
+    return None
 
 
 def enhance_catalog(
@@ -939,11 +964,24 @@ def enhance_catalog(
             # Process the response
             try:
                 if response.status_code == 200:
-                    events = response.json()["voevents"]
+                    payload = response.json()
+                    events = payload.get("voevents") or []
+                    for key in ("sources", "xsources", "icecat"):
+                        extra = payload.get(key) or []
+                        if extra:
+                            log_messages.append(
+                                f"INFO: Astro-Colibri also lists {len(extra)} "
+                                f"'{key}' entries in the field (not cross-matched)."
+                            )
                 else:
-                    log_messages.append(f"WARNING: url: {url}")
+                    reason = ASTROCOLIBRI_HTTP_ERRORS.get(response.status_code, "")
+                    try:
+                        reason = response.json().get("message") or reason
+                    except (ValueError, AttributeError):
+                        pass
                     log_messages.append(
-                        f"WARNING: Request failed with status code: {response.status_code}"
+                        f"WARNING: Astro-Colibri request failed with status code "
+                        f"{response.status_code}" + (f": {reason}" if reason else "")
                     )
             except json.JSONDecodeError:
                 log_messages.append(
@@ -969,16 +1007,65 @@ def enhance_catalog(
             enhanced_table["astrocolibri_name"] = None
             enhanced_table["astrocolibri_type"] = None
             enhanced_table["astrocolibri_classification"] = None
+            enhanced_table["astrocolibri_ra"] = np.nan
+            enhanced_table["astrocolibri_dec"] = np.nan
+            all_events = {
+                "source_name": [],
+                "ra": [],
+                "dec": [],
+                "type": [],
+                "classification": [],
+                "observatory": [],
+                "trigger_id": [],
+                "err_arcsec": [],
+                "date": [],
+                "redshift": [],
+            }
             for event in events:
-                if event.get("ra") is not None and event.get("dec") is not None:
-                    sources["ra"].append(event["ra"])
-                    sources["dec"].append(event["dec"])
+                err_deg = _finite_or_none(event.get("err"))
+                all_events["observatory"].append(event.get("observatory"))
+                all_events["trigger_id"].append(event.get("trigger_id"))
+                all_events["err_arcsec"].append(
+                    np.nan if err_deg is None else err_deg * 3600.0
+                )
+                timestamp = _finite_or_none(event.get("timestamp"))
+                all_events["date"].append(
+                    None
+                    if timestamp is None
+                    else datetime.fromtimestamp(timestamp / 1000.0, timezone.utc).strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                )
+                redshift = _finite_or_none(event.get("redshift"))
+                all_events["redshift"].append(np.nan if redshift is None else redshift)
+                ev_ra = _finite_or_none(event.get("ra"))
+                ev_dec = _finite_or_none(event.get("dec"))
+                all_events["source_name"].append(event.get("source_name"))
+                all_events["ra"].append(np.nan if ev_ra is None else ev_ra)
+                all_events["dec"].append(np.nan if ev_dec is None else ev_dec)
+                all_events["type"].append(event.get("type"))
+                all_events["classification"].append(event.get("classification"))
+                if ev_ra is not None and ev_dec is not None:
+                    sources["ra"].append(ev_ra)
+                    sources["dec"].append(ev_dec)
                     sources["source_name"].append(event.get("source_name"))
                     sources["type"].append(event.get("type"))
                     sources["classification"].append(event.get("classification"))
             astrostars = pd.DataFrame(sources)
+            events_table = pd.DataFrame(all_events)
+            events_table["matched"] = False
+            events_table["separation_arcsec"] = np.nan
+            # Row of ``events_table`` behind each row of ``astrostars``
+            event_rows = [
+                i
+                for i in range(len(events_table))
+                if pd.notna(events_table.at[i, "ra"])
+                and pd.notna(events_table.at[i, "dec"])
+            ]
+            enhanced_table.attrs["astrocolibri_events"] = events_table
             log_messages.append(
-                f"INFO: Found {len(astrostars)} Astro-Colibri sources in field."
+                f"INFO: Found {len(events_table)} Astro-Colibri sources in field "
+                f"({len(astrostars)} with coordinates)."
             )
 
             # Filter valid coordinates for astro-colibri matching
@@ -1021,6 +1108,8 @@ def enhance_catalog(
                         n_matched += 1
                     best_sep[original_idx] = sep
                     row = astrostars.iloc[ac_i]
+                    enhanced_table.loc[original_idx, "astrocolibri_ra"] = row["ra"]
+                    enhanced_table.loc[original_idx, "astrocolibri_dec"] = row["dec"]
                     enhanced_table.loc[original_idx, "astrocolibri_name"] = row[
                         "source_name"
                     ]
@@ -1029,10 +1118,38 @@ def enhance_catalog(
                         original_idx, "astrocolibri_classification"
                     ] = row["classification"]
 
+                # An event only counts as matched if it is still the label of
+                # its source (a closer event may have replaced it).
+                for ac_i, src_i in enumerate(idx):
+                    if not bool(matches[ac_i]):
+                        continue
+                    original_idx = valid_indices[int(src_i)]
+                    sep = float(d2d[ac_i].arcsec)
+                    if best_sep.get(original_idx) == sep:
+                        ev_row = event_rows[ac_i]
+                        events_table.at[ev_row, "matched"] = True
+                        events_table.at[ev_row, "separation_arcsec"] = sep
+
+                radius_counts = {r: 0 for r in ASTROCOLIBRI_MATCH_RADII_ARCSEC}
+                for sep in best_sep.values():
+                    tier = astrocolibri_match_radius(sep)
+                    if tier is not None:
+                        radius_counts[tier] += 1
+                tiers = ", ".join(
+                    f"{r:g}\" x{c}" for r, c in radius_counts.items() if c
+                )
                 log_messages.append(
                     f"INFO: Astro-Colibri: {n_matched} source(s) matched within "
-                    f"{ASTROCOLIBRI_MATCH_RADIUS_ARCSEC:g} arcsec."
+                    f"{ASTROCOLIBRI_MATCH_RADIUS_ARCSEC:g} arcsec"
+                    + (f" (radius reached: {tiers})." if tiers else ".")
                 )
+                for radius, count in radius_counts.items():
+                    if count and radius >= ASTROCOLIBRI_WARN_RADIUS_ARCSEC:
+                        log_messages.append(
+                            f"WARNING: Astro-Colibri: {count} source(s) matched only "
+                            f"at the {radius:g} arcsec tier; the association is loose, "
+                            "please check it visually."
+                        )
             else:
                 log_messages.append(
                     "INFO: No valid coordinates available for Astro-Colibri matching"
@@ -1192,38 +1309,26 @@ def enhance_catalog(
                     ra=field_center_ra, dec=field_center_dec, unit=u.deg
                 )
 
-                _SKYBOT_URL = "https://ssp.imcce.fr/webservices/skybot/api/conesearch.php"
-                _skybot_payload = {
-                    "-ra": field_coord.ra.deg,
-                    "-dec": field_coord.dec.deg,
-                    "-rd": min(float(sr_value), 10.0),
-                    "-ep": str(obs_time.jd),
-                    "-observer": "500",
-                    "-filter": 120,
-                    "-objFilter": "111",
-                    "-refsys": "EQJ2000",
-                    "-output": "all",
-                    "-mime": "votable",
-                }
-                _skybot_resp = requests.get(
-                    _SKYBOT_URL, params=_skybot_payload, timeout=120
-                )
-                skybot_parse_failed = False
-                if _skybot_resp.status_code == 204 or not _skybot_resp.text.strip():
-                    skybot_result = None
-                else:
-                    try:
-                        skybot_result = Skybot._parse_result(_skybot_resp)
-                    except (ExpatError, ValueError) as parse_error:
-                        preview = _skybot_resp.text.strip().replace("\n", " ")[:120]
-                        log_messages.append(
-                            "WARNING: SkyBoT response could not be parsed "
-                            f"({parse_error}). Skipping SkyBoT match. Response preview: {preview}"
-                        )
-                        skybot_parse_failed = True
-                        skybot_result = None
+                # Mid-exposure epoch: DATE-OBS is the start of the exposure
+                skybot_epoch = obs_time
+                try:
+                    exptime = float(header.get("EXPTIME", header.get("EXPOSURE", 0)))
+                    if np.isfinite(exptime) and exptime > 0:
+                        skybot_epoch = obs_time + (exptime / 2.0) * u.s
+                except (TypeError, ValueError):
+                    pass
 
-                if skybot_parse_failed:
+                skybot_result, skybot_problem = skybot_cone_search(
+                    field_coord.ra.deg,
+                    field_coord.dec.deg,
+                    sr_value,
+                    skybot_epoch.jd,
+                    Skybot._parse_result,
+                )
+                if skybot_problem is not None:
+                    log_messages.append(
+                        f"WARNING: {skybot_problem}. Skipping SkyBoT match."
+                    )
                     pass
                 elif skybot_result is None or len(skybot_result) == 0:
                     log_messages.append(
@@ -1295,8 +1400,19 @@ def enhance_catalog(
                             idx, d2d, _ = source_coords.match_to_catalog_sky(
                                 skybot_coords
                             )
-                            max_sep = 10.0 * u.arcsec
-                            matches = d2d <= max_sep
+                            # Base tolerance 10", widened (up to 30") for objects
+                            # whose ephemeris uncertainty ("Err") is larger
+                            tolerance = np.full(len(good_indices), 10.0)
+                            for k, i_obj in enumerate(good_indices):
+                                err = data[i_obj].get("Err")
+                                err = getattr(err, "value", err)
+                                try:
+                                    err = float(err)
+                                except (TypeError, ValueError):
+                                    continue
+                                if np.isfinite(err):
+                                    tolerance[k] = min(max(10.0, err), 30.0)
+                            matches = d2d.arcsec <= tolerance[np.asarray(idx)]
 
                             # Map matches back to the original table indices
                             valid_indices = valid_final_coords.index

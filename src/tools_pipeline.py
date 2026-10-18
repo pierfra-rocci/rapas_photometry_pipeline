@@ -29,6 +29,35 @@ FIGURE_SIZES = {
 
 URL = "https://astro-colibri.science/"
 
+# Shared user-facing warning when PSF photometry is unavailable and the
+# analysis falls back to aperture photometry. The main pipeline and the
+# transient finder use the same wording so the fallback is reported
+# consistently across the app.
+PSF_FALLBACK_MESSAGE = (
+    "PSF photometry is not available; using calibrated aperture photometry "
+    "instead."
+)
+
+
+def format_psf_fallback_message(detail: str | None = None) -> str:
+    """Return the shared PSF-fallback warning, optionally with a detail.
+
+    Parameters
+    ----------
+    detail : str, optional
+        Additional sentence describing a workflow-specific fallback, appended
+        after the shared warning.
+
+    Returns
+    -------
+    str
+        Complete warning message.
+    """
+    if detail:
+        return f"{PSF_FALLBACK_MESSAGE} {detail}"
+    return PSF_FALLBACK_MESSAGE
+
+
 # Maximum calibrated magnitude error (mag) accepted for a source to count as
 # usable photometry. A source is kept as soon as ONE method passes this test, so
 # this is a last-resort cut against meaningless values rather than a quality

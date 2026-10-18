@@ -15,13 +15,18 @@ import matplotlib.pyplot as plt
 from astropy.io import fits
 
 # Local Application Imports
-from src.tools_pipeline import fix_header, get_filter_prefix
+from src.tools_pipeline import (
+    fix_header,
+    get_filter_prefix,
+    get_prefixed_photometry_column,
+)
 from src.utils import (
     write_to_log,
     ensure_output_directory,
     ensure_session_output_directory,
     session_results_path,
     session_tmp_directory,
+    ensure_source_ids,
 )
 
 warnings.filterwarnings("ignore")
@@ -297,6 +302,64 @@ def _parse_fits_bytes(file_content: bytes):
             pass
 
 
+def build_transient_aladin_sources(
+    transient_table: pd.DataFrame | None,
+    filter_band: str | None = None,
+) -> list[dict]:
+    """Convert the transient candidates table into Aladin marker dictionaries.
+
+    Each entry holds ``ra``/``dec`` (degrees), a display ``label`` built from
+    the catalogue ``id`` (``T<n>`` when the candidate has no catalogue row),
+    and the PSF magnitude / error when available. Rows without valid
+    coordinates are skipped.
+    """
+    if (
+        not isinstance(transient_table, pd.DataFrame)
+        or transient_table.empty
+        or "ra" not in transient_table.columns
+        or "dec" not in transient_table.columns
+    ):
+        return []
+
+    mag_col = get_prefixed_photometry_column("psf_mag", filter_band)
+    err_col = get_prefixed_photometry_column("psf_mag_err", filter_band)
+    if mag_col not in transient_table.columns:
+        mag_col = "psf_mag"
+    if err_col not in transient_table.columns:
+        err_col = "psf_mag_err"
+
+    def _num(row, col):
+        if col not in transient_table.columns:
+            return None
+        value = pd.to_numeric(row[col], errors="coerce")
+        return float(value) if pd.notna(value) else None
+
+    sources = []
+    for number, (_, row) in enumerate(transient_table.iterrows(), start=1):
+        ra = pd.to_numeric(row["ra"], errors="coerce")
+        dec = pd.to_numeric(row["dec"], errors="coerce")
+        if pd.isna(ra) or pd.isna(dec):
+            continue
+        catalog_id = row["id"] if "id" in transient_table.columns else None
+        has_id = catalog_id is not None and pd.notna(catalog_id)
+        if has_id:
+            try:
+                catalog_id = str(int(float(catalog_id)))
+            except (ValueError, TypeError):
+                catalog_id = str(catalog_id)
+        sources.append(
+            {
+                "ra": float(ra),
+                "dec": float(dec),
+                "label": catalog_id if has_id else f"T{number}",
+                "candidate_number": number,
+                "psf_mag": _num(row, mag_col),
+                "psf_mag_err": _num(row, err_col),
+            }
+        )
+    return sources
+
+
 def display_catalog_in_aladin(
     final_table: pd.DataFrame,
     ra_center: float,
@@ -311,6 +374,7 @@ def display_catalog_in_aladin(
     fallback_id_prefix: str = "Source",
     survey: str = "CDS/P/DSS2/color",
     filter_band: str | None = None,
+    transient_table: pd.DataFrame | None = None,
 ) -> None:
     """
     Display a DataFrame catalog in an embedded Aladin Lite interactive sky viewer.
@@ -343,6 +407,10 @@ def display_catalog_in_aladin(
         Prefix to use for source names if no ID is found, default="Source"
     survey : str, optional
         The initial sky survey to display in Aladin Lite, default="CDS/P/DSS2/color"
+    transient_table : pandas.DataFrame, optional
+        Transient candidates (``ra``/``dec`` and optionally ``id``/PSF
+        magnitude); drawn as yellow stars in a dedicated overlay so they can be
+        checked visually.
 
     Notes
     -----
@@ -369,6 +437,10 @@ def display_catalog_in_aladin(
         )
         return
 
+    # The ID shown in the popup is the ``id`` column (first column of the
+    # exported CSV/VOT files); create it when the table does not have one yet.
+    final_table = ensure_source_ids(final_table)
+
     filter_prefix = get_filter_prefix(filter_band)
     if filter_prefix:
         prefixed_mag_col = f"{filter_prefix}_{mag_col}"
@@ -388,7 +460,7 @@ def display_catalog_in_aladin(
         "qso_name",
         "pc10_name",
     }
-    optional_cols = {mag_col, alt_mag_col, catalog_col}.union(
+    optional_cols = {mag_col, alt_mag_col, catalog_col, "id"}.union(
         set(id_cols), catalog_id_cols
     )
     available_cols = set(final_table.columns)
@@ -497,6 +569,7 @@ def display_catalog_in_aladin(
                 catalog_matches["GAIA"] = "Calibration Star"
 
             source["catalog_matches"] = catalog_matches
+            source["is_astrocolibri"] = "Astro-Colibri" in catalog_matches
             source_id = f"{fallback_id_prefix} {idx + 1}"
 
             # First, check if there's an "id" column in the table
@@ -536,6 +609,13 @@ def display_catalog_in_aladin(
                 st.error(f"Failed to encode catalog data: {str(e)}")
                 return
 
+            transient_sources = build_transient_aladin_sources(
+                transient_table, filter_band
+            )
+            transients_json_b64 = base64.b64encode(
+                json.dumps(transient_sources).encode("utf-8")
+            ).decode("utf-8")
+
             html_content = f"""
 <!DOCTYPE html>
 <html>
@@ -574,7 +654,19 @@ def display_catalog_in_aladin(
                     onClick: 'showPopup'
                 }});
                 aladin.addCatalog(cat);
-                
+
+                // Sources cross-matched with Astro-Colibri: larger red squares
+                let colibriCat = A.catalog({{
+                    name: 'Astro-Colibri matches',
+                    sourceSize: 22,
+                    shape: 'square',
+                    color: '#ff2d2d',
+                    onClick: 'showPopup'
+                }});
+                aladin.addCatalog(colibriCat);
+                let colibriSources = [];
+
+
                 // Decode and parse the base64 encoded JSON data
                 let sourcesData = JSON.parse(atob("{sources_json_b64}"));
                 let aladinSources = [];
@@ -651,6 +743,11 @@ def display_catalog_in_aladin(
                     }}
 
                     popupContent += '</div>';
+                    if(source.is_astrocolibri) {{
+                        popupContent = '<div style="background:#ff2d2d; color:#fff; ' +
+                            'padding:3px 8px; font:bold 12px Arial,sans-serif;">' +
+                            'Astro-Colibri cross-match</div>' + popupContent;
+                    }}
 
                     // Create source with v3 properties
                     let aladinSource = A.source(
@@ -660,13 +757,77 @@ def display_catalog_in_aladin(
                             data: popupContent,
                         }}
                     );
-                    aladinSources.push(aladinSource);
+                    if(source.is_astrocolibri) {{
+                        colibriSources.push(aladinSource);
+                    }} else {{
+                        aladinSources.push(aladinSource);
+                    }}
                 }});
 
-                // Add sources to catalog
+                // Add sources to catalogs
                 if (aladinSources.length > 0) {{
                     cat.addSources(aladinSources);
                     cat.updateShape();
+                }}
+                if (colibriSources.length > 0) {{
+                    colibriCat.addSources(colibriSources);
+                    colibriCat.updateShape();
+                }}
+
+                // Transient candidates: yellow stars, to be checked visually
+                function drawStar(source, ctx) {{
+                    let outer = 13, inner = 5.5;
+                    ctx.beginPath();
+                    for (let k = 0; k < 10; k++) {{
+                        let r = (k % 2 === 0) ? outer : inner;
+                        let a = -Math.PI / 2 + k * Math.PI / 5;
+                        let px = source.x + r * Math.cos(a);
+                        let py = source.y + r * Math.sin(a);
+                        if (k === 0) {{ ctx.moveTo(px, py); }} else {{ ctx.lineTo(px, py); }}
+                    }}
+                    ctx.closePath();
+                    ctx.fillStyle = 'rgba(255, 212, 0, 0.85)';
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = 1.5;
+                    ctx.fill();
+                    ctx.stroke();
+                }}
+                let transientCat = A.catalog({{
+                    name: 'Transient candidates',
+                    sourceSize: 26,
+                    shape: drawStar,
+                    color: '#ffd400',
+                    onClick: 'showPopup'
+                }});
+                aladin.addCatalog(transientCat);
+                let transientSources = [];
+                let transientData = JSON.parse(atob("{transients_json_b64}"));
+                transientData.forEach(function(t) {{
+                    let esc = function(v) {{
+                        return String(v).replace(/[<>&"']/g, function(m) {{
+                            return {{'<':'&lt;', '>':'&gt;', '&':'&amp;',
+                                    '"':'&quot;', "'":"&#39;"}}[m];
+                        }});
+                    }};
+                    let html = '<div style="background:#ffd400; color:#000; ' +
+                        'padding:3px 8px; font:bold 12px Arial,sans-serif;">' +
+                        'Transient candidate</div>' +
+                        '<div style="padding:8px; font-family:Arial,sans-serif;">' +
+                        '<h4 style="margin:0 0 6px 0;">Candidate ' + esc(t.label) + '</h4>' +
+                        'RA: ' + t.ra.toFixed(6) + '&deg;<br/>' +
+                        'Dec: ' + t.dec.toFixed(6) + '&deg;<br/>';
+                    if (t.psf_mag !== null) {{
+                        html += 'PSF Mag: ' + t.psf_mag.toFixed(2);
+                        if (t.psf_mag_err !== null) {{
+                            html += ' &plusmn; ' + t.psf_mag_err.toFixed(2);
+                        }}
+                        html += '<br/>';
+                    }}
+                    html += '</div>';
+                    transientSources.push(A.source(t.ra, t.dec, {{ data: html }}));
+                }});
+                if (transientSources.length > 0) {{
+                    transientCat.addSources(transientSources);
                 }}
             }} catch (error) {{
                 console.error("Error initializing Aladin Lite v3 or adding sources:", error);
@@ -1192,12 +1353,15 @@ def handle_log_messages(log_messages):
             st.error(message.strip())
 
 
-def show_astrocolibri_status(log_messages, final_table):
+def show_astrocolibri_status(log_messages, final_table, events=None):
     """Display a visible summary of the Astro-Colibri query and cross-match.
 
     INFO log lines are not shown by :func:`handle_log_messages`, so without
     this the user cannot tell whether Astro-Colibri found nothing, was skipped
     or matched sources. WARNING/ERROR lines are already shown elsewhere.
+
+    ``events`` is the table of every Astro-Colibri source returned for the
+    field (see :func:`format_astrocolibri_events`); when given it is listed.
     """
     ac_lines = [
         m.partition(":")[2].strip()
@@ -1217,6 +1381,54 @@ def show_astrocolibri_status(log_messages, final_table):
         st.info("Astro-Colibri: " + " ".join(ac_lines))
     else:
         st.info("Astro-Colibri: query not performed (no API key or no response).")
+
+    events_view = format_astrocolibri_events(events)
+    if not events_view.empty:
+        with st.expander(
+            f"Astro-Colibri sources found in the field ({len(events_view)})",
+            expanded=True,
+        ):
+            st.dataframe(events_view, use_container_width=True, hide_index=True)
+
+
+def format_astrocolibri_events(events):
+    """Return the Astro-Colibri events as a display-ready DataFrame.
+
+    Matched events come first (closest first); the columns are renamed for the
+    user and the match flag becomes ``Yes``/``No``. An empty DataFrame is
+    returned when there is nothing to show.
+    """
+    if not isinstance(events, pd.DataFrame) or events.empty:
+        return pd.DataFrame()
+    view = events.copy()
+    sort_cols = [c for c in ("matched", "separation_arcsec") if c in view.columns]
+    if sort_cols:
+        ascending = [False if c == "matched" else True for c in sort_cols]
+        view = view.sort_values(sort_cols, ascending=ascending, na_position="last")
+    if "matched" in view.columns:
+        view["matched"] = view["matched"].map({True: "Yes", False: "No"})
+    renames = {
+        "source_name": "Name",
+        "ra": "RA (deg)",
+        "dec": "Dec (deg)",
+        "type": "Type",
+        "classification": "Classification",
+        "matched": "Matched",
+        "separation_arcsec": "Separation (arcsec)",
+        "observatory": "Observatory",
+        "trigger_id": "Trigger ID",
+        "err_arcsec": "Position error (arcsec)",
+        "date": "Date (UTC)",
+        "redshift": "Redshift",
+    }
+    view = view.rename(columns=renames)
+    for col in ("RA (deg)", "Dec (deg)"):
+        if col in view.columns:
+            view[col] = view[col].round(6)
+    for col in ("Separation (arcsec)", "Position error (arcsec)"):
+        if col in view.columns:
+            view[col] = view[col].round(2)
+    return view.reset_index(drop=True)
 
 
 def initialize_session_state():

@@ -1630,7 +1630,7 @@ def detection_and_photometry(
         )
 
     daofind = DAOStarFinder(
-        fwhm=1.5 * fwhm_estimate, threshold=(threshold_sigma + 0.5) * clipped_std
+        fwhm=1.5 * fwhm_estimate, threshold=(threshold_sigma) * clipped_std
     )
 
     sources = daofind(image_sub, mask=mask)

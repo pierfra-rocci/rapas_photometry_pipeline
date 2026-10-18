@@ -53,12 +53,24 @@ def _get_online_astrometry_api_key():
         return None
 
 
+# Astrometry.net does not impose a hard minimum: it builds quads from the
+# brightest sources first. ~20 well-measured stars is the practical target for
+# a reliable blind solution; fewer is accepted only as a last resort.
+ASTROMETRY_TARGET_SOURCES = 20
+ASTROMETRY_MIN_SOURCES_FALLBACK = 5
+# Detection thresholds (sigma) tried in turn, from standard to deep.
+ASTROMETRY_THRESHOLD_LADDER = (3.0, 2.0, 1.0)
+# A 3-sigma detection with fewer than this many sources is considered too
+# sparse: the 2-sigma detection is tried before settling on it.
+ASTROMETRY_STANDARD_MIN_SOURCES = 100
+
+
 def get_adaptive_min_sources(image_shape):
-    """Calculate minimum sources based on image size
-    
-    Larger images can have fewer sources per area and still provide
-    good plate solving constraints. This function adapts the minimum
-    source requirement based on image dimensions.
+    """Calculate the target number of sources based on image size.
+
+    Never lower than ``ASTROMETRY_TARGET_SOURCES`` (20): small fields are not
+    allowed to settle for fewer stars at the first threshold, the detection
+    ladder (3 -> 2 -> 1 sigma) is walked instead. Larger images ask for more.
     """
     height, width = image_shape
     image_area = height * width
@@ -66,9 +78,22 @@ def get_adaptive_min_sources(image_shape):
     if image_area > 10_000_000:  # Large images (>10MP)
         return max(30, min(50, int(image_area / 200_000)))
     elif image_area > 1_000_000:  # Medium images (1-10MP)
-        return max(20, min(30, int(image_area / 50_000)))
+        return max(
+            ASTROMETRY_TARGET_SOURCES, min(30, int(image_area / 50_000))
+        )
     else:  # Small images (<1MP)
-        return max(10, min(25, int(image_area / 20_000)))
+        return max(
+            ASTROMETRY_TARGET_SOURCES, min(25, int(image_area / 20_000))
+        )
+
+
+def _measure_sn_for_threshold(thresh):
+    """Minimum S/N kept after measurement, relaxed along with the threshold."""
+    if thresh >= 3.0:
+        return 5.0
+    if thresh >= 2.0:
+        return 3.0
+    return 2.0
 
 
 def estimate_pixel_scale_robust(header, image_shape):
@@ -221,32 +246,62 @@ def solve_with_enhanced_strategy(sources, header, image_data):
     return None, log_messages
 
 
-def _try_source_detection_improved(image, header, min_sources=10):
-    """Progressive parameter grid with adaptive thresholds
-    This improved version tries a more strategic sequence of parameters
-    that starts with the most likely values first, then progressively
-    tries more aggressive parameters.
+def _try_source_detection_improved(
+    image,
+    header,
+    min_sources=ASTROMETRY_TARGET_SOURCES,
+    max_thresh=None,
+    fallback_min_sources=ASTROMETRY_MIN_SOURCES_FALLBACK,
+    standard_min_sources=ASTROMETRY_STANDARD_MIN_SOURCES,
+):
+    """Progressive detection: standard threshold first, then 2 and 1 sigma.
+
+    A 3-sigma detection is only accepted straight away when it yields at least
+    ``standard_min_sources`` (100) sources; with fewer (but still at least
+    ``min_sources``) the 2-sigma detection is tried first and kept when it
+    finds more sources, otherwise the 3-sigma list is used.
+
+    Each step lowers the detection threshold (and the S/N kept after
+    measurement) until ``min_sources`` sources are found. If no step reaches
+    the target (small field, sparse field), the richest detection with at least
+    ``fallback_min_sources`` sources is returned instead of failing.
+
+    ``max_thresh`` restricts the ladder to thresholds <= this value (used to
+    retry the solve with a deeper detection). The threshold actually used is
+    stored in ``sources.meta["detection_thresh"]``.
     """
-    # Start with most likely parameters first
     parameter_grid = [
         # (FWHM, threshold, description)
         (3.5, 3.0, "Standard parameters"),
-        (3.5, 2.0, "Slightly more sensitive"),
-        (3.0, 2.0, "Tighter FWHM, lower threshold"),
-        (2.5, 1.5, "More aggressive"),
-        (2.0, 1.0, "Very aggressive"),
-        (4.0, 2.0, "Large FWHM"),
-        (4.0, 1.5, "Large FWHM, lower threshold"),
-        (2.8, 1.3, "Medium aggressive"),
+        (3.0, 3.0, "Large FWHM, 3 sigma"),
+        (2.5, 3.0, "Small FWHM, 3 sigma"),
+        (3.5, 2.0, "Lower threshold (2 sigma)"),
+        (3.0, 2.0, "Large FWHM, 2 sigma"),
+        (2.5, 2.0, "Small FWHM, 2 sigma"),
+        (3.5, 1.0, "Deep detection (1 sigma)"),
+        (3.0, 1.0, "Large FWHM, 1 sigma"),
+        (2.5, 1.0, "Small FWHM, 1 sigma"),
+        (2.0, 1.0, "Smaller FWHM, 1 sigma"),
     ]
+    if max_thresh is not None:
+        parameter_grid = [p for p in parameter_grid if p[1] <= max_thresh]
+
+    best_sources = None
+    best_thresh = None
+    provisional = None
+    gain = None
+    can_go_deeper = any(p[1] < 3.0 for p in parameter_grid)
+    # Once a too-sparse 3-sigma detection has been provisionally accepted,
+    # the remaining FWHM variants at that threshold are skipped: going deeper
+    # is the useful next step, not retrying the same threshold.
+    skip_at_or_above = None
 
     for fwhm_est, thresh, desc in parameter_grid:
+        if skip_at_or_above is not None and thresh >= skip_at_or_above:
+            continue
         try:
-            # Resolve the effective gain (e-/ADU) exactly like the photometry
-            # error model: explicit EGAIN/CCDGAIN/CVF keywords first, driver-
-            # gain cameras (QHY/ZWO) recognised so their abstract GAIN setting
-            # is not misused. Replaces the old 65535 / max(image) heuristic.
-            gain = resolve_effective_gain(header, image, quiet=True)
+            if gain is None:
+                gain = resolve_effective_gain(header, image, quiet=True)
 
             sources = photometry.get_objects_sextractor(
                 image,
@@ -257,33 +312,76 @@ def _try_source_detection_improved(image, header, min_sources=10):
                 bg_size=64,
             )
 
-            if sources is not None and len(sources) >= min_sources:
-                # Measure objects
-                sources = photometry.measure_objects(
-                    sources,
-                    image,
-                    fwhm=fwhm_est,
-                    aper=1,
-                    bkgann=[2.0, 3.0],
-                    verbose=False,
-                    sn=5.0,
-                )
-
-                if sources is not None and len(sources) >= min_sources:
-                    st.success(
-                        f"Found {len(sources)} sources with "
-                        f"thresh={thresh}, FWHM={fwhm_est}"
+            if sources is None or len(sources) < fallback_min_sources:
+                if sources is not None:
+                    st.write(
+                        f"Found {len(sources)} sources with thresh={thresh} "
+                        f"(need at least {min_sources})"
                     )
-                    return sources
+                continue
 
-            if sources is not None:
-                st.write(
-                    f"Found {len(sources)} sources (need at least {min_sources})"
+            sources = photometry.measure_objects(
+                sources,
+                image,
+                fwhm=fwhm_est,
+                aper=1,
+                bkgann=[2.0, 3.0],
+                verbose=False,
+                sn=_measure_sn_for_threshold(thresh),
+            )
+            if sources is None:
+                continue
+
+            if len(sources) >= min_sources:
+                sources.meta["detection_thresh"] = thresh
+                if (
+                    thresh >= 3.0
+                    and can_go_deeper
+                    and len(sources) < standard_min_sources
+                ):
+                    st.write(
+                        f"Only {len(sources)} sources at {thresh:g} sigma "
+                        f"(< {standard_min_sources}); trying 2 sigma"
+                    )
+                    provisional = sources
+                    skip_at_or_above = thresh
+                    continue
+                if provisional is not None and len(sources) <= len(provisional):
+                    continue
+                st.success(
+                    f"Found {len(sources)} sources with "
+                    f"thresh={thresh}, FWHM={fwhm_est}"
                 )
+                return sources
+
+            st.write(
+                f"Found {len(sources)} sources with thresh={thresh} "
+                f"(need at least {min_sources})"
+            )
+            if len(sources) >= fallback_min_sources and (
+                best_sources is None or len(sources) > len(best_sources)
+            ):
+                best_sources = sources
+                best_thresh = thresh
 
         except Exception as e:
             st.error(f"Detection failed with FWHM={fwhm_est} : {e}")
             continue
+
+    if provisional is not None:
+        st.write(
+            f"Keeping the {len(provisional)} sources found at "
+            f"{provisional.meta['detection_thresh']:g} sigma"
+        )
+        return provisional
+
+    if best_sources is not None:
+        best_sources.meta["detection_thresh"] = best_thresh
+        st.write(
+            f"Target of {min_sources} sources not reached; continuing with "
+            f"{len(best_sources)} sources (thresh={best_thresh})"
+        )
+        return best_sources
 
     return None
 
@@ -874,6 +972,20 @@ def _default_column(table, column, default):
     return np.full(len(table), float(default))
 
 
+def _limit_to_brightest(sources, log_messages, limit=500):
+    """Keep the ``limit`` brightest sources (Astrometry.net works brightest-first)."""
+    if len(sources) > limit:
+        meta = dict(sources.meta)
+        sources.sort("flux")
+        sources.reverse()
+        sources = sources[:limit]
+        sources.meta.update(meta)
+        log_messages.append(
+            f"INFO: Using brightest {len(sources)} sources for plate solving"
+        )
+    return sources
+
+
 def solve_with_astrometrynet(file_path):
     """
     Solve astrometric plate using local Astrometry.Net installation via stdpipe.
@@ -903,7 +1015,7 @@ def solve_with_astrometrynet(file_path):
     This function requires:
     - Local Astrometry.Net installation with solve-field binary
     - Appropriate index files for the field scale
-    - The image should contain enough stars for plate solving (typically >10)
+    - The image should contain enough stars for plate solving (ideally >= 20; the detection threshold is lowered 3 -> 2 -> 1 sigma until enough are found)
 
     Uses stdpipe.astrometry.blind_match_objects for cleaner interface.
     """
@@ -956,14 +1068,20 @@ def solve_with_astrometrynet(file_path):
             log_messages.append(f"ERROR: {error_message}")
             return None, None, log_messages, error_message
 
-        # Filter for best sources if too many
-        if len(sources) > 500:
-            sources.sort("flux")
-            sources.reverse()
-            sources = sources[:500]
+        detection_thresh = sources.meta.get("detection_thresh")
+        if detection_thresh is not None:
             log_messages.append(
-                f"INFO: Using brightest {len(sources)} sources for plate solving"
+                f"INFO: Detected {len(sources)} sources at "
+                f"{detection_thresh:g} sigma"
             )
+        if len(sources) < adaptive_min_sources:
+            log_messages.append(
+                f"WARNING: Only {len(sources)} sources found "
+                f"(target {adaptive_min_sources}); plate solving may be "
+                "unreliable"
+            )
+
+        sources = _limit_to_brightest(sources, log_messages)
 
         log_messages.append(
             f"SUCCESS: Ready for plate solving with {len(sources)} sources"
@@ -991,6 +1109,44 @@ def solve_with_astrometrynet(file_path):
                 sources, header, image_data
             )
             log_messages.extend(stage_messages)
+
+            # Retry with a deeper detection (2 then 1 sigma) when the solve
+            # failed and a lower threshold may yield more usable stars.
+            while solved_wcs is None and detection_thresh is not None:
+                lower = [
+                    t for t in ASTROMETRY_THRESHOLD_LADDER
+                    if t < detection_thresh
+                ]
+                if not lower:
+                    break
+                retry_thresh = lower[0]
+                log_messages.append(
+                    "INFO: Plate solve failed; retrying with detection "
+                    f"threshold {retry_thresh:g} sigma"
+                )
+                deeper = _try_source_detection_improved(
+                    image_data,
+                    header,
+                    min_sources=len(sources) + 1,
+                    max_thresh=retry_thresh,
+                )
+                if deeper is None or len(deeper) <= len(sources):
+                    log_messages.append(
+                        f"INFO: No additional sources at {retry_thresh:g} sigma"
+                    )
+                    break
+                detection_thresh = deeper.meta.get(
+                    "detection_thresh", retry_thresh
+                )
+                sources = _limit_to_brightest(deeper, log_messages)
+                log_messages.append(
+                    f"INFO: Retrying plate solve with {len(sources)} sources "
+                    f"({detection_thresh:g} sigma)"
+                )
+                solved_wcs, stage_messages = solve_with_enhanced_strategy(
+                    sources, header, image_data
+                )
+                log_messages.extend(stage_messages)
 
             if solved_wcs is None:
                 api_key = _get_online_astrometry_api_key()

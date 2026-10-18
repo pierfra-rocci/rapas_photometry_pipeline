@@ -14,8 +14,11 @@ if not hasattr(np, "in1d"):
     np.in1d = np.isin  # type: ignore[attr-defined]
 from astropy.time import Time
 from astroquery.imcce import Skybot
-from xml.parsers.expat import ExpatError
-from src.tools_pipeline import get_prefixed_photometry_column
+from src.tools_pipeline import (
+    format_psf_fallback_message,
+    get_prefixed_photometry_column,
+)
+from src.utils import prepare_export_table, skybot_cone_search
 
 # Shared singleton: configure once at import, never per request.
 Skybot._get_raw_response = False
@@ -45,10 +48,27 @@ SEP_REJECT_FLAGS = (
     | 0x80  # sep.APER_NONPOSITIVE - negative aperture sum
 )
 
+# Detection threshold (sigma) used by the transient finder: low on purpose,
+# to be more sensitive to faint sources.
+TRANSIENT_DETECT_THRESH = 1.5
+
+# Metadata attached to the candidate table to report which photometry supplied
+# ``mag_calib``: the pipeline PSF magnitudes or the 1.1 x FWHM aperture fallback.
+# The Streamlit app reads it to warn the user when the fallback is used.
+TRANSIENT_MAGNITUDE_SOURCE_META = "transient_magnitude_source"
+TRANSIENT_PSF_SOURCE = "psf"
+TRANSIENT_APERTURE_FALLBACK_SOURCE = "aperture_1_1"
+
+# Same PSF-fallback wording as the main pipeline, with the transient-specific
+# aperture detail appended.
+TRANSIENT_PSF_FALLBACK_MESSAGE = format_psf_fallback_message(
+    "Transient candidates use the calibrated 1.1 x FWHM aperture magnitude."
+)
+
 # Magnitude excess (detected - catalogue) above which a source positionally
 # coincident with a reference catalogue entry is still kept as a transient
 # candidate.  Defaults to the long-standing 2.0 mag threshold.
-DEFAULT_TRANSIENT_MAG_THRESHOLD = 2.0
+DEFAULT_TRANSIENT_MAG_THRESHOLD = 1.5
 
 filter_ab_offset = {
     "U": 0.79,
@@ -107,41 +127,19 @@ def filter_skybot_candidates(
         if not isinstance(obs_time, Time):
             obs_time = Time(obs_time)
 
-        # Query SkyBoT for Solar System objects in the field.
-        # Direct HTTP request to the current IMCCE endpoint: astroquery 0.4.10
-        # hardcodes the stale vo.imcce.fr URL which is no longer reachable;
-        # the service has migrated to ssp.imcce.fr.
-        import requests as _requests
-        _SKYBOT_URL = "https://ssp.imcce.fr/webservices/skybot/api/conesearch.php"
-        _skybot_rad = min(float(sr0 + 2.0 * sr), 10.0)
-        _skybot_payload = {
-            "-ra": ra0,
-            "-dec": dec0,
-            "-rd": _skybot_rad,
-            "-ep": str(obs_time.jd),
-            "-observer": "500",
-            "-filter": 120,
-            "-objFilter": "111",
-            "-refsys": "EQJ2000",
-            "-output": "all",
-            "-mime": "votable",
-        }
-        _skybot_resp = _requests.get(_SKYBOT_URL, params=_skybot_payload, timeout=120)
-        skybot_parse_failed = False
-        if _skybot_resp.status_code == 204 or not _skybot_resp.text.strip():
-            skybot_results = None
-        else:
-            try:
-                skybot_results = Skybot._parse_result(_skybot_resp)
-            except (ExpatError, ValueError) as parse_error:
-                st.warning(
-                    f"SkyBoT returned an unreadable response ({parse_error}). "
-                    "Skipping Solar System object filtering."
-                )
-                skybot_parse_failed = True
-                skybot_results = None
-
-        if skybot_parse_failed:
+        # Query SkyBoT for Solar System objects in the field (shared helper:
+        # current ssp.imcce.fr endpoint, retries and response checks).
+        skybot_results, skybot_problem = skybot_cone_search(
+            ra0,
+            dec0,
+            float(sr0 + 2.0 * sr),
+            obs_time.jd,
+            Skybot._parse_result,
+        )
+        if skybot_problem is not None:
+            st.warning(
+                f"{skybot_problem}. Skipping Solar System object filtering."
+            )
             return candidates
 
         if skybot_results is None or len(skybot_results) == 0:
@@ -209,9 +207,96 @@ def filter_skybot_candidates(
         return candidates
 
 
+def build_transient_table(
+    candidates, photometry_table, filter_band=None, match_radius_arcsec=4.0
+):
+    """Build the transient candidates table with the same columns as the final catalog.
+
+    Each candidate is matched by sky position to its nearest source of the
+    photometry table, so the exported rows carry the catalog ``id`` and the
+    Astro-Colibri / SIMBAD / SkyBoT / AAVSO / photometry columns of the main
+    CSV/VOT files. Candidates without a counterpart keep their own
+    coordinates, pixel position and calibrated PSF magnitude.
+    """
+    import pandas as pd
+
+    if not candidates:
+        return pd.DataFrame()
+
+    cand_ra = np.array([c["ra"] for c in candidates], dtype=float)
+    cand_dec = np.array([c["dec"] for c in candidates], dtype=float)
+    export = prepare_export_table(photometry_table, filter_band)
+
+    if export is None or len(export) == 0 or "ra" not in export.columns:
+        return pd.DataFrame(
+            {
+                "ra": cand_ra,
+                "dec": cand_dec,
+                "x_center": [c.get("x") for c in candidates],
+                "y_center": [c.get("y") for c in candidates],
+                "psf_mag": [c.get("mag_calib") for c in candidates],
+                "psf_mag_err": [c.get("mag_calib_err") for c in candidates],
+            }
+        )
+
+    cand_coords = SkyCoord(cand_ra * u.deg, cand_dec * u.deg)
+    phot_coords = SkyCoord(
+        np.asarray(export["ra"], dtype=float) * u.deg,
+        np.asarray(export["dec"], dtype=float) * u.deg,
+    )
+    idx, sep, _ = cand_coords.match_to_catalog_sky(phot_coords)
+    matched = sep.arcsec <= match_radius_arcsec
+
+    result = export.iloc[idx].reset_index(drop=True)
+    result.loc[~matched, :] = np.nan
+    result["ra"] = np.where(matched, result["ra"], cand_ra)
+    result["dec"] = np.where(matched, result["dec"], cand_dec)
+
+    fallbacks = {
+        "x_center": [c.get("x") for c in candidates],
+        "y_center": [c.get("y") for c in candidates],
+    }
+    psf_mag_col = get_prefixed_photometry_column("psf_mag", filter_band)
+    psf_err_col = get_prefixed_photometry_column("psf_mag_err", filter_band)
+    for col, legacy in ((psf_mag_col, "psf_mag"), (psf_err_col, "psf_mag_err")):
+        fallbacks[col if col in result.columns else legacy] = [
+            c.get("mag_calib" if legacy == "psf_mag" else "mag_calib_err")
+            for c in candidates
+        ]
+    for col, values in fallbacks.items():
+        values = pd.Series(values, index=result.index, dtype="float64")
+        if col in result.columns:
+            result[col] = pd.to_numeric(result[col], errors="coerce").where(
+                matched, values
+            )
+        else:
+            result[col] = values
+
+    return result
+
+
+def _resolve_photometry_columns(table, mag_column, err_column, filter_band=None):
+    """Return the magnitude and error column names present in *table*.
+
+    The filter-prefixed form (e.g. ``rapasg_psf_mag``) is preferred because
+    exported tables drop the legacy names, with a fallback to the unprefixed
+    column. ``None`` is returned for a missing column so the caller can try
+    another photometry method.
+    """
+    resolved = []
+    for name in (mag_column, err_column):
+        prefixed = get_prefixed_photometry_column(name, filter_band)
+        if prefixed and prefixed in table.columns:
+            resolved.append(prefixed)
+        elif name in table.columns:
+            resolved.append(name)
+        else:
+            resolved.append(None)
+    return resolved[0], resolved[1]
+
+
 def find_candidates(
     photometry_table,
-    zero_point_value,
     image,
     header,
     fwhm,
@@ -223,7 +308,7 @@ def find_candidates(
     filter_cat=None,
     filter_name=None,
     mag_limit="<20.0",
-    detect_thresh=3.0,
+    detect_thresh=TRANSIENT_DETECT_THRESH,
     mag_threshold=DEFAULT_TRANSIENT_MAG_THRESHOLD,
 ):
     """Find transient candidates in the given image around the specified object.
@@ -240,10 +325,10 @@ def find_candidates(
     ----------
     photometry_table : pandas.DataFrame
         Calibrated photometry catalog produced by the main pipeline. Must
-        contain ``ra``/``dec`` and PSF magnitude columns.
-    zero_point_value : float
-        Photometric zero point (kept for API compatibility; the calibrated
-        magnitudes are taken from *photometry_table*).
+        contain ``ra``/``dec`` and magnitude columns: the PSF magnitudes are
+        used when available, otherwise the calibrated 1.1 x FWHM aperture
+        magnitudes (``aperture_mag_1_1`` / ``aperture_mag_err_1_1``), including
+        their filter-prefixed variants.
     image : 2D array
         The image data where to search for transients.
     header : astropy.io.fits.Header
@@ -265,7 +350,10 @@ def find_candidates(
     mag_limit : str, optional
         Reference-survey magnitude limit expression (default ``"<20.0"``).
     detect_thresh : float, optional
-        SEP detection threshold in sigma (default 3.0).
+        SExtractor detection threshold in sigma (default 1.5, deep search
+        for faint sources). The minimum detection S/N is relaxed from 3 to 2
+        when the threshold is below 2 sigma so that faint sources are not
+        cut right after detection.
     mag_threshold : float, optional
         Minimum brightness excess, in magnitudes, required for a source that
         coincides with a reference-catalogue entry to be kept as a candidate.
@@ -312,7 +400,7 @@ def find_candidates(
             edge=10,
             bg_size=64,
             wcs=wcs,
-            sn=3.0,
+            sn=3.0 if detect_thresh >= 2.0 else 2.0,
             verbose=False,
         )
     except Exception as e:
@@ -361,32 +449,53 @@ def find_candidates(
             # Keep only matched objects
             obj = obj[oidx]
 
-            psf_mag_col = get_prefixed_photometry_column("psf_mag", filter_cat)
-            if psf_mag_col not in photometry_table.columns:
-                psf_mag_col = "psf_mag"
-
-            psf_mag_err_col = get_prefixed_photometry_column(
-                "psf_mag_err", filter_cat
+            # PSF photometry is the reference for transient candidates, but
+            # the pipeline may have run without PSF fitting. In that case fall
+            # back to the 1.1 x FWHM aperture magnitude, which is already
+            # aperture-corrected to the total flux scale.
+            magnitude_source = TRANSIENT_PSF_SOURCE
+            mag_col, mag_err_col = _resolve_photometry_columns(
+                photometry_table, "psf_mag", "psf_mag_err", filter_cat
             )
-            if psf_mag_err_col not in photometry_table.columns:
-                psf_mag_err_col = "psf_mag_err"
-
-            if (
-                psf_mag_col not in photometry_table.columns
-                or psf_mag_err_col not in photometry_table.columns
-            ):
-                st.warning(
-                    "PSF magnitude columns not found in photometry table for transient filtering"
+            if mag_col is None or mag_err_col is None:
+                magnitude_source = TRANSIENT_APERTURE_FALLBACK_SOURCE
+                mag_col, mag_err_col = _resolve_photometry_columns(
+                    photometry_table,
+                    "aperture_mag_1_1",
+                    "aperture_mag_err_1_1",
+                    filter_cat,
+                )
+            if mag_col is None or mag_err_col is None:
+                st.error(
+                    "Neither PSF nor 1.1 x FWHM aperture magnitude columns are "
+                    "available in the photometry table for transient filtering."
                 )
                 return []
 
-            # Get PSF magnitudes from photometry_table for matched sources
-            psf_mag = np.asarray(photometry_table[psf_mag_col])[pidx]
-            psf_mag_err = np.asarray(photometry_table[psf_mag_err_col])[pidx]
+            # Get magnitudes from photometry_table for the matched sources
+            mag_calib = np.asarray(photometry_table[mag_col], dtype=float)[pidx]
+            mag_calib_err = np.asarray(photometry_table[mag_err_col], dtype=float)[pidx]
 
-            # Add PSF photometry as mag_calib (reference magnitude for transients)
-            obj["mag_calib"] = psf_mag
-            obj["mag_calib_err"] = psf_mag_err
+            # The PSF columns may exist without a usable measurement for the
+            # matched detections (failed fit -> NaN); fall back in that case too.
+            if not (np.isfinite(mag_calib).any() and np.isfinite(mag_calib_err).any()):
+                alt_mag_col, alt_mag_err_col = _resolve_photometry_columns(
+                    photometry_table,
+                    "aperture_mag_1_1",
+                    "aperture_mag_err_1_1",
+                    filter_cat,
+                )
+                if alt_mag_col is not None and alt_mag_err_col is not None:
+                    magnitude_source = TRANSIENT_APERTURE_FALLBACK_SOURCE
+                    mag_col, mag_err_col = alt_mag_col, alt_mag_err_col
+                    mag_calib = np.asarray(photometry_table[mag_col], dtype=float)[pidx]
+                    mag_calib_err = np.asarray(
+                        photometry_table[mag_err_col], dtype=float
+                    )[pidx]
+
+            # Add photometry as mag_calib (reference magnitude for transients)
+            obj["mag_calib"] = mag_calib
+            obj["mag_calib_err"] = mag_calib_err
         else:
             st.warning(
                 "No matches found between detections and PSF photometry table"
@@ -564,6 +673,9 @@ def find_candidates(
         st.pyplot(fig)
         plt.close(fig)
 
+    # Let the Streamlit app warn the user when candidates rely on the aperture
+    # fallback instead of PSF photometry.
+    candidates.meta[TRANSIENT_MAGNITUDE_SOURCE_META] = magnitude_source
     return candidates
 
 
@@ -945,6 +1057,55 @@ def plot_cutout(
     return fig
 
 
+CALIBRATION_BAND_TO_FILTER = {
+    "phot_g_mean_mag": "G",
+    "phot_bp_mean_mag": "BP",
+    "phot_rp_mean_mag": "RP",
+    "u_jkc_mag": "U",
+    "v_jkc_mag": "V",
+    "b_jkc_mag": "B",
+    "r_jkc_mag": "R",
+    "i_jkc_mag": "I",
+    "u_sdss_mag": "u",
+    "gmag": "g",
+    "rmag": "r",
+    "imag": "i",
+    "zmag": "z",
+}
+
+_KNOWN_FILTER_NAMES = ("u", "g", "r", "i", "z", "U", "B", "V", "R", "I", "G", "BP", "RP")
+
+
+def normalize_calibration_filter(filter_mag, default="r"):
+    """Return the canonical filter name (u,g,r,i,z,U,B,V,R,I,G,BP,RP).
+
+    The calibration band is stored as a catalogue column name such as
+    ``phot_g_mean_mag`` (Gaia G), ``phot_rp_mean_mag`` (Gaia RP) or
+    ``rmag`` (PS1 r).  The former substring heuristic mistook Gaia RP for
+    ``r`` and Gaia BP for nothing at all, and Gaia G for the PS1 ``g`` band,
+    so the magnitudes were compared against the wrong catalogue column.
+    """
+    if not filter_mag:
+        return default
+    name = str(filter_mag).strip()
+    if name in CALIBRATION_BAND_TO_FILTER:
+        return CALIBRATION_BAND_TO_FILTER[name]
+    stripped = name[:-3] if name.endswith("mag") else name
+    if stripped in _KNOWN_FILTER_NAMES:
+        return stripped
+    lowered = name.lower()
+    if "phot_bp" in lowered:
+        return "BP"
+    if "phot_rp" in lowered:
+        return "RP"
+    if "phot_g" in lowered:
+        return "G"
+    for filt in _KNOWN_FILTER_NAMES:
+        if filt in stripped:
+            return filt
+    return stripped
+
+
 def checker_fn(xobj, xcat, catname, filter_mag="r", mag_threshold=2.0):
     """Decide which reference-catalogue matches should *reject* a candidate.
 
@@ -993,22 +1154,7 @@ def checker_fn(xobj, xcat, catname, filter_mag="r", mag_threshold=2.0):
     # shows a genuine brightness excess below.
     xidx = np.ones_like(xobj, dtype=bool)
 
-    # Normalize filter name: extract core filter from various formats
-    fname = filter_mag
-    if fname.endswith("mag"):
-        fname = fname[:-3]  # Remove 'mag' suffix
-
-    # Extract single-letter filter from composite names (e.g., 'phot_g_mean_' -> 'g')
-    # Look for single letter filters: u, g, r, i, z, U, B, V, R, I, G, BP, RP
-    single_filters = ["u", "g", "r", "i", "z", "U", "B", "V", "R", "I", "G", "BP", "RP"]
-    extracted_filter = None
-    for filt in single_filters:
-        if filt in fname:
-            extracted_filter = filt
-            break
-
-    if extracted_filter:
-        fname = extracted_filter
+    fname = normalize_calibration_filter(filter_mag)
 
     # Find the corresponding magnitude column in the reference catalog
     cat_col_mag, _ = guess_catalogue_mag_columns(fname, xcat)
@@ -1086,7 +1232,7 @@ def guess_catalogue_mag_columns(fname, cat, augmented_only=False):
         "I": ["i", "imag", "RPmag"],
         "BP": ["g", "gmag", "BPmag"],
         "G": ["g", "r", "gmag", "rmag"],
-        "RP": ["i", "imag", "RPmag"],
+        "RP": ["r", "rmag", "RPmag"],
     }
 
     cat_col_mag = None
@@ -1124,11 +1270,12 @@ def guess_catalogue_mag_columns(fname, cat, augmented_only=False):
 
     # Gaia DR2/eDR3/DR3 from Vizier
     elif "BPmag" in cat.colnames and "RPmag" in cat.colnames and "Gmag" in cat.colnames:
-        if fname in ["U", "B", "V", "R", "u", "g", "r", "BP"]:
+        if fname in ["U", "B", "u", "g", "BP"]:
             cat_col_mag = "BPmag"
         elif fname in ["I", "i", "z", "RP"]:
             cat_col_mag = "RPmag"
         else:
+            # G, V, R, r: closest to the broad Gaia G band (same as XMatch)
             cat_col_mag = "Gmag"
         if f"e_{cat_col_mag}" in cat.colnames:
             cat_col_mag_err = f"e_{cat_col_mag}"
