@@ -13,7 +13,10 @@ import base64
 import datetime
 import re
 import threading
+import time
 from contextlib import contextmanager
+
+from src.__version__ import version
 
 try:
     import config
@@ -287,7 +290,12 @@ def login():
         return "An error occurred during login.", 500
 
     if user and check_password_hash(user["password"], password):
-        headers = {"X-RPP-Username": user["username"]} if user["username"].isascii() else {}
+        logged_in_username = user["username"]
+        print(
+            f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] RPP v{version} - "
+            f"User '{logged_in_username}' logged in successfully (legacy backend)."
+        )
+        headers = {"X-RPP-Username": logged_in_username} if logged_in_username.isascii() else {}
         return "Logged in successfully.", 200, headers
     return "Invalid username or password.", 401
 

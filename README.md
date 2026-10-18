@@ -18,6 +18,7 @@ A comprehensive astronomical photometry pipeline built with Streamlit, featuring
 
 - **Local-first plate solving**: Integration with local Astrometry.net via `stdpipe`, with an optional Astrometry.net online fallback
 - **Private online fallback**: If local solving fails and an API key is configured, submit the detected source list (not the FITS image) to Astrometry.net
+- **Adaptive source detection**: if 3 sigma gives fewer than 100 sources, 2 sigma is tried first; the blind solve aims for at least 20 stars; the detection threshold is lowered 3 → 2 → 1 sigma when the field is small or too few stars are found, and the solve is retried at a deeper threshold if it fails
 - **WCS refinement**: Advanced astrometric refinement using standard pipe tools
 - **Header validation**: Automatic WCS header fixing and validation
 - **Coordinate systems**: Support for multiple coordinate reference frames
@@ -130,6 +131,12 @@ with an internal error, the login page now reports that backend state instead
 of silently retrying ``localhost:5000``. A backend must be available to log in;
 anonymous access is not currently supported.
 
+Every successful login is written to the service logs with a local timestamp
+and the pipeline version, for example
+`[2026-10-18 18:46:22] RPP v1.9.0 - User 'intern1' logged in successfully (FastAPI backend).`
+The FastAPI backend, the legacy Flask backend and the Streamlit frontend each
+emit their own line (see [Service Logs](#service-logs)).
+
 ### 4. Configure Observatory
 
 Set your observatory location and parameters in the sidebar (name, latitude, longitude, elevation).
@@ -163,6 +170,21 @@ The frontend auto-detects the backend at startup. You can override endpoints wit
 
 This detection and fallback behavior is implemented in `pages/api_client.py` and
 used by `pages/login.py` and `pages/app.py`.
+
+## Service Logs
+
+- `run_all_linux.sh` (and `manage_streamlit.sh`) write the backend output to
+  `fastapi_backend.log` and the frontend output to `streamlit_frontend.log` in
+  the project directory; when the services are started manually, the same
+  messages go to the terminal.
+- Every successful login writes a timestamped line with the pipeline version,
+  for example
+  `[2026-10-18 18:46:22] RPP v1.9.0 - User 'intern1' logged in successfully (FastAPI backend).`
+  The legacy backend emits the same line tagged `(legacy backend)`, and the
+  frontend emits `(frontend, FastAPI backend)` or `(frontend, legacy backend)`.
+  The version is read at runtime from `src/__version__.py`.
+- Administrators can read the last 200 lines of both files from the in-app
+  **Pipeline Logs** page (`pages/showlogs.py`).
 
 ## Account and API Features
 
@@ -217,19 +239,31 @@ The downloadable ZIP contains files matching the input image's base name, except
 for FITS files. FITS products, when generated, remain in the results directory
 and are not included in the ZIP.
 
-- **Photometry Catalog**: CSV and VOTable with multi-aperture and PSF photometry.
-  When the selected calibration band defines a prefix, the calibrated magnitude
-  and error columns are exported under the filter-prefixed names (for example
-  `rapasg_psf_mag`, `rapasg_aperture_mag_1_5`, `rapasg_aperture_mag_err_1_5`);
-  otherwise the legacy unprefixed names (for example `psf_mag`,
-  `aperture_mag_1_5`) are exported. When catalog colors are available, the export may
-  also include parallel color-corrected columns such as
-  `psf_mag_colorcorr` and `aperture_mag_1_5_colorcorr`, plus trace fields like
-  `source_color`, `color_term_label`, `color_term_value`, and
-  `color_term_offset`. The catalog also stores the per-aperture correction
-  factors (`apcorr_X_X`) and their systematics (`apcorr_mag_err_X_X`) used to
-  place aperture and PSF photometry on the same total-flux scale (the total
-  background-subtracted flux error is computed internally and is not exported)
+- **Photometry Catalog**: CSV and VOTable (`*_catalog.csv` / `*_catalog.vot`)
+  restricted to a curated set of columns, always in the same order:
+  `id`, `ra`, `dec`, `astrocolibri_name`, `astrocolibri_type`,
+  `astrocolibri_classification`, `astrocolibri_ra`, `astrocolibri_dec`, `simbad_main_id`, `simbad_otype`, `simbad_B`,
+  `simbad_V`, `skybot_NAME`, `skybot_OBJECT_TYPE`, `skybot_MAGV`, `aavso_Name`,
+  `aavso_Type`, `aavso_Period`, `catalog_matches`, `x_center`, `y_center`, then
+  the `snr_*` columns, the aperture magnitudes (each followed by its
+  `quality_flag_*`), the PSF magnitude, the aperture and PSF magnitude errors,
+  and the `psf_minus_aperture_mag_*` offsets. The three aperture suffixes are
+  `_1_1`, `_1_3` and the user-defined radius (for example `_1_5` at FWHM Radius
+  Factor 1.5), so the last suffix follows the user's choice. When the selected
+  calibration band defines a prefix, magnitudes are exported under the
+  filter-prefixed names (for example `rapasg_psf_mag`,
+  `rapasg_aperture_mag_1_5`, `rapasg_aperture_mag_err_1_5`); otherwise the legacy
+  unprefixed names are used. Columns absent from a run (for example without an
+  Astro-Colibri key) are simply omitted. The first column `id` is a unique
+  integer source number and is the same ID shown in the Aladin Lite popups.
+  When Astro-Colibri sources are detected, those rows are sorted by
+  `astrocolibri_name` and appear at the very top of both files. Colour-corrected
+  columns, aperture-correction factors and other internal diagnostics stay in the
+  session (cutouts, transient finder) but are not written to these files
+- **Transient candidates** (`*_transients.csv`): one row per candidate with the
+  same columns as the catalog (including `id`, so each candidate can be traced
+  back to its catalog row); candidates without a catalog counterpart keep their
+  own coordinates, pixel position and calibrated PSF magnitude
 - **Headers**: Input header (`*_header.txt`) and, when a WCS is available, the
   astrometric header (`*_wcs_header.txt`)
 - **Plots and log**: Diagnostic PNG files and the detailed processing log
@@ -250,6 +284,12 @@ and are not included in the ZIP.
 - Sources are detected with SExtractor (via `stdpipe`) and matched to the pipeline photometry catalog
   within a seeing-based radius (FWHM, clamped to 1-4 arcsec); unreliable
   detections (edge-truncated, deblended, bad aperture) are discarded
+- Matched detections use the calibrated PSF magnitude. When PSF photometry is
+  unavailable (missing columns or no finite value for the matched detections),
+  the calibrated 1.1 x FWHM aperture magnitude is used instead, so transient
+  filtering is not blocked. The app then shows the shared PSF warning
+  `PSF photometry is not available; using calibrated aperture photometry instead. Transient candidates use the calibrated 1.1 x FWHM aperture magnitude.`
+  The main pipeline uses only the first sentence.
 - Detections coincident with a reference-survey or Vizier source are rejected
   within half the seeing FWHM, unless they are a genuine brightness excess
   (`mag_threshold`, default 2.0 mag brighter than the catalog counterpart)
@@ -303,8 +343,7 @@ is accepted; refinement failure keeps the best available WCS.
 
 The pipeline generates comprehensive output files, available as a ZIP download:
 
-- **Photometry Catalog** (CSV and VOTable): Complete source catalog with multi-aperture and PSF photometry
-- **Color-Corrected Magnitudes**: Additional `*_colorcorr` columns written in parallel with the standard zero-point-calibrated magnitudes when a usable catalog color is available
+- **Photometry Catalog** (CSV and VOTable): Curated source catalog (`id`, coordinates, Astro-Colibri/SIMBAD/SkyBoT/AAVSO matches, S/N, multi-aperture and PSF photometry with errors and quality flags)
 - **Log File**: Detailed processing log with timestamps
 - **Background Model** (FITS): 2D background and RMS maps
 - **PSF Model** (FITS): Empirical PSF (or Gaussian fallback) for the field
@@ -389,13 +428,17 @@ Firefox may have compatibility issues with Aladin Lite v3 due to WebAssembly loa
 
 ## Changelog
 
-> The project currently targets version 1.8.9. Only the three latest releases are listed here; the full history is in `docs/changelog.rst`.
+> The project currently targets version 1.9.0. Only the three latest releases are listed here; the full history is in `docs/changelog.rst`.
 
-### Current Release (1.8.9)
+### Current Release (1.9.0)
 
-- **Astro-Colibri cross-match**: events are matched to the nearest catalog source within 10 arcsec (events without coordinates are ignored). The outcome (number of matches, none, or service unavailable) is now displayed in the app instead of being buried in the log.
+- **Login audit line**: every successful login writes a timestamped line with the pipeline version to the service logs, for example `[2026-10-18 18:46:22] RPP v1.9.0 - User 'intern1' logged in successfully (FastAPI backend).` The line is emitted by `api/main.py` (FastAPI), `backend.py` (legacy Flask) and `pages/login.py` (frontend).
+- **Curated catalog export**: `*_catalog.csv` / `.vot` now contain only the essential columns in a fixed order, starting with a unique `id` that matches the ID shown in the Aladin Lite popups; Astro-Colibri detections are sorted to the top of the files, and `*_transients.csv` reuses the same columns.
+- **Astrometry detection ladder**: 20 stars minimum target (Astrometry.net has no hard minimum; it solves from the brightest stars first), detection threshold 3 → 2 → 1 sigma, best-effort with at least 5 stars on sparse fields, and a retry of the solve at a lower threshold on failure.
+- **Astro-Colibri list and Aladin highlight**: every Astro-Colibri source returned for the field is listed in the app (name, RA/Dec, type, classification, match status, separation), the event RA/Dec are exported as `astrocolibri_ra` / `astrocolibri_dec`, and cross-matched sources are drawn as larger red squares (separate "Astro-Colibri matches" layer) in the Aladin Lite viewer.
+- **Astro-Colibri cross-match**: events are matched to the nearest catalog source with a progressive radius (5, then 10, 15 and finally 20 arcsec; events without coordinates are ignored); the log reports how many matches were found at each radius, and a warning is shown when sources were matched only at the loose 15 or 20 arcsec tiers. SkyBoT requests are now retried on network/HTTP 429/5xx errors, use the mid-exposure epoch and the ephemeris uncertainty (up to 30 arcsec) for the match. The outcome (number of matches, none, or service unavailable) is now displayed in the app instead of being buried in the log.
 - **Astro-Colibri cutouts**: postage stamps show the science frame and the HiPS template with the source circled and its calibrated magnitude in the title. The survey follows the field declination (PanSTARRS north, SkyMapper south) and automatically falls back to the other survey when the field is not covered.
-- **Transient finder** now detects sources with SExtractor (via `stdpipe`) and accepts `uint16` images.
+- **Transient finder** now detects sources with SExtractor (via `stdpipe`) and accepts `uint16` images. When the photometry table has no usable PSF magnitudes, it falls back to the calibrated 1.1 x FWHM aperture photometry instead of returning no candidates.
 - **SCAMP refinement** retries with wider tolerances when too few reference matches are found.
 - **PSF star minimum lowered to 10** (was 15); a quality warning is shown when fewer than 25 PSF stars are available.
 - **Session isolation**: each browser session now has its own `work_<id>` folder for temporary uploads and intermediate results, so concurrent users (or several tabs of the same account) can no longer mix FITS files, headers or outputs. Final ZIP archives remain in the user-level results folder. (Version 1.8.8 was skipped.)
