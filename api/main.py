@@ -13,6 +13,7 @@ import ssl
 import string
 import tempfile
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -49,6 +50,7 @@ from .schemas import (
 )
 from .security import find_user_by_identifier, get_current_user
 from .storage import build_storage_path
+from src.__version__ import version
 
 
 @asynccontextmanager
@@ -278,6 +280,10 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
             status_code=401,
             detail="Invalid username or password.",
         )
+    print(
+        f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] RPP v{version} - "
+        f"User '{user.username}' logged in successfully (FastAPI backend)."
+    )
     return LoginResponse(message="Logged in successfully.", username=user.username)
 
 
