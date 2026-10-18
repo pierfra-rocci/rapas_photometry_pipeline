@@ -6,6 +6,9 @@
 [![GitHub forks](https://img.shields.io/github/forks/pierfra-rocci/rapas_photometry_pipeline)](https://github.com/pierfra-rocci/rapas_photometry_pipeline/forks)
 [![GitHub issues](https://img.shields.io/github/issues/pierfra-rocci/rapas_photometry_pipeline)](https://github.com/pierfra-rocci/rapas_photometry_pipeline/issues)
 
+[![Documentation](https://img.shields.io/badge/Documentation-GitHub%20Pages-blue)](https://pierfra-rocci.github.io/rapas_photometry_pipeline/)
+
+
 ![RAPAS Logo](rapas_logo.png)
 
 A comprehensive astronomical photometry pipeline built with Streamlit, featuring local astrometric plate solving with an optional online fallback, multi-catalog cross-matching, and advanced photometric analysis capabilities.
