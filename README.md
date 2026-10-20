@@ -55,7 +55,7 @@ A comprehensive astronomical photometry pipeline built with Streamlit, featuring
 - **Cosmic ray removal**: Automatic L.A.Cosmic algorithm implementation via astroscrappy
 - **Image enhancement**: Multiple visualization modes (ZScale, histogram equalization)
 - **Quality filtering**: Automated source quality assessment with S/N-based flags
-- **Error propagation**: Comprehensive per-pixel error model (background RMS plus Poisson source noise), robust local-background uncertainty, and zero-point error propagation into every calibrated magnitude error
+- **Error propagation**: Comprehensive per-pixel error model (background RMS plus Poisson source noise, added only when the resolved gain matches the units of the frame), robust local-background uncertainty, and zero-point error propagation into every calibrated magnitude error
 - **Transient Detection**: Identification of transient candidates using survey templates (PanSTARRS north, SkyMapper south)
 
 ### 🖥️ User Interface
@@ -450,6 +450,7 @@ Firefox may have compatibility issues with Aladin Lite v3 due to WebAssembly loa
 - **Astro-Colibri cutouts**: postage stamps show the science frame and the HiPS template with the source circled and its calibrated magnitude in the title. The survey follows the field declination (PanSTARRS north, SkyMapper south) and automatically falls back to the other survey when the field is not covered.
 - **Transient finder** now detects sources with SExtractor (via `stdpipe`) and accepts `uint16` images. When the photometry table has no usable PSF magnitudes, it falls back to the calibrated 1.1 x FWHM aperture photometry instead of returning no candidates.
 - **SCAMP refinement** retries with wider tolerances when too few reference matches are found.
+- **Scale-aware error model**: the Poisson term of the per-pixel error is now validated against the frame itself. A normalised float stack used to get a Poisson term ~1e5 times the measured sky variance, because the resolved gain is in e-/ADU while the data are not in counts; the inflated uncertainties made 22 of 26 ePSF-to-star fits return a negative flux, which inverted the ePSF and made `EPSFBuilder` abort with *Cannot normalize ePSF*, dropping PSF photometry for the whole frame. `resolve_poisson_gain()` keeps the gain when it matches the data's scale and otherwise re-derives it from the sky level and its RMS (`gain = sky / rms²`), and `compute_error_map()` builds the error map from it (background RMS alone when no gain is usable). PSF photometry and the aperture S/N are restored on such frames.
 - **PSF star minimum lowered to 10** (was 15); a quality warning is shown when fewer than 25 PSF stars are available.
 - **Session isolation**: each browser session now has its own `work_<id>` folder for temporary uploads and intermediate results, so concurrent users (or several tabs of the same account) can no longer mix FITS files, headers or outputs. Final ZIP archives remain in the user-level results folder. (Version 1.8.8 was skipped.)
 - **Reset**: the *Reset* button now works in a single press and only clears the current session; it no longer clears the cache of every connected user.
