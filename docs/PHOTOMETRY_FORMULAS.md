@@ -415,6 +415,48 @@ an unknown true gain `g`, the source Poisson variance `flux/gain` is
 overestimated by a factor `g`, i.e. the magnitude errors of bright sources by up
 to `√g`. The previous arbitrary `65535 / max(image)` heuristic remains removed.
 
+#### The Poisson term must follow the units of the frame
+
+`calc_total_error` adds `data / gain` to the pixel variance, which only carries
+information when the data are counts **and** the gain is expressed in those same
+units. A frame that has been rescaled — a normalised float stack with a sky level
+of about 1e-2, or the output of a stacking tool that divides by a large factor —
+breaks that assumption: with a genuine e-/ADU gain the Poisson term at the sky
+level then exceeds the measured sky variance by orders of magnitude, so the
+error map no longer describes the real noise (aperture S/N was underestimated by
+one to two orders of magnitude on such a frame).
+
+The PSF step is the most sensitive consumer, because photutils weights the
+ePSF-to-star fits by `1 / error²`: with the inflated core errors the star cores
+carried ~1e-4 of the weight of the sky pixels, most fitted fluxes came back
+negative, the next ePSF was built from inverted cutouts and `EPSFBuilder`
+aborted with `Cannot normalize ePSF: the data sum (…) is not finite and
+positive`, dropping PSF photometry for the whole frame.
+
+The gain is therefore validated against the frame itself in
+`resolve_poisson_gain()`:
+
+- the resolved gain is **kept** when the Poisson variance it predicts at the sky
+  level stays within `POISSON_SKY_VARIANCE_TOLERANCE` (10×) of the measured
+  background variance;
+- otherwise it is **replaced** by the largest value the frame allows,
+
+  ```
+  gain = sky_level / background_rms²
+  ```
+
+  because the sky Poisson variance cannot exceed the total sky variance, so the
+  true gain in the data's units is at least this large. Using that bound gives
+  the largest (most conservative) Poisson term the frame admits, correct to
+  within a factor of ~√2 at the sky itself;
+- frames with no usable gain or no usable sky statistics keep their declared
+  gain, and `compute_error_map()` falls back to the background RMS map alone when
+  no Poisson term can be trusted.
+
+On a real normalised stack this changed the core error from ~1.4e3 × the sky RMS
+(larger than the data values themselves) to a few × the sky RMS, restoring both
+the aperture S/N and the PSF photometry.
+
 #### Why a FITS `GAIN` is not always e-/ADU
 
 CMOS cameras expose an adjustable analog gain whose *driver setting* is written

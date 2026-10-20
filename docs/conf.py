@@ -9,7 +9,12 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath(".."))
+# Make the project root importable so the documentation can read the release
+# version from its single source of truth, ``src/__version__.py``.
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, PROJECT_ROOT)
+
+from src.__version__ import version as _rpp_version  # noqa: E402
 
 
 # -- Project information -----------------------------------------------------
@@ -18,9 +23,10 @@ project = "RAPAS Photometry Pipeline (RPP)"
 copyright = "2024-2026, Pier-Francesco Rocci"
 author = "Pier-Francesco Rocci"
 
-# The full version, including alpha/beta/rc tags
-release = "1.9.0"
-version = "1.9"
+# The full version, including alpha/beta/rc tags, read from src/__version__.py
+release = _rpp_version
+# The short X.Y version
+version = ".".join(release.split(".")[:2])
 
 
 # -- General configuration ---------------------------------------------------

@@ -117,6 +117,32 @@ Version 1.9.0
     epoch range check, HTTP error reporting, mid-exposure epoch and a per-object
     match tolerance of 10 to 30 arcsec derived from the ephemeris ``Err``.
 
+**Scale-aware photometric error model**
+
+*   **The Poisson term now follows the units of the frame.**
+    ``calc_total_error`` adds ``data / gain`` to the pixel variance, which is
+    only meaningful when the data are counts in the same units as the gain. A
+    rescaled frame (a normalised float stack with a sky level of about 1e-2, for
+    example) violates that: with a genuine e-/ADU gain the Poisson term at the
+    sky level exceeded the measured sky variance by a factor of 1e5, so the
+    error map said nothing about the real noise and the aperture S/N was
+    underestimated by one to two orders of magnitude. The PSF step was hit
+    hardest, because photutils weights the ePSF-to-star fits by
+    ``1 / error**2``: the star cores ended up ~1e-4 of the weight of the sky
+    pixels, 22 of 26 fitted fluxes came back negative, the next ePSF was
+    therefore inverted and ``EPSFBuilder`` aborted with
+    ``Cannot normalize ePSF: the data sum (...) is not finite and positive``,
+    dropping PSF photometry for the whole frame.
+*   **Resolution.** ``resolve_poisson_gain()`` keeps the resolved gain when the
+    Poisson variance it predicts at the sky level stays within
+    ``POISSON_SKY_VARIANCE_TOLERANCE`` (10x) of the measured background
+    variance, and otherwise replaces it with the largest value the frame allows,
+    ``gain = sky level / background_rms**2``. ``compute_error_map()`` builds the
+    per-pixel error from that gain, falling back to the background RMS map alone
+    when no usable gain exists. On the real normalised stack the core error
+    dropped from ~1.4e3x the sky RMS (larger than the data itself) to a few x
+    the sky RMS, and PSF photometry now runs.
+
 **PSF, Transients and Messages**
 
 *   **PSF star minimum lowered from 15 to 10.** A warning about possibly poor

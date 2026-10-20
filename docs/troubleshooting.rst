@@ -257,6 +257,33 @@ service.
     *   If the header carries a genuine conversion factor, provide it as
         ``EGAIN``/``CCDGAIN`` (e-/ADU) or ``CVF`` (RPP uses ``gain = 1/CVF``).
 
+**PSF photometry is skipped, or the log says "Cannot normalize ePSF"**
+
+*   **Problem**: ``EPSFBuilder`` stopped with ``Cannot normalize ePSF: the data
+    sum (...) is not finite and positive`` and the run continued with aperture
+    photometry only. This comes from the ePSF-to-star fits: photutils weights
+    them by ``1 / error²``, so an error map that does not describe the frame
+    down-weights the star cores, the fitted fluxes come back negative, and the
+    next ePSF is built inverted. The failure is in the error model, not in the
+    ePSF itself (the first iteration is usually fine). On the frame this was
+    reported for, a normalised float stack (sky ~0.01, no ``BUNIT``/``GAIN``)
+    had been given a genuine e-/ADU gain, which made the Poisson term ~1e5
+    times the measured sky variance.
+*   **Solution**:
+
+    *   Update RPP: ``resolve_poisson_gain`` now detects that the gain cannot
+        describe the data's units and re-derives it from the sky level and its
+        RMS (``gain = sky level / RMS²``), reporting it with the message
+        "Using the background-consistent gain ...". The same repaired map also
+        restores the aperture S/N and magnitude errors of such frames.
+    *   For an exact error model, supply the gain in the *units of the data*:
+        a frame in counts (ADU/electrons) with ``EGAIN``/``CCDGAIN``/``CVF`` in
+        the header, or the matching *Detector Gain* value.
+    *   A frame that is already sky-subtracted gives no sky level to check
+        against, so set the gain explicitly or analyse a frame in counts.
+    *   If PSF photometry is still skipped, check the PSF star count in the
+        log: 10 stars is the hard minimum and 25 the quality target.
+
 Catalog Query Issues (SIMBAD, SkyBoT, etc.)
 -------------------------------------------
 
