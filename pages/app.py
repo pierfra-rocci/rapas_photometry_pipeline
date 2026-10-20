@@ -307,7 +307,7 @@ with col_padc:
 with col2:
     st.title("**RAPAS Photometry Pipeline**")
 st.markdown(
-    "| [**RAPAS Home**](https://rapas.imcce.fr/) | [**PADC**](https://voparis-portal.obspm.fr/?service_url=http://rapas-test.obspm.fr/tap) | [<img src='https://github.githubassets.com/favicons/favicon.svg' width='16' style='vertical-align:middle'/> **GitHub**](https://github.com/pierfra-rocci/rapas_photometry_pipeline) |",
+    "| [**RAPAS Home**](https://rapas.imcce.fr/) | [**PADC**](https://voparis-portal.obspm.fr/?service_url=http://rapas-test.obspm.fr/tap) | [<img src='https://github.githubassets.com/favicons/favicon.svg' width='16' style='vertical-align:middle'/> **GitHub**](https://github.com/pierfra-rocci/rapas_photometry_pipeline) | [**Documentation**](https://rapas.obspm.fr/rpp-docs/) |",
     unsafe_allow_html=True,
 )
 st.caption(st.session_state.backend_status_message)
