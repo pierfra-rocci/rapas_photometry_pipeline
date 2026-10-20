@@ -4,7 +4,8 @@ The release version is declared independently in three places:
 
 * ``pyproject.toml`` (``project.version``) - packaging metadata
 * ``src/__version__.py`` (``version`` / ``version_info``) - runtime value used by the UI
-* ``docs/conf.py`` (``release`` / ``version``) - Sphinx documentation
+* ``docs/conf.py`` (``release`` / ``version``) - Sphinx documentation, read
+  directly from ``src/__version__.py`` at build time
 
 They must not drift apart, otherwise the installed distribution metadata, the
 running application and the published documentation can disagree about which
@@ -12,8 +13,9 @@ release is current. The user-facing documentation (``README.md`` and
 ``docs/changelog.rst``) must also announce the current release.
 """
 
-import ast
+import importlib.util
 import re
+import sys
 import tomllib
 from pathlib import Path
 
@@ -26,21 +28,20 @@ def _pyproject_version() -> str:
 
 
 def _conf_py_versions() -> tuple:
-    """Return the ``(release, version)`` strings assigned in ``docs/conf.py``.
+    """Return the ``(release, version)`` strings defined in ``docs/conf.py``.
 
-    The file is parsed with :mod:`ast` rather than imported, so the test does
-    not require Sphinx to be installed in the test environment.
+    The file is executed as a standalone module rather than imported by name.
+    It reads ``release`` from ``src/__version__.py``, so the value has to be
+    evaluated instead of parsed as a literal; importing by name would require
+    the docs directory to be a package.
     """
-    source = (PROJECT_ROOT / "docs" / "conf.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    values = {}
-    for node in tree.body:
-        if not isinstance(node, ast.Assign):
-            continue
-        for target in node.targets:
-            if isinstance(target, ast.Name) and isinstance(node.value, ast.Constant):
-                values[target.id] = node.value.value
-    return values["release"], values["version"]
+    conf_path = PROJECT_ROOT / "docs" / "conf.py"
+    spec = importlib.util.spec_from_file_location("rpp_docs_conf", conf_path)
+    module = importlib.util.module_from_spec(spec)
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+    spec.loader.exec_module(module)
+    return module.release, module.version
 
 
 def test_version_sources_agree():
@@ -84,6 +85,18 @@ def _rst_section_titles(text: str) -> list:
         if line.strip() and re.fullmatch(r"-{3,}", lines[index + 1].strip()):
             titles.append(line.strip())
     return titles
+
+
+def test_readme_version_badge_matches():
+    """The README version badge must match src/__version__.py."""
+    from src.__version__ import version
+
+    readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert f"badge/version-{version}-" in readme, (
+        f"README.md has no version badge for {version} (expected "
+        f"https://img.shields.io/badge/version-{version}-blue)"
+    )
 
 
 def test_readme_mentions_current_version():

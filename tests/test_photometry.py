@@ -36,15 +36,18 @@ from astropy.modeling.models import Gaussian2D
 from astropy.table import Table
 from photutils.aperture import CircularAperture, aperture_photometry
 from photutils.detection import DAOStarFinder
+from photutils.utils import calc_total_error
 
 import src.pipeline as pipeline_module
 import src.psf as psf_module
 from src.pipeline import (
     calculate_zero_point,
+    compute_error_map,
     estimate_effective_gain,
     fit_color_term_correction,
     instrument_uses_driver_gain,
     resolve_effective_gain,
+    resolve_poisson_gain,
 )
 from src.psf import compute_encircled_energy, perform_psf_photometry
 from src.tools_app import plot_photometry_offsets
@@ -558,6 +561,123 @@ class TestEffectiveGainEstimation:
         assert resolve_effective_gain({}, flat) == 1.0
         assert resolve_effective_gain({"GAIN": 0}, flat) == 1.0
         assert resolve_effective_gain({"GAIN": -3.0}, flat) == 1.0
+
+
+class TestScaleAwarePoissonNoise:
+    """The Poisson term of the error map must follow the units of the frame.
+
+    ``calc_total_error`` adds ``data / gain`` to the pixel variance, which is
+    only meaningful when the data are counts in the same units as the gain. A
+    normalised float stack (sky ~1e-2, background RMS ~2e-4) with a genuine
+    e-/ADU gain otherwise gets a Poisson term that dwarfs the measured sky
+    noise: on a real frame that made every ePSF-to-star fit return a negative
+    flux, which inverted the ePSF and dropped PSF photometry altogether.
+    """
+
+    class FakeStreamlit:
+        def __init__(self):
+            self.messages = []
+
+        def info(self, message, *_args, **_kwargs):
+            self.messages.append(str(message))
+
+        def __getattr__(self, _name):
+            return lambda *_args, **_kwargs: None
+
+    @staticmethod
+    def _count_frame(gain=2.0, sky=1000.0, read_noise=5.0):
+        """Sky level and RMS of a frame that really is in counts."""
+        rms = np.sqrt(sky / gain + read_noise**2)
+        return sky, rms
+
+    def test_count_frame_keeps_the_declared_gain(self):
+        sky, rms = self._count_frame(gain=2.0)
+        assert resolve_poisson_gain(2.0, sky, rms) == pytest.approx(2.0)
+        # A read-noise dominated frame is consistent too (the Poisson term is
+        # small, so there is nothing to rescale).
+        assert resolve_poisson_gain(2.0, 50.0, 40.0) == pytest.approx(2.0)
+
+    def test_normalised_frame_is_rescaled(self):
+        sky, rms = 0.0104, 2.1e-4
+        gain = resolve_poisson_gain(1.78, sky, rms)
+        assert gain == pytest.approx(sky / rms**2, rel=1e-6)
+        # The Poisson variance at the sky can then never exceed the measured one.
+        assert sky / gain <= rms**2 * (1.0 + 1e-9)
+
+    def test_matched_units_are_not_rescaled(self):
+        """A gain already expressed in the frame's units must be left alone."""
+        sky, rms = 0.01, 0.02  # Poisson term negligible at the sky
+        assert resolve_poisson_gain(4.0, sky, rms) == pytest.approx(4.0)
+
+    def test_array_background_model_matches_scalar(self):
+        sky = np.linspace(0.008, 0.012, 16).reshape(4, 4)
+        rms = np.full((4, 4), 2.1e-4)
+        assert resolve_poisson_gain(1.78, sky, rms) == pytest.approx(
+            resolve_poisson_gain(1.78, float(np.median(sky)), 2.1e-4)
+        )
+
+    def test_invalid_gain_drops_the_poisson_term(self):
+        for gain in (None, 0.0, -1.0, np.nan, "bad"):
+            assert resolve_poisson_gain(gain, 0.01, 2.1e-4) is None
+
+    def test_missing_sky_statistics_keep_the_declared_gain(self):
+        assert resolve_poisson_gain(3.0, None, 2.1e-4) == pytest.approx(3.0)
+        assert resolve_poisson_gain(3.0, 0.0, 2.1e-4) == pytest.approx(3.0)
+        assert resolve_poisson_gain(3.0, 0.01, 0.0) == pytest.approx(3.0)
+        assert resolve_poisson_gain(3.0, np.nan, 2.1e-4) == pytest.approx(3.0)
+
+    def test_error_map_follows_the_frame_scale(self):
+        """The repaired map must stay near the sky noise, not near data/gain."""
+        rng = np.random.default_rng(5)
+        sky, rms, gain = 0.0104, 2.1e-4, 1.78
+        data = rng.normal(0.0, rms, (128, 128))
+        data[56:72, 56:72] += 0.2  # a bright stellar core
+        rms_map = np.full_like(data, rms)
+
+        error = compute_error_map(data, rms_map, gain, sky)
+        assert error.shape == data.shape
+        assert error.dtype == np.float64
+        # Sky pixels stay at the measured noise; the core is a few times that.
+        assert np.median(error) == pytest.approx(rms, rel=0.5)
+        assert np.max(error) < 20.0 * rms
+
+        # The unguarded Poisson term would put the core error above the data
+        # itself, which is exactly what broke the PSF fits.
+        naive = calc_total_error(data, rms_map, effective_gain=gain)
+        assert np.max(naive) > 0.2
+        assert np.max(naive) > 100.0 * np.max(error)
+
+    def test_error_map_weights_star_cores_sensibly(self):
+        """Core pixels must not be down-weighted by orders of magnitude."""
+        sky, rms, gain = 0.0104, 2.1e-4, 1.78
+        data = np.zeros((64, 64))
+        data[32, 32] = 0.25  # brightest pixel of a star
+        rms_map = np.full_like(data, rms)
+        error = compute_error_map(data, rms_map, gain, sky)
+        weight_ratio = (rms / np.max(error)) ** 2  # sky weight / core weight
+        assert 0.001 < weight_ratio < 1.0
+
+    def test_error_map_without_gain_is_the_background_rms(self):
+        data = np.zeros((8, 8))
+        rms_map = np.full((8, 8), 3.0)
+        assert_array_equal(compute_error_map(data, rms_map, None), rms_map)
+        assert_array_equal(compute_error_map(data, 3.0, None), rms_map)
+
+    def test_rescaling_is_reported_once(self, monkeypatch):
+        fake = self.FakeStreamlit()
+        monkeypatch.setattr(pipeline_module, "st", fake)
+        resolve_poisson_gain(1.78, 0.0104, 2.1e-4)
+        assert len(fake.messages) == 1
+        assert "background-consistent gain" in fake.messages[0]
+        # A consistent frame says nothing.
+        resolve_poisson_gain(2.0, 1000.0, 23.0)
+        assert len(fake.messages) == 1
+
+    def test_quiet_suppresses_the_message(self, monkeypatch):
+        fake = self.FakeStreamlit()
+        monkeypatch.setattr(pipeline_module, "st", fake)
+        resolve_poisson_gain(1.78, 0.0104, 2.1e-4, quiet=True)
+        assert fake.messages == []
 
 
 class TestCosmicRayMasking:
