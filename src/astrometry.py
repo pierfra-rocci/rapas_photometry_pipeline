@@ -273,12 +273,18 @@ def _try_source_detection_improved(
     parameter_grid = [
         # (FWHM, threshold, description)
         (3.5, 3.0, "Standard parameters"),
+        (4.5, 3.0, "Very Very large FWHM, 3 sigma"),
+        (4.0, 3.0, "Very large FWHM, 3 sigma"),
         (3.0, 3.0, "Large FWHM, 3 sigma"),
         (2.5, 3.0, "Small FWHM, 3 sigma"),
-        (3.5, 2.0, "Lower threshold (2 sigma)"),
+        (4.5, 2.0, "Very Very large FWHM, 2 sigma"),
+        (4.0, 2.0, "Very large FWHM, 2 sigma"),
+        (3.5, 2.0, "Standard parameters (2 sigma)"),
         (3.0, 2.0, "Large FWHM, 2 sigma"),
         (2.5, 2.0, "Small FWHM, 2 sigma"),
-        (3.5, 1.0, "Deep detection (1 sigma)"),
+        (4.5, 1.0, "Very Very large FWHM, 1 sigma"),
+        (4.0, 1.0, "Very large FWHM, 1 sigma"),
+        (3.5, 1.0, "Standard parameters (1 sigma)"),
         (3.0, 1.0, "Large FWHM, 1 sigma"),
         (2.5, 1.0, "Small FWHM, 1 sigma"),
         (2.0, 1.0, "Smaller FWHM, 1 sigma"),
@@ -308,7 +314,7 @@ def _try_source_detection_improved(
                 thresh=thresh,
                 aper=1.5 * fwhm_est,
                 gain=gain,
-                edge=10,
+                edge=15,
                 bg_size=64,
             )
 
@@ -324,7 +330,7 @@ def _try_source_detection_improved(
                 sources,
                 image,
                 fwhm=fwhm_est,
-                aper=1,
+                aper=1.1,
                 bkgann=[2.0, 3.0],
                 verbose=False,
                 sn=_measure_sn_for_threshold(thresh),

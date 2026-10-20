@@ -1,5 +1,6 @@
 import os
 import re
+import warnings
 import streamlit as st
 
 import numpy as np
@@ -71,6 +72,19 @@ MEDIAN_STD_ERROR_FACTOR = float(np.sqrt(np.pi / 2.0))
 # (see ``DRIVER_GAIN_INSTRUMENT_PATTERNS``) rather than relying on a range that
 # would also reject legitimate large gains.
 GAIN_PLAUSIBLE_RANGE = (0.02, 100.0)
+# The Poisson term ``data / gain`` of the per-pixel variance is only meaningful
+# when the data are counts and the gain is expressed in those same units. A
+# rescaled frame (a normalised float stack with a sky level of ~1e-2, for
+# example) breaks that: with a genuine e-/ADU gain the Poisson term at the sky
+# then exceeds the measured sky variance by orders of magnitude, so the error map
+# has nothing to do with the real noise. The PSF step is hit hardest, because
+# the inflated uncertainties down-weight the star cores enough that the ePSF
+# fits return negative fluxes. The Poisson variance at the sky level may not
+# exceed the measured background variance by more than this factor; beyond it
+# the gain is re-derived from the frame's own scale (see
+# ``resolve_poisson_gain``). The margin is deliberately loose, so that real data
+# in matching units (typically within a factor of a few) are never rescaled.
+POISSON_SKY_VARIANCE_TOLERANCE = 10.0
 # A cosmic-ray mask covering more than this fraction of a frame means the noise
 # model does not describe the data (real CR rates are < 1%), so the mask is
 # rejected instead of removing a large part of the science image.
@@ -435,6 +449,156 @@ def resolve_effective_gain(header, image_data, quiet=False):
             "the detector gain in the parameters to improve the errors of bright sources."
         )
     return 1.0
+
+
+def _robust_level(values):
+    """Return the NaN median of ``values`` as a finite float, or None."""
+    if values is None:
+        return None
+    try:
+        arr = np.asarray(values, dtype=float)
+    except (TypeError, ValueError):
+        return None
+    if arr.size == 0:
+        return None
+    with warnings.catch_warnings():
+        # An all-NaN slice (a fully masked background model) is a normal input
+        # here; it is reported by returning None, not by a warning.
+        warnings.simplefilter("ignore", RuntimeWarning)
+        level = float(np.nanmedian(arr))
+    return level if np.isfinite(level) else None
+
+
+def resolve_poisson_gain(
+    gain,
+    background_level=None,
+    background_rms=None,
+    quiet=False,
+):
+    """Return the gain to use for the Poisson noise term of the error map.
+
+    ``photutils.calc_total_error`` builds the per-pixel variance as
+    ``background_rms**2 + data / gain``. The second term is only meaningful
+    when ``data`` are countable units (ADU or electrons) **and** ``gain`` is
+    expressed in those same units. Frames that have been rescaled break that
+    assumption: a normalised float stack with a sky level of ~1e-2 and a
+    genuine e-/ADU gain gets a Poisson term that is orders of magnitude larger
+    than the measured sky variance, i.e. an error map that says nothing about
+    the real noise. The PSF step is hit hardest, because photutils weights the
+    ePSF-to-star fits by ``1 / error**2``: the star cores then carry ~1e-4 of
+    the weight of the sky pixels and the fitted fluxes come back negative,
+    which inverts the ePSF and aborts the PSF photometry.
+
+    The declared ``gain`` is kept when it is consistent with the frame, i.e.
+    when the Poisson variance it predicts at the sky level stays within
+    ``POISSON_SKY_VARIANCE_TOLERANCE`` times the measured background variance.
+    Otherwise the gain is re-derived from the frame's own scale. Since the sky
+    Poisson variance cannot exceed the *total* sky variance, the true gain in
+    the data's units satisfies ``gain >= sky / rms**2``; using that lower bound
+    gives the largest Poisson term the frame allows, which is conservative (it
+    never understates the noise) and correct to within a factor of ~sqrt(2) at
+    the sky itself.
+
+    Parameters
+    ----------
+    gain : float or None
+        Effective gain (e-/data unit) returned by ``resolve_effective_gain``.
+    background_level : float, array_like or None, optional
+        Sky level of the frame, e.g. the background model. Arrays are reduced
+        with their NaN median.
+    background_rms : float, array_like or None, optional
+        Per-pixel background RMS. Arrays are reduced with their NaN median.
+    quiet : bool, optional
+        Suppress the user-facing message shown when the gain is rescaled.
+
+    Returns
+    -------
+    float or None
+        Gain to hand to ``calc_total_error``. ``None`` means the Poisson term
+        must be dropped (the error is then the background RMS alone); that is
+        returned when no usable gain is available.
+    """
+    try:
+        gain_value = float(gain) if gain is not None else None
+    except (TypeError, ValueError):
+        gain_value = None
+    if gain_value is None or not np.isfinite(gain_value) or gain_value <= 0:
+        return None
+
+    sky = _robust_level(background_level)
+    rms = _robust_level(background_rms)
+    if sky is None or rms is None or rms <= 0 or sky <= 0:
+        # No usable sky statistics (e.g. an already background-subtracted
+        # frame): the frame cannot constrain the scale of the gain, so the
+        # declared value is kept unchanged.
+        return gain_value
+
+    sky_poisson_variance = sky / gain_value
+    if sky_poisson_variance <= POISSON_SKY_VARIANCE_TOLERANCE * rms**2:
+        return gain_value
+
+    scale_gain = sky / rms**2
+    if not np.isfinite(scale_gain) or scale_gain <= 0:
+        return gain_value
+
+    if not quiet:
+        ratio = sky_poisson_variance / rms**2
+        st.info(
+            f"The effective gain ({gain_value:.3g} e-/data unit) does not "
+            "match the units of this frame: it implies a Poisson variance at "
+            f"the sky level {ratio:.1e} times the measured background "
+            f"variance. Using the background-consistent gain "
+            f"{scale_gain:.3g} for the Poisson term instead, so the error map "
+            "follows this frame's scale (supply the gain in the data's units, "
+            "or a frame in counts, to pin it down)."
+        )
+    return float(scale_gain)
+
+
+def compute_error_map(
+    image_sub,
+    background_rms,
+    gain,
+    background_level=None,
+    quiet=False,
+):
+    """Build the per-pixel 1-sigma error map, scale-aware in its Poisson term.
+
+    Thin wrapper around ``photutils.calc_total_error`` that first makes the
+    gain consistent with the units of the data (see ``resolve_poisson_gain``).
+    When the Poisson term cannot be trusted the map falls back to the
+    background RMS alone, which is the correct background-limited error.
+
+    Parameters
+    ----------
+    image_sub : numpy.ndarray
+        Background-subtracted image (the data whose counts feed the Poisson
+        term).
+    background_rms : float or numpy.ndarray
+        Per-pixel background RMS, broadcast to the shape of ``image_sub``.
+    gain : float or None
+        Effective gain (e-/data unit) from ``resolve_effective_gain``.
+    background_level : float, array_like or None, optional
+        Sky level of the frame, used to check the scale of ``gain``.
+    quiet : bool, optional
+        Suppress the user-facing message shown when the gain is rescaled.
+
+    Returns
+    -------
+    numpy.ndarray
+        Per-pixel 1-sigma uncertainty, float64, same shape as ``image_sub``.
+    """
+    data = np.asarray(image_sub, dtype=np.float64)
+    rms_map = np.asarray(background_rms, dtype=np.float64)
+    if rms_map.shape != data.shape:
+        rms_map = np.broadcast_to(rms_map, data.shape).astype(np.float64)
+    else:
+        rms_map = rms_map.astype(np.float64, copy=True)
+
+    poisson_gain = resolve_poisson_gain(gain, background_level, rms_map, quiet=quiet)
+    if poisson_gain is None:
+        return rms_map
+    return calc_total_error(data, rms_map, effective_gain=np.float64(poisson_gain))
 
 
 def fit_color_term_correction(
@@ -1606,16 +1770,14 @@ def detection_and_photometry(
 
     show_subtracted_image(image_sub)
 
-    # Ensure bkg_error is also float64
-    bkg_error = np.full_like(
-        image_sub, bkg.background_rms.astype(np.float64), dtype=np.float64
-    )
-
-    # Convert to float64 to ensure compatibility with calc_total_error
-    total_error = calc_total_error(
-        image_sub.astype(np.float64),
-        bkg_error.astype(np.float64),
-        effective_gain=np.float64(camera_gain),
+    # Per-pixel error map. The Poisson term is only meaningful when the frame is
+    # in countable units; ``compute_error_map`` keeps the resolved gain when it
+    # matches the frame's scale and re-derives it from the sky level and its RMS
+    # otherwise (see ``resolve_poisson_gain``). Without that guard a rescaled
+    # frame such as a normalised float stack gets core errors ~1e3 x the real
+    # sky noise, which makes every ePSF-to-star fit return a negative flux.
+    total_error = compute_error_map(
+        image_sub, bkg.background_rms, camera_gain, bkg.background
     )
 
     st.write("Estimating FWHM ...")

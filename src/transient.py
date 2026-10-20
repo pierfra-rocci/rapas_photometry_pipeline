@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 import astropy.units as u
 from astropy.wcs import WCS
+from astropy.convolution import Gaussian2DKernel, convolve
+from astropy.visualization import simple_norm
 import numpy as np
 import streamlit as st
 from astropy.table import Table
@@ -913,6 +915,78 @@ def plot_astrocolibri_cutouts(
     return saved_paths
 
 
+def _imshow(
+    image,
+    qq=None,
+    mask=None,
+    show_colorbar=False,
+    show_axis=False,
+    stretch="linear",
+    r0=None,
+    ax=None,
+    **kwargs,
+):
+    """Display a 2-D array with percentile-based intensity normalisation.
+
+    This mirrors :func:`stdpipe.plots.imshow`, but computes the intensity
+    limits itself and passes them to ``simple_norm`` as ``vmin``/``vmax``.
+
+    stdpipe forwards them as ``min_cut``/``max_cut``, which astropy deprecated
+    in 6.1 and removed in 8.0, so with recent astropy releases its version
+    raises ``TypeError: simple_norm() got an unexpected keyword argument
+    'min_cut'`` for any non-linear stretch (e.g. the ``asinh`` used for
+    cutout images).
+    """
+    if ax is None:
+        ax = plt.gca()
+
+    image = np.asarray(image, dtype=np.double)
+    good_idx = np.isfinite(image)
+    if mask is not None:
+        good_idx &= ~mask
+
+    vmin = kwargs.pop("vmin", None)
+    vmax = kwargs.pop("vmax", None)
+
+    if np.any(good_idx):
+        if r0 is not None and r0 > 0:
+            image = convolve(image, Gaussian2DKernel(r0), mask=mask, boundary="extend")
+
+        if qq is None and vmin is None and vmax is None:
+            qq = [0.5, 99.5]
+
+        if qq is not None:
+            vmin, vmax = np.percentile(image[good_idx], qq)
+
+        if "interpolation" not in kwargs:
+            kwargs["interpolation"] = (
+                "nearest"
+                if image.shape[0] < 300 and image.shape[1] < 300
+                else "bicubic"
+            )
+
+        if stretch and stretch != "linear":
+            kwargs["norm"] = simple_norm(image, stretch, vmin=vmin, vmax=vmax, power=2)
+        else:
+            kwargs["vmin"] = vmin
+            kwargs["vmax"] = vmax
+
+    img = ax.imshow(image, **kwargs)
+    if show_axis:
+        ax.set_axis_on()
+    else:
+        ax.set_axis_off()
+
+    if show_colorbar:
+        plots.colorbar(img, ax=ax)
+    else:
+        clim = img.get_clim()
+        if clim[0] == clim[1]:
+            img.set_clim(clim[0] - 0.1, clim[1] + 0.1)
+
+    return img
+
+
 def plot_cutout(
     cutout,
     planes=["image", "template"],
@@ -954,7 +1028,7 @@ def plot_cutout(
     :param show_title: Show title over cutout. Defaults to True.
     :param title: The title to show above the cutouts, optional. If not provided, the title will be constructed from various pieces of cutout metadata, plus the contents of `additoonal_title` field, if provided
     :param additional_title: Additional text to append to automatically generated title of the cutout figure.
-    :param \**kwargs: All additional parameters will be directly passed to :func:`stdpipe.plots.imshow` calls on individual images
+    :param \**kwargs: All additional parameters will be directly passed to :func:`_imshow` calls on individual images
 
     """
     curplot = 1
@@ -975,7 +1049,7 @@ def plot_cutout(
                 ax = fig.add_subplot(1, nplots, curplot)
             curplot += 1
 
-            # Set up parameters for stdpipe.plots.imshow
+            # Set up parameters for _imshow
             params = {
                 "stretch": "asinh" if name in ["image", "template"] else "linear",
                 "r0": r0 if name in ["image", "template"] else None,
@@ -993,8 +1067,8 @@ def plot_cutout(
             # Update with any additional user kwargs
             params.update(kwargs)
 
-            # Use stdpipe's imshow for proper scaling
-            plots.imshow(cutout[name], ax=ax, **params)
+            # Percentile-based, stretch-aware display (astropy-compatible)
+            _imshow(cutout[name], ax=ax, **params)
             ax.set_title(name.upper())
 
             # Mark overlays
@@ -1225,13 +1299,13 @@ def guess_catalogue_mag_columns(fname, cat, augmented_only=False):
         "r": ["r", "R", "rmag"],
         "i": ["i", "I", "imag"],
         "z": ["z"],
-        "U": ["U", "u", "gmag"],
+        "U": ["U", "u"],
         "B": ["g", "gmag", "BPmag"],
-        "V": ["g", "r", "gmag", "rmag"],
+        "V": ["g", "G", "gmag"],
         "R": ["r", "rmag", "RPmag"],
-        "I": ["i", "imag", "RPmag"],
+        "I": ["i", "imag"],
         "BP": ["g", "gmag", "BPmag"],
-        "G": ["g", "r", "gmag", "rmag"],
+        "G": ["G", "g", "gmag"],
         "RP": ["r", "rmag", "RPmag"],
     }
 
@@ -1255,9 +1329,9 @@ def guess_catalogue_mag_columns(fname, cat, augmented_only=False):
     ):
         if fname in ["B", "U", "u"]:
             cat_col_mag = "phot_bp_mean_mag"  # BP is blue photometer
-        elif fname in ["I", "i", "z"]:
+        elif fname in ["r", "R", "I", "i", "z"]:
             cat_col_mag = "phot_rp_mean_mag"  # RP is red photometer
-        elif fname in ["g", "G", "V", "r", "R"]:
+        elif fname in ["g", "G", "V"]:
             cat_col_mag = "phot_g_mean_mag"  # G band (green) matches optical g,r
         elif fname == "BP":
             cat_col_mag = "phot_bp_mean_mag"
