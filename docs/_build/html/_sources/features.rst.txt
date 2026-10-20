@@ -200,6 +200,14 @@ Source Detection & Photometry
      conventional ``GAIN`` is accepted only when it is inside 0.02-100 e-/ADU
      and the instrument is not a driver-gain camera (QHY/ZWO), whose ``GAIN``
      is an abstract driver setting rather than a conversion factor
+   - The gain is validated against the frame itself (``resolve_poisson_gain``):
+     it is kept when the Poisson variance it predicts at the sky level stays
+     within ``POISSON_SKY_VARIANCE_TOLERANCE`` (10x) of the measured background
+     variance, and otherwise replaced by ``sky level / RMS**2``, the largest
+     Poisson term the frame allows. A rescaled frame such as a normalised float
+     stack therefore never gets a Poisson term that dwarfs its real noise (which
+     used to invert the ePSF and drop PSF photometry); ``compute_error_map``
+     falls back to the background RMS map alone when no gain is usable
    - Local-background uncertainty propagation using the standard error of the
      median annulus (``ApertureStats.median_err``):
      ``σ_flux² = σ_aperture² + σ_total_bkg² + σ_centroid²``

@@ -319,6 +319,14 @@ estimated empirically from the frame’s variance-vs-signal statistics
 conventional <code class="docutils literal notranslate"><span class="pre">GAIN</span></code> is accepted only when it is inside 0.02-100 e-/ADU
 and the instrument is not a driver-gain camera (QHY/ZWO), whose <code class="docutils literal notranslate"><span class="pre">GAIN</span></code>
 is an abstract driver setting rather than a conversion factor</p></li>
+<li><p>The gain is validated against the frame itself (<code class="docutils literal notranslate"><span class="pre">resolve_poisson_gain</span></code>):
+it is kept when the Poisson variance it predicts at the sky level stays
+within <code class="docutils literal notranslate"><span class="pre">POISSON_SKY_VARIANCE_TOLERANCE</span></code> (10x) of the measured background
+variance, and otherwise replaced by <code class="docutils literal notranslate"><span class="pre">sky</span> <span class="pre">level</span> <span class="pre">/</span> <span class="pre">RMS**2</span></code>, the largest
+Poisson term the frame allows. A rescaled frame such as a normalised float
+stack therefore never gets a Poisson term that dwarfs its real noise (which
+used to invert the ePSF and drop PSF photometry); <code class="docutils literal notranslate"><span class="pre">compute_error_map</span></code>
+falls back to the background RMS map alone when no gain is usable</p></li>
 <li><p>Local-background uncertainty propagation using the standard error of the
 median annulus (<code class="docutils literal notranslate"><span class="pre">ApertureStats.median_err</span></code>):
 <code class="docutils literal notranslate"><span class="pre">σ_flux²</span> <span class="pre">=</span> <span class="pre">σ_aperture²</span> <span class="pre">+</span> <span class="pre">σ_total_bkg²</span> <span class="pre">+</span> <span class="pre">σ_centroid²</span></code></p></li>

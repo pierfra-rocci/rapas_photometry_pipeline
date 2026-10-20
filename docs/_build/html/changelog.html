@@ -216,6 +216,32 @@ filter: 3 attempts on network errors and HTTP 429/5xx, <code class="docutils lit
 epoch range check, HTTP error reporting, mid-exposure epoch and a per-object
 match tolerance of 10 to 30 arcsec derived from the ephemeris <code class="docutils literal notranslate"><span class="pre">Err</span></code>.</p></li>
 </ul>
+<p><strong>Scale-aware photometric error model</strong></p>
+<ul class="simple">
+<li><p><strong>The Poisson term now follows the units of the frame.</strong>
+<code class="docutils literal notranslate"><span class="pre">calc_total_error</span></code> adds <code class="docutils literal notranslate"><span class="pre">data</span> <span class="pre">/</span> <span class="pre">gain</span></code> to the pixel variance, which is
+only meaningful when the data are counts in the same units as the gain. A
+rescaled frame (a normalised float stack with a sky level of about 1e-2, for
+example) violates that: with a genuine e-/ADU gain the Poisson term at the
+sky level exceeded the measured sky variance by a factor of 1e5, so the
+error map said nothing about the real noise and the aperture S/N was
+underestimated by one to two orders of magnitude. The PSF step was hit
+hardest, because photutils weights the ePSF-to-star fits by
+<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">/</span> <span class="pre">error**2</span></code>: the star cores ended up ~1e-4 of the weight of the sky
+pixels, 22 of 26 fitted fluxes came back negative, the next ePSF was
+therefore inverted and <code class="docutils literal notranslate"><span class="pre">EPSFBuilder</span></code> aborted with
+<code class="docutils literal notranslate"><span class="pre">Cannot</span> <span class="pre">normalize</span> <span class="pre">ePSF:</span> <span class="pre">the</span> <span class="pre">data</span> <span class="pre">sum</span> <span class="pre">(...)</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">finite</span> <span class="pre">and</span> <span class="pre">positive</span></code>,
+dropping PSF photometry for the whole frame.</p></li>
+<li><p><strong>Resolution.</strong> <code class="docutils literal notranslate"><span class="pre">resolve_poisson_gain()</span></code> keeps the resolved gain when the
+Poisson variance it predicts at the sky level stays within
+<code class="docutils literal notranslate"><span class="pre">POISSON_SKY_VARIANCE_TOLERANCE</span></code> (10x) of the measured background
+variance, and otherwise replaces it with the largest value the frame allows,
+<code class="docutils literal notranslate"><span class="pre">gain</span> <span class="pre">=</span> <span class="pre">sky</span> <span class="pre">level</span> <span class="pre">/</span> <span class="pre">background_rms**2</span></code>. <code class="docutils literal notranslate"><span class="pre">compute_error_map()</span></code> builds the
+per-pixel error from that gain, falling back to the background RMS map alone
+when no usable gain exists. On the real normalised stack the core error
+dropped from ~1.4e3x the sky RMS (larger than the data itself) to a few x
+the sky RMS, and PSF photometry now runs.</p></li>
+</ul>
 <p><strong>PSF, Transients and Messages</strong></p>
 <ul class="simple">
 <li><p><strong>PSF star minimum lowered from 15 to 10.</strong> A warning about possibly poor

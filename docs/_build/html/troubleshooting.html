@@ -373,6 +373,35 @@ gain-vs-e-/ADU chart.</p></li>
 </ul>
 </li>
 </ul>
+<p><strong>PSF photometry is skipped, or the log says “Cannot normalize ePSF”</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: <code class="docutils literal notranslate"><span class="pre">EPSFBuilder</span></code> stopped with <code class="docutils literal notranslate"><span class="pre">Cannot</span> <span class="pre">normalize</span> <span class="pre">ePSF:</span> <span class="pre">the</span> <span class="pre">data</span>
+<span class="pre">sum</span> <span class="pre">(...)</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">finite</span> <span class="pre">and</span> <span class="pre">positive</span></code> and the run continued with aperture
+photometry only. This comes from the ePSF-to-star fits: photutils weights
+them by <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">/</span> <span class="pre">error²</span></code>, so an error map that does not describe the frame
+down-weights the star cores, the fitted fluxes come back negative, and the
+next ePSF is built inverted. The failure is in the error model, not in the
+ePSF itself (the first iteration is usually fine). On the frame this was
+reported for, a normalised float stack (sky ~0.01, no <code class="docutils literal notranslate"><span class="pre">BUNIT</span></code>/<code class="docutils literal notranslate"><span class="pre">GAIN</span></code>)
+had been given a genuine e-/ADU gain, which made the Poisson term ~1e5
+times the measured sky variance.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ul>
+<li><p>Update RPP: <code class="docutils literal notranslate"><span class="pre">resolve_poisson_gain</span></code> now detects that the gain cannot
+describe the data’s units and re-derives it from the sky level and its
+RMS (<code class="docutils literal notranslate"><span class="pre">gain</span> <span class="pre">=</span> <span class="pre">sky</span> <span class="pre">level</span> <span class="pre">/</span> <span class="pre">RMS²</span></code>), reporting it with the message
+“Using the background-consistent gain …”. The same repaired map also
+restores the aperture S/N and magnitude errors of such frames.</p></li>
+<li><p>For an exact error model, supply the gain in the <em>units of the data</em>:
+a frame in counts (ADU/electrons) with <code class="docutils literal notranslate"><span class="pre">EGAIN</span></code>/<code class="docutils literal notranslate"><span class="pre">CCDGAIN</span></code>/<code class="docutils literal notranslate"><span class="pre">CVF</span></code> in
+the header, or the matching <em>Detector Gain</em> value.</p></li>
+<li><p>A frame that is already sky-subtracted gives no sky level to check
+against, so set the gain explicitly or analyse a frame in counts.</p></li>
+<li><p>If PSF photometry is still skipped, check the PSF star count in the
+log: 10 stars is the hard minimum and 25 the quality target.</p></li>
+</ul>
+</li>
+</ul>
 </section>
 <section id="catalog-query-issues-simbad-skybot-etc">
 <h2>Catalog Query Issues (SIMBAD, SkyBoT, etc.)<a class="headerlink" href="#catalog-query-issues-simbad-skybot-etc" title="Link to this heading"></a></h2>
