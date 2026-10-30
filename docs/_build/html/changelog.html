@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Changelog &mdash; RAPAS Photometry Pipeline (RPP) v1.9.0 Documentation</title>
+  <title>Changelog &mdash; RAPAS Photometry Pipeline (RPP) v1.9.1 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=c4cb232b"></script>
+      <script src="_static/documentation_options.js?v=60b3a732"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -54,6 +54,7 @@
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 <li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Changelog</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#version-1-9-1">Version 1.9.1</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#version-1-9-0">Version 1.9.0</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#version-1-8-7">Version 1.8.7</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#version-1-8-6">Version 1.8.6</a></li>
@@ -105,6 +106,48 @@
   <section id="changelog">
 <h1>Changelog<a class="headerlink" href="#changelog" title="Link to this heading"></a></h1>
 <p>This document records all notable changes to RAPAS Photometry Pipeline.</p>
+<section id="version-1-9-1">
+<h2>Version 1.9.1<a class="headerlink" href="#version-1-9-1" title="Link to this heading"></a></h2>
+<p><strong>Released: October 30, 2026</strong></p>
+<p><strong>Aladin Lite diagnostics</strong></p>
+<ul class="simple">
+<li><p><strong>The widget says why the sky image is missing.</strong> A red line just below the
+viewer names the cause, and the same message is logged to the browser
+console, instead of leaving an empty viewer with no explanation.</p></li>
+<li><p><strong>WebGL2 probe.</strong> Aladin Lite v3 paints the sky with WebGL2. When
+<code class="docutils literal notranslate"><span class="pre">canvas.getContext('webgl2')</span></code> returns nothing (hardware acceleration off,
+blocklisted GPU driver, <code class="docutils literal notranslate"><span class="pre">webgl.disabled</span></code>), the widget states it and points
+at <code class="docutils literal notranslate"><span class="pre">webgl.force-enabled</span></code> / another browser rather than drawing nothing.</p></li>
+<li><p><strong>Download failure of ``aladin.js``.</strong> The script tag carries <code class="docutils literal notranslate"><span class="pre">onerror</span></code>,
+so a blocked download from <code class="docutils literal notranslate"><span class="pre">aladin.cds.unistra.fr</span></code> (proxy, firewall,
+Firefox HTTPS-Only mode, offline) is reported explicitly.</p></li>
+<li><p><strong>Effective version in the console.</strong> Initialisation logs
+<code class="docutils literal notranslate"><span class="pre">[RPP</span> <span class="pre">Aladin]</span> <span class="pre">version</span> <span class="pre">...</span></code>; the script is fetched from
+<code class="docutils literal notranslate"><span class="pre">.../api/v3/latest/aladin.js</span></code>, which follows the CDS releases.</p></li>
+</ul>
+<p><strong>Aladin fallback survey</strong></p>
+<ul class="simple">
+<li><p><strong>Second HiPS when the base layer fails.</strong> New <code class="docutils literal notranslate"><span class="pre">fallback_survey</span></code> argument
+of <code class="docutils literal notranslate"><span class="pre">display_catalog_in_aladin()</span></code> (<code class="docutils literal notranslate"><span class="pre">CDS/P/DSS2/red</span></code> by default). Aladin
+Lite exposes no image-layer error event, so the widget probes
+<code class="docutils literal notranslate"><span class="pre">https://alasky.cds.unistra.fr/&lt;survey&gt;/properties</span></code> with a 12 second
+timeout and, when it cannot be read, replaces the base layer through
+<code class="docutils literal notranslate"><span class="pre">aladin.setBaseImageLayer()</span></code>.</p></li>
+<li><p><strong>Reported, not silent.</strong> The switch is shown under the viewer and mirrored
+in the console; when the fallback is unreachable too, the message says so.
+An empty <code class="docutils literal notranslate"><span class="pre">fallback_survey</span></code> disables the fallback, and a survey given as a
+full URL is not probed.</p></li>
+</ul>
+<p><strong>Aladin documentation and tests</strong></p>
+<ul class="simple">
+<li><p>New “Aladin Lite Viewer Issues” section in <code class="docutils literal notranslate"><span class="pre">docs/troubleshooting.rst</span></code>
+covering every message above and the fallback behaviour.</p></li>
+<li><p>New tests <code class="docutils literal notranslate"><span class="pre">test_aladin_reports_missing_webgl2</span></code>,
+<code class="docutils literal notranslate"><span class="pre">test_aladin_reports_failed_aladin_script_download</span></code> and
+<code class="docutils literal notranslate"><span class="pre">test_aladin_switches_to_fallback_survey</span></code> in
+<code class="docutils literal notranslate"><span class="pre">tests/test_network_resilience.py</span></code>.</p></li>
+</ul>
+</section>
 <section id="version-1-9-0">
 <h2>Version 1.9.0<a class="headerlink" href="#version-1-9-0" title="Link to this heading"></a></h2>
 <p><strong>Released: October 15, 2026</strong></p>

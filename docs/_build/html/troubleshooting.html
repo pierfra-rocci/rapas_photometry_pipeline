@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Troubleshooting &mdash; RAPAS Photometry Pipeline (RPP) v1.9.0 Documentation</title>
+  <title>Troubleshooting &mdash; RAPAS Photometry Pipeline (RPP) v1.9.1 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=c4cb232b"></script>
+      <script src="_static/documentation_options.js?v=60b3a732"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -59,6 +59,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#image-loading-processing-issues">Image Loading &amp; Processing Issues</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#catalog-query-issues-simbad-skybot-etc">Catalog Query Issues (SIMBAD, SkyBoT, etc.)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#database-and-migration-issues">Database and Migration Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#aladin-lite-viewer-issues">Aladin Lite Viewer Issues</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
@@ -500,6 +501,56 @@ and start the analysis again.</p></li>
 <ul class="simple">
 <li><p><strong>Problem</strong>: After typing the password, the value is not taken into account.</p></li>
 <li><p><strong>Solution</strong>: Press Enter in the password field before clicking <strong>Login</strong>.</p></li>
+</ul>
+</section>
+<section id="aladin-lite-viewer-issues">
+<h2>Aladin Lite Viewer Issues<a class="headerlink" href="#aladin-lite-viewer-issues" title="Link to this heading"></a></h2>
+<p><strong>The Aladin viewer stays empty although the image layer is listed</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: The widget appears (layer and zoom controls) but the sky image
+is never drawn, and the application log reports nothing.</p></li>
+<li><p><strong>Solution</strong>: The widget now prints the reason on a red line just below the
+viewer. Read that line first:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">This</span> <span class="pre">browser</span> <span class="pre">provides</span> <span class="pre">no</span> <span class="pre">WebGL2</span> <span class="pre">context</span> <span class="pre">...</span></code>: Aladin Lite v3 paints
+the sky with WebGL2. Enable hardware acceleration; on Firefox set
+<code class="docutils literal notranslate"><span class="pre">webgl.force-enabled</span></code> to <code class="docutils literal notranslate"><span class="pre">true</span></code> in <code class="docutils literal notranslate"><span class="pre">about:config</span></code> and restart the
+browser; or use Chrome/Edge. A blocklisted or outdated GPU driver has
+the same effect.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Aladin</span> <span class="pre">Lite</span> <span class="pre">could</span> <span class="pre">not</span> <span class="pre">be</span> <span class="pre">downloaded</span> <span class="pre">from</span> <span class="pre">aladin.cds.unistra.fr</span> <span class="pre">...</span></code>:
+the network cannot reach CDS (proxy, firewall, Firefox HTTPS-Only mode,
+or no connection).</p></li>
+<li><p>No red line and still a black view: open the browser console (F12) and
+look for failed requests to <code class="docutils literal notranslate"><span class="pre">alasky.cds.unistra.fr</span></code>, which serves the
+HiPS tiles. The analysis itself and the exported files are unaffected.</p></li>
+<li><p>The console also logs <code class="docutils literal notranslate"><span class="pre">[RPP</span> <span class="pre">Aladin]</span> <span class="pre">version</span> <span class="pre">...</span></code> with the Aladin Lite
+release actually loaded. The script is fetched from
+<code class="docutils literal notranslate"><span class="pre">.../api/v3/latest/aladin.js</span></code>, which follows the CDS releases, so pin
+a numbered version inside <code class="docutils literal notranslate"><span class="pre">display_catalog_in_aladin</span></code> when a release
+regression is suspected.</p></li>
+</ul>
+</li>
+</ul>
+<p><strong>Aladin falls back to a second survey, or shows none at all</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: The requested HiPS (<code class="docutils literal notranslate"><span class="pre">CDS/P/DSS2/color</span></code> by default) cannot be
+fetched or is too slow, so the view stays empty.</p></li>
+<li><p><strong>Solution</strong>: The widget probes the HiPS <code class="docutils literal notranslate"><span class="pre">properties</span></code> document
+(<code class="docutils literal notranslate"><span class="pre">https://alasky.cds.unistra.fr/&lt;survey&gt;/properties</span></code>) with a 12 second
+timeout and, when it cannot be read, switches the base layer to
+<code class="docutils literal notranslate"><span class="pre">CDS/P/DSS2/red</span></code>:</p>
+<ul>
+<li><p>A warning is shown under the viewer
+(<code class="docutils literal notranslate"><span class="pre">Survey</span> <span class="pre">&lt;survey&gt;</span> <span class="pre">could</span> <span class="pre">not</span> <span class="pre">be</span> <span class="pre">loaded;</span> <span class="pre">showing</span> <span class="pre">&lt;fallback&gt;</span> <span class="pre">instead.</span></code>)
+and mirrored in the console.</p></li>
+<li><p>When the fallback is unreachable too, the message says so instead of
+leaving a blank canvas.</p></li>
+<li><p>Change the second survey with the <code class="docutils literal notranslate"><span class="pre">fallback_survey</span></code> argument of
+<code class="docutils literal notranslate"><span class="pre">display_catalog_in_aladin</span></code>, for example
+<code class="docutils literal notranslate"><span class="pre">fallback_survey=&quot;CDS/P/PanSTARRS/DR1/color-i-r-g&quot;</span></code>. An empty string
+disables the fallback, and a survey passed as a full URL is not probed.</p></li>
+</ul>
+</li>
 </ul>
 </section>
 </section>
