@@ -705,6 +705,77 @@ def test_aladin_flags_astrocolibri_matches(monkeypatch):
     assert "shape: 'square'" in html
 
 
+def test_aladin_switches_to_fallback_survey(monkeypatch):
+    """A second HiPS must replace the base survey when it cannot be loaded."""
+    table = pd.DataFrame({"ra": [150.0], "dec": [2.0]})
+    rendered_html = []
+    monkeypatch.setattr("src.tools_app.st.spinner", lambda *_args: nullcontext())
+    monkeypatch.setattr(
+        "src.tools_app.st.iframe",
+        lambda html, **_kwargs: rendered_html.append(html),
+    )
+
+    display_catalog_in_aladin(
+        table,
+        ra_center=150.0,
+        dec_center=2.0,
+        fallback_survey="CDS/P/PanSTARRS/DR1/color-i-r-g",
+    )
+
+    html = rendered_html[0]
+    assert "CDS/P/PanSTARRS/DR1/color-i-r-g" in html
+    assert "setBaseImageLayer" in html
+    assert "/properties" in html
+
+
+def _render_aladin_widget(monkeypatch, **kwargs):
+    """Render the Aladin widget HTML with Streamlit stubbed out."""
+    table = pd.DataFrame({"ra": [150.0], "dec": [2.0]})
+    rendered_html = []
+    monkeypatch.setattr("src.tools_app.st.spinner", lambda *_args: nullcontext())
+    monkeypatch.setattr(
+        "src.tools_app.st.iframe",
+        lambda html, **_kwargs: rendered_html.append(html),
+    )
+    display_catalog_in_aladin(table, ra_center=150.0, dec_center=2.0, **kwargs)
+    return rendered_html[0]
+
+
+def test_aladin_reports_missing_webgl2(monkeypatch):
+    """A missing WebGL2 context must be reported instead of a blank viewer."""
+    html = _render_aladin_widget(monkeypatch)
+
+    assert 'id="aladin-lite-status"' in html
+    assert "function aladinShowProblem(message)" in html
+    assert "box.textContent = message" in html
+    assert "provides no WebGL2 context" in html
+    assert "webgl.force-enabled" in html
+
+    # The status box and the helper exist before the probe runs, and the probe
+    # runs before Aladin is asked to draw anything.
+    status_index = html.index('id="aladin-lite-status"')
+    helper_index = html.index("function aladinShowProblem(message)")
+    probe_index = html.index("document.createElement('canvas').getContext('webgl2')")
+    assert status_index < probe_index
+    assert helper_index < html.index("A.init.then")
+
+
+def test_aladin_reports_failed_aladin_script_download(monkeypatch):
+    """A blocked aladin.js download must surface as a message, not silence."""
+    html = _render_aladin_widget(monkeypatch)
+
+    script_tag = re.search(r'<script[^>]*src="[^"]*aladin\.js"[^>]*>', html).group(0)
+    assert "onerror=" in script_tag
+    assert "aladinShowProblem(" in script_tag
+    assert "could not be downloaded from aladin.cds.unistra.fr" in script_tag
+
+    # The helper and the status box already exist when onerror can fire.
+    helper_index = html.index("function aladinShowProblem(message)")
+    status_index = html.index('id="aladin-lite-status"')
+    assert helper_index < html.index(script_tag)
+    assert status_index < html.index(script_tag)
+
+
 def test_skybot_cone_search_retries_transient_failures(monkeypatch):
     from src.utils import skybot_cone_search
 
