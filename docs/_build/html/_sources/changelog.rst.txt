@@ -3,6 +3,49 @@ Changelog
 
 This document records all notable changes to RAPAS Photometry Pipeline.
 
+Version 1.9.1
+-------------
+
+**Released: October 30, 2026**
+
+**Aladin Lite diagnostics**
+
+*   **The widget says why the sky image is missing.** A red line just below the
+    viewer names the cause, and the same message is logged to the browser
+    console, instead of leaving an empty viewer with no explanation.
+*   **WebGL2 probe.** Aladin Lite v3 paints the sky with WebGL2. When
+    ``canvas.getContext('webgl2')`` returns nothing (hardware acceleration off,
+    blocklisted GPU driver, ``webgl.disabled``), the widget states it and points
+    at ``webgl.force-enabled`` / another browser rather than drawing nothing.
+*   **Download failure of ``aladin.js``.** The script tag carries ``onerror``,
+    so a blocked download from ``aladin.cds.unistra.fr`` (proxy, firewall,
+    Firefox HTTPS-Only mode, offline) is reported explicitly.
+*   **Effective version in the console.** Initialisation logs
+    ``[RPP Aladin] version ...``; the script is fetched from
+    ``.../api/v3/latest/aladin.js``, which follows the CDS releases.
+
+**Aladin fallback survey**
+
+*   **Second HiPS when the base layer fails.** New ``fallback_survey`` argument
+    of ``display_catalog_in_aladin()`` (``CDS/P/DSS2/red`` by default). Aladin
+    Lite exposes no image-layer error event, so the widget probes
+    ``https://alasky.cds.unistra.fr/<survey>/properties`` with a 12 second
+    timeout and, when it cannot be read, replaces the base layer through
+    ``aladin.setBaseImageLayer()``.
+*   **Reported, not silent.** The switch is shown under the viewer and mirrored
+    in the console; when the fallback is unreachable too, the message says so.
+    An empty ``fallback_survey`` disables the fallback, and a survey given as a
+    full URL is not probed.
+
+**Aladin documentation and tests**
+
+*   New "Aladin Lite Viewer Issues" section in ``docs/troubleshooting.rst``
+    covering every message above and the fallback behaviour.
+*   New tests ``test_aladin_reports_missing_webgl2``,
+    ``test_aladin_reports_failed_aladin_script_download`` and
+    ``test_aladin_switches_to_fallback_survey`` in
+    ``tests/test_network_resilience.py``.
+
 Version 1.9.0
 -------------
 

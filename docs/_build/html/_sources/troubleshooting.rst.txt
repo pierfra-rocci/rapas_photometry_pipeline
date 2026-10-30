@@ -372,3 +372,49 @@ Database and Migration Issues
 
 *   **Problem**: After typing the password, the value is not taken into account.
 *   **Solution**: Press Enter in the password field before clicking **Login**.
+
+Aladin Lite Viewer Issues
+-------------------------
+
+**The Aladin viewer stays empty although the image layer is listed**
+
+*   **Problem**: The widget appears (layer and zoom controls) but the sky image
+    is never drawn, and the application log reports nothing.
+*   **Solution**: The widget now prints the reason on a red line just below the
+    viewer. Read that line first:
+
+    *   ``This browser provides no WebGL2 context ...``: Aladin Lite v3 paints
+        the sky with WebGL2. Enable hardware acceleration; on Firefox set
+        ``webgl.force-enabled`` to ``true`` in ``about:config`` and restart the
+        browser; or use Chrome/Edge. A blocklisted or outdated GPU driver has
+        the same effect.
+    *   ``Aladin Lite could not be downloaded from aladin.cds.unistra.fr ...``:
+        the network cannot reach CDS (proxy, firewall, Firefox HTTPS-Only mode,
+        or no connection).
+    *   No red line and still a black view: open the browser console (F12) and
+        look for failed requests to ``alasky.cds.unistra.fr``, which serves the
+        HiPS tiles. The analysis itself and the exported files are unaffected.
+    *   The console also logs ``[RPP Aladin] version ...`` with the Aladin Lite
+        release actually loaded. The script is fetched from
+        ``.../api/v3/latest/aladin.js``, which follows the CDS releases, so pin
+        a numbered version inside ``display_catalog_in_aladin`` when a release
+        regression is suspected.
+
+**Aladin falls back to a second survey, or shows none at all**
+
+*   **Problem**: The requested HiPS (``CDS/P/DSS2/color`` by default) cannot be
+    fetched or is too slow, so the view stays empty.
+*   **Solution**: The widget probes the HiPS ``properties`` document
+    (``https://alasky.cds.unistra.fr/<survey>/properties``) with a 12 second
+    timeout and, when it cannot be read, switches the base layer to
+    ``CDS/P/DSS2/red``:
+
+    *   A warning is shown under the viewer
+        (``Survey <survey> could not be loaded; showing <fallback> instead.``)
+        and mirrored in the console.
+    *   When the fallback is unreachable too, the message says so instead of
+        leaving a blank canvas.
+    *   Change the second survey with the ``fallback_survey`` argument of
+        ``display_catalog_in_aladin``, for example
+        ``fallback_survey="CDS/P/PanSTARRS/DR1/color-i-r-g"``. An empty string
+        disables the fallback, and a survey passed as a full URL is not probed.
