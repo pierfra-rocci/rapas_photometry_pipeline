@@ -373,6 +373,7 @@ def display_catalog_in_aladin(
     id_cols: list[str] = ["simbad_main_id", "aavso_Name"],
     fallback_id_prefix: str = "Source",
     survey: str = "CDS/P/DSS2/color",
+    fallback_survey: str = "CDS/P/DSS2/red",
     filter_band: str | None = None,
     transient_table: pd.DataFrame | None = None,
 ) -> None:
@@ -407,6 +408,10 @@ def display_catalog_in_aladin(
         Prefix to use for source names if no ID is found, default="Source"
     survey : str, optional
         The initial sky survey to display in Aladin Lite, default="CDS/P/DSS2/color"
+    fallback_survey : str, optional
+        Second HiPS switched to when the base survey cannot be loaded (its
+        ``properties`` document is unreachable, e.g. a blocked or overloaded
+        HiPS server), default="CDS/P/DSS2/red"
     transient_table : pandas.DataFrame, optional
         Transient candidates (``ra``/``dec`` and optionally ``id``/PSF
         magnitude); drawn as yellow stars in a dedicated overlay so they can be
@@ -626,8 +631,23 @@ def display_catalog_in_aladin(
 </head>
 <body>
     <div id="aladin-lite-div" style="width:100%;height:550px;"></div>
+    <div id="aladin-lite-status" style="padding:6px 8px; font:13px Arial,sans-serif; color:#8a1c1c;"></div>
+    <script type="text/javascript">
+        // Aladin Lite v3 fails silently in two frequent situations: the browser
+        // provides no WebGL2 context (WebGL disabled or GPU blocklisted, e.g. in
+        // Firefox) and aladin.js cannot be downloaded from CDS. Both leave an
+        // empty viewer with no visible error, so report them explicitly.
+        function aladinShowProblem(message) {{
+            let box = document.getElementById('aladin-lite-status');
+            if (box) {{ box.textContent = message; }}
+            console.error('[RPP Aladin] ' + message);
+        }}
+        if (!document.createElement('canvas').getContext('webgl2')) {{
+            aladinShowProblem('This browser provides no WebGL2 context, which Aladin Lite v3 needs to draw the sky image. Enable hardware acceleration / WebGL (Firefox: about:config -> webgl.force-enabled = true) or open the page in Chrome/Edge.');
+        }}
+    </script>
     <script type="text/javascript" src="https://code.jquery.com/jquery-1.12.1.min.js" charset="utf-8"></script>
-    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8"></script>
+    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8" onerror="aladinShowProblem('Aladin Lite could not be downloaded from aladin.cds.unistra.fr: this network cannot reach the CDS server (proxy, firewall or offline).')"></script>
     <script type="text/javascript">
         let aladin;
         A.init.then(() => {{
@@ -644,6 +664,73 @@ def display_catalog_in_aladin(
                     showGotoControl: true,
                     showSimbadPointerControl: true
                 }});
+
+                console.info(
+                    '[RPP Aladin] version ' +
+                    (typeof A.version !== 'undefined' ? A.version : 'unknown') +
+                    ', survey {survey}'
+                );
+
+                // Fall back to a second HiPS when the base survey cannot be
+                // loaded. Aladin Lite has no image-layer error event, so probe
+                // the HiPS `properties` document (the first thing Aladin needs)
+                // and swap the base layer if it is unreachable or too slow.
+                (function () {{
+                    const primary = '{survey}';
+                    const fallback = '{fallback_survey}';
+                    if (!fallback || fallback === primary || primary.indexOf('http') === 0) {{
+                        return;
+                    }}
+                    const propertiesUrl = function (id) {{
+                        return 'https://alasky.cds.unistra.fr/' +
+                            id.split('/').map(encodeURIComponent).join('/') +
+                            '/properties';
+                    }};
+                    const switchToFallback = function (broken) {{
+                        if (typeof aladin.setBaseImageLayer !== 'function') {{
+                            return;
+                        }}
+                        console.warn(
+                            '[RPP Aladin] survey ' + broken +
+                            ' could not be loaded, switching to ' + fallback
+                        );
+                        aladinShowProblem(
+                            'Survey ' + broken + ' could not be loaded; showing ' +
+                            fallback + ' instead.'
+                        );
+                        try {{
+                            aladin.setBaseImageLayer(fallback);
+                        }} catch (e) {{
+                            aladinShowProblem(
+                                'Could not load survey ' + broken +
+                                ' nor the fallback ' + fallback + ': ' + e
+                            );
+                        }}
+                    }};
+                    const probe = function (id, onFail) {{
+                        const controller = new AbortController();
+                        const timer = setTimeout(function () {{ controller.abort(); }}, 12000);
+                        fetch(propertiesUrl(id), {{ cache: 'no-store', signal: controller.signal }})
+                            .then(function (response) {{
+                                clearTimeout(timer);
+                                if (!response.ok) {{ onFail(); }}
+                            }})
+                            .catch(function () {{
+                                clearTimeout(timer);
+                                onFail();
+                            }});
+                    }};
+                    probe(primary, function () {{
+                        switchToFallback(primary);
+                        probe(fallback, function () {{
+                            aladinShowProblem(
+                                'Neither ' + primary + ' nor ' + fallback +
+                                ' could be reached from this network ' +
+                                '(alasky.cds.unistra.fr blocked or offline).'
+                            );
+                        }});
+                    }});
+                }})();
 
                 // Create catalog overlay
                 let cat = A.catalog({{

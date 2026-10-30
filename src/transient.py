@@ -8,6 +8,7 @@ from astropy.wcs import WCS
 from astropy.convolution import Gaussian2DKernel, convolve
 from astropy.visualization import simple_norm
 import numpy as np
+import shutil
 import streamlit as st
 from astropy.table import Table
 
@@ -53,6 +54,21 @@ SEP_REJECT_FLAGS = (
 # Detection threshold (sigma) used by the transient finder: low on purpose,
 # to be more sensitive to faint sources.
 TRANSIENT_DETECT_THRESH = 1.5
+
+# Executable names stdpipe accepts when looking for an SExtractor binary.
+SEXTRACTOR_BINARIES = ("sex", "sextractor", "source-extractor")
+
+
+def _sextractor_binary_available():
+    """Return True when a SExtractor executable is found on ``PATH``.
+
+    ``stdpipe.photometry.get_objects_sextractor`` returns ``None`` (it does not
+    raise) when the binary is missing, so the transient finder uses this helper
+    to tell an unavailable backend apart from an empty detection before it
+    falls back to the built-in SEP detector.
+    """
+    return any(shutil.which(name) for name in SEXTRACTOR_BINARIES)
+
 
 # Metadata attached to the candidate table to report which photometry supplied
 # ``mag_calib``: the pipeline PSF magnitudes or the 1.1 x FWHM aperture fallback.
@@ -392,24 +408,50 @@ def find_candidates(
 
     # Detect objects with SExtractor through stdpipe, as done at the start of
     # the pipeline for astrometry. SExtractor handles the background itself.
+    # stdpipe returns None (instead of raising) when the binary cannot be found
+    # or the run fails, so that case is reported separately from a genuine
+    # empty detection and falls back to the built-in SEP detector.
+    detection_params = {
+        "mask": mask,
+        "thresh": detect_thresh,
+        "aper": max(1.5 * fwhm, 1.5),
+        "gain": gain,
+        "edge": 10,
+        "bg_size": 64,
+        "wcs": wcs,
+        "sn": 3.0 if detect_thresh >= 2.0 else 2.0,
+        "verbose": False,
+    }
     try:
-        obj = photometry.get_objects_sextractor(
-            image,
-            mask=mask,
-            thresh=detect_thresh,
-            aper=max(1.5 * fwhm, 2.0),
-            gain=gain,
-            edge=10,
-            bg_size=64,
-            wcs=wcs,
-            sn=3.0 if detect_thresh >= 2.0 else 2.0,
-            verbose=False,
-        )
+        obj = photometry.get_objects_sextractor(image, **detection_params)
     except Exception as e:
         st.error(f"SExtractor source detection failed: {e}")
         return []
 
-    if obj is None or len(obj) == 0:
+    if obj is None:
+        reason = (
+            "the SExtractor binary was not found on PATH"
+            if not _sextractor_binary_available()
+            else "SExtractor returned no result"
+        )
+        st.warning(
+            f"SExtractor source detection unavailable ({reason}). "
+            "Falling back to the built-in SEP detector."
+        )
+        try:
+            obj = photometry.get_objects_sep(image, **detection_params)
+        except Exception as e:
+            st.error(f"SEP fallback source detection failed: {e}")
+            return []
+        if obj is None:
+            st.error(
+                "Source detection failed: neither SExtractor nor the SEP "
+                "fallback returned a result. Install SExtractor (or the "
+                "'sep' package used by stdpipe) to use the transient finder."
+            )
+            return []
+
+    if len(obj) == 0:
         st.warning("No objects found in the image.")
         return []
 
