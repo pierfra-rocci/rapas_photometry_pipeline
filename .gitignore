@@ -68,7 +68,6 @@ instance/
 .scrapy
 
 # Sphinx documentation
-docs/_build/
 
 # PyBuilder
 .pybuilder/
@@ -197,3 +196,6 @@ photometry_pipeline.ipynb
 .freebuff/
 freebuff/
 GRB250617B_SERRAU_2025-06-17T23-44-07-stack-3060s_G.fits:Zone.Identifier
+.codex/
+.agents/
+SA68-R_out_wcs_stacked-r.fits:Zone.Identifier

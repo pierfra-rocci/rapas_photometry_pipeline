@@ -1,96 +1,169 @@
+
 stages:
   - deploy-test
   - deploy-prod
+  - deploy-docs
 
 build_sonar:
   stage: deploy-test
 
   rules:
-      #- if: $CI_PIPELINE_SOURCE == 'merge_request_event'
-      #- if: $CI_COMMIT_BRANCH == 'master'
-      - if: $CI_COMMIT_BRANCH == 'main'
-      #- if: $CI_COMMIT_BRANCH == 'develop'
-  
+    #- if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    #- if: $CI_COMMIT_BRANCH == 'master'
+    - if: $CI_COMMIT_BRANCH == 'main'
+    #- if: $CI_COMMIT_BRANCH == 'develop'
+
   tags:
-      - linux
-      - sonar
-  
-  image: 
+    - linux
+    - sonar
+
+  image:
     name: sonarsource/sonar-scanner-cli:11
     entrypoint: [""]
 
   variables:
-    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"  # Defines the location of the analysis task cache
-    GIT_DEPTH: "0"  # Tells git to fetch all the branches of the project, required by the analysis task
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+    GIT_DEPTH: "0"
 
   cache:
-      policy: pull-push
-      key: "sonar-cache-$CI_COMMIT_REF_SLUG"
-      paths:
-        - "${SONAR_USER_HOME}/cache"
-        - sonar-scanner/
-        
-  script: 
-    - echo SONAR_HOST_URL=$SONAR_HOST_URL
+    policy: pull-push
+    key: "sonar-cache-$CI_COMMIT_REF_SLUG"
+    paths:
+      - "${SONAR_USER_HOME}/cache"
+      - sonar-scanner/
+
+  script:
+    - echo "SONAR_HOST_URL=$SONAR_HOST_URL"
     - sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}"
- 
+
   allow_failure: true
-  
 
 
 deploy_on_rapas_test:
   stage: deploy-test
+
   rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'  # Deploy on rapas-test only if branch is main
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
   tags:
-      - linux
-      - rapas-test
+    - linux
+    - rapas-test
+
   script:
     - |
-      echo Hello from `hostname`
-      echo PATH=$PATH
-      echo pwd=`pwd`
-      echo id=`id`
-      echo CI_COMMIT_BRANCH=$CI_COMMIT_BRANCH
-      echo CI_PIPELINE_SOURCE=$CI_PIPELINE_SOURCE
+      echo "Hello from $(hostname)"
+      echo "PATH=$PATH"
+      echo "pwd=$(pwd)"
+      echo "id=$(id)"
+      echo "CI_COMMIT_BRANCH=$CI_COMMIT_BRANCH"
+      echo "CI_PIPELINE_SOURCE=$CI_PIPELINE_SOURCE"
+
     - |
       echo "Updating webapp with git pull"
       sudo -u rpp bash << EOF
       cd /home/rpp/rpp
       git pull https://gitlab-ci-token:${CI_JOB_TOKEN}@voparis-gitlab.obspm.fr/RAPAS/rpp main
       EOF
+
     - |
       echo "Restarting backend"
       sudo /bin/systemctl restart uvicorn-rpp
+
     - |
       echo "Restarting frontend"
       sudo /bin/systemctl restart streamlit-rpp
 
+
 deploy_on_rapas_prod:
   stage: deploy-prod
+
   rules:
-    - if: '$CI_COMMIT_BRANCH == "prod"'  # Deploy on rapas only if branch is prod
+    - if: '$CI_COMMIT_BRANCH == "prod"'
+
   tags:
-      - linux
-      - rapas-prod
+    - linux
+    - rapas-prod
+
   script:
     - |
-      echo Hello from `hostname`
-      echo PATH=$PATH
-      echo pwd=`pwd`
-      echo id=`id`
-      echo CI_COMMIT_BRANCH=$CI_COMMIT_BRANCH
-      echo CI_PIPELINE_SOURCE=$CI_PIPELINE_SOURCE
+      echo "Hello from $(hostname)"
+      echo "PATH=$PATH"
+      echo "pwd=$(pwd)"
+      echo "id=$(id)"
+      echo "CI_COMMIT_BRANCH=$CI_COMMIT_BRANCH"
+      echo "CI_PIPELINE_SOURCE=$CI_PIPELINE_SOURCE"
+
     - |
       echo "Updating webapp with git pull"
       sudo -u rpp bash << EOF
       cd /home/rpp/rpp
       git pull https://gitlab-ci-token:${CI_JOB_TOKEN}@voparis-gitlab.obspm.fr/RAPAS/rpp prod
       EOF
+
     - |
       echo "Restarting backend"
       sudo /bin/systemctl restart uvicorn-rpp
+
     - |
       echo "Restarting frontend"
       sudo /bin/systemctl restart streamlit-rpp
-    
+
+
+pages:
+  stage: deploy-docs
+
+  #image: alpine:3.22
+
+  tags:
+    - linux
+    - rapas-prod
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+  # Publish documentation independently of application deployment.
+  needs: []
+
+  script:
+    - |
+      set -eu
+
+      echo "Hello from $(hostname)"
+      echo "PATH=$PATH"
+      echo "pwd=$(pwd)"
+      echo "id=$(id)"
+      echo "CI_COMMIT_BRANCH=$CI_COMMIT_BRANCH"
+      echo "CI_PIPELINE_SOURCE=$CI_PIPELINE_SOURCE"
+
+      SOURCE_DIR="docs/_build/html"
+
+      echo "Checking existing Sphinx HTML build..."
+
+      if [ ! -s "${SOURCE_DIR}/index.html" ]; then
+        echo "ERROR: ${SOURCE_DIR}/index.html was not found."
+        echo "Ensure the pre-built HTML documentation is available in the repository."
+        exit 1
+      fi
+
+      echo "Preparing GitLab Pages directory..."
+      rm -rf public
+      mkdir -p public
+
+      echo "Copying existing HTML files (no rebuild)..."
+      cp -a "${SOURCE_DIR}/." public/
+
+      if [ ! -s public/index.html ]; then
+        echo "ERROR: public/index.html is missing or empty."
+        exit 1
+      fi
+
+      echo "Documentation is ready for publication."
+
+      echo "Copying documentation to web dir"
+      cp -a  "${SOURCE_DIR}/." /var/www/rpp-docs/
+
+  pages: true
+
+  artifacts:
+    paths:
+      - public/

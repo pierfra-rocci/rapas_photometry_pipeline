@@ -10,7 +10,7 @@
 
 ![RAPAS Logo](rapas_logo.png)
 
-![Version](https://img.shields.io/badge/version-1.9.0-blue)
+![Version](https://img.shields.io/badge/version-1.9.1-blue)
 
 A comprehensive astronomical photometry pipeline built with Streamlit, featuring local astrometric plate solving with an optional online fallback, multi-catalog cross-matching, and advanced photometric analysis capabilities.
 
@@ -405,13 +405,23 @@ of the normal end-user pipeline:
 
 ### Browser Compatibility Issues
 
-**Firefox Aladin Lite Issues**:
+**Aladin Lite viewer stays empty (any browser)**:
 
-Firefox may have compatibility issues with Aladin Lite v3 due to WebAssembly loading.
+Aladin Lite v3 paints the sky with WebGL2 and fetches its HiPS tiles from CDS
+(`alasky.cds.unistra.fr`), so an empty viewer is usually a WebGL2 or a network
+issue, not a caching one.
 
-- **Refresh the page**: Sometimes resolves the issue.
-- **Clear Firefox cache**: Clear cookies and cached web content.
-- **Alternative browsers**: Use Chrome, Edge, or Safari for best Aladin Lite compatibility.
+- **Read the red line under the viewer**: the widget now names the cause (no
+  WebGL2 context, or `aladin.js` could not be downloaded from
+  `aladin.cds.unistra.fr`) instead of showing a blank box.
+- **Firefox**: enable hardware acceleration, or set `webgl.force-enabled` to
+  `true` in `about:config` and restart the browser.
+- **Tiles blocked**: check the browser console for failed requests to
+  `alasky.cds.unistra.fr` (proxy, firewall, HTTPS-Only mode); the viewer then
+  falls back to `CDS/P/DSS2/red` on its own.
+- **Alternative browsers**: use Chrome or Edge when WebGL2 cannot be enabled.
+- **Full details**: `docs/troubleshooting.rst`, section *Aladin Lite Viewer
+  Issues*.
 
 ### Common Issues
 
@@ -438,9 +448,15 @@ Firefox may have compatibility issues with Aladin Lite v3 due to WebAssembly loa
 
 ## Changelog
 
-> The project currently targets version 1.9.0. Only the three latest releases are listed here; the full history is in `docs/changelog.rst`.
+> The project currently targets version 1.9.1. Only the three latest releases are listed here; the full history is in `docs/changelog.rst`.
 
-### Current Release (1.9.0)
+### Current Release (1.9.1)
+
+- **Aladin Lite diagnostics**: the widget now reports why the sky image is missing instead of showing an empty viewer, both on a red line below the viewer and in the browser console: no WebGL2 context (hardware acceleration off, blocklisted GPU, `webgl.disabled`), or `aladin.js` not downloadable from `aladin.cds.unistra.fr`. It also logs the Aladin Lite release actually loaded (`[RPP Aladin] version ...`).
+- **Aladin fallback survey**: new `fallback_survey` argument of `display_catalog_in_aladin()` (`CDS/P/DSS2/red` by default). The HiPS `properties` document is probed with a 12 s timeout and, when it cannot be read, the base layer is switched to the fallback survey; the swap is reported under the viewer, and an explicit message is shown when neither survey is reachable.
+- **Aladin troubleshooting and tests**: new *Aladin Lite Viewer Issues* section in `docs/troubleshooting.rst`, plus tests for the diagnostics and the fallback in `tests/test_network_resilience.py`.
+
+### Version 1.9.0
 
 - **Login audit line**: every successful login writes a timestamped line with the pipeline version to the service logs, for example `[2026-10-18 18:46:22] RPP v1.9.0 - User 'intern1' logged in successfully (FastAPI backend).` The line is emitted by `api/main.py` (FastAPI), `backend.py` (legacy Flask) and `pages/login.py` (frontend).
 - **Curated catalog export**: `*_catalog.csv` / `.vot` now contain only the essential columns in a fixed order, starting with a unique `id` that matches the ID shown in the Aladin Lite popups; Astro-Colibri detections are sorted to the top of the files, and `*_transients.csv` reuses the same columns.
@@ -465,10 +481,6 @@ Firefox may have compatibility issues with Aladin Lite v3 due to WebAssembly loa
 - **Effective gain**: a single resolver (`resolve_effective_gain()`) is used for photometry errors, cosmic-ray masking and source detection. The `CVF` keyword is supported (`gain = 1/CVF`), explicit conversion keywords take precedence over `GAIN`, and the bare `GAIN` of QHY/ZWO cameras (a driver setting) is ignored. The plausible range is 0.02-100 e-/ADU.
 - **Robustness**: PSF S/N guards for non-positive fluxes, safer cross-match and Astro-Colibri handling, scoped ZIP/temp-file cleanup, HTML-escaped Aladin popups.
 - **Login**: a hint reminds Firefox users to press Enter after typing the password.
-
-### Version 1.8.6
-
-- **Transient candidate selection**: unreliable detections are now actually discarded through the detection-flag mask; detections are matched to the photometry catalog within a seeing-based radius (FWHM clamped to 1-4 arcsec, nearest counterpart only); the catalog radius in `filter_transient_candidates` is now half the seeing FWHM; the brightness-excess threshold is configurable (`mag_threshold`, default 2.0 mag).
 
 ## Contributing
 
