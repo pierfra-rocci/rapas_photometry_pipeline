@@ -293,6 +293,10 @@ Catalog Query Issues (SIMBAD, SkyBoT, etc.)
     service is down or slow.
 *   **Solution**:
 
+    *   VizieR queries automatically retry through the Harvard mirror
+        (``vizier.cfa.harvard.edu``), and SIMBAD region queries retry through
+        ``simbad.cfa.harvard.edu``. The log records when either fallback is
+        used.
     *   Wait and try processing the image again later.
     *   Check your internet connection.
     *   Review the generated log file to see which catalog step timed out or was
@@ -334,8 +338,43 @@ Catalog Query Issues (SIMBAD, SkyBoT, etc.)
     *   Check the Astro-Colibri service status.
     *   HTTP 429 means the daily quota (100 requests/day) is exhausted; the
         log message states the reason returned by the API.
-    *   A warning about the 15 or 20 arcsec tier means the association is
+    *   A warning about the 15, 20 or 30 arcsec tier means the association is
         loose: check it visually in Aladin.
+
+**TNS: No matches, skipped or Error**
+
+*   **Problem**: No TNS credentials, network issue, or no public transient in
+    the field. The TNS staged files require an API key and marker, so an
+    anonymous download answers HTTP 403.
+*   **Solution**:
+
+    *   Set ``TNS_API_KEY`` and ``TNS_BOT_ID``/``TNS_BOT_NAME`` (bot) or
+        ``TNS_USER_ID``/``TNS_USER_NAME`` (user) in the environment of the
+        Streamlit process, then restart it.
+    *   The catalogue is downloaded once per UTC day and cached in the system
+        temp directory; ``RPP_TNS_CACHE_DIR`` changes the location and
+        removing the ``tns_public_objects_YYYYMMDD.csv`` file forces a refresh.
+    *   ``RPP_TNS_CATALOG_PATH`` uses a CSV or ZIP catalogue already on disk and
+        skips the download entirely.
+    *   ``RPP_TNS_MIRROR_URL`` queries a shared ``tns-mirror`` API instead of
+        reading the catalogue, once per detected source. A ``WARNING`` naming
+        the mirror means the queries failed and the daily catalogue was used:
+        check that the URL is the API root (``/v1/nearest`` is appended) and
+        that the service is reachable. Fields with more than 500 sources use
+        the catalogue directly.
+    *   When the catalogue download fails, the TNS Search API is queried
+        instead (``INFO: TNS: querying the Search API instead.``). A
+        ``Search API failed`` warning gives the reason (HTTP status, network
+        error or rate limit); a field holding more than 100 objects is
+        truncated with a warning. ``RPP_TNS_SANDBOX=1`` targets
+        ``sandbox.wis-tns.org``, whose keys differ from production.
+    *   An HTTP 403/401 message means the key or the ``tns_marker`` is missing
+        or invalid; HTTP 429 is the TNS rate limit.
+    *   A warning about the 20 or 30 arcsec tier means the association is loose:
+        transient positions are not always astrometrically accurate, so check
+        it visually in Aladin.
+    *   The step is best-effort: without the catalogue the export simply omits
+        the ``tns_*`` columns and the rest of the run is unaffected.
 
 Database and Migration Issues
 -----------------------------

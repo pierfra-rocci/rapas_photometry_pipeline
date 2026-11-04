@@ -148,6 +148,28 @@ as:
 - AAVSO VSX
 - Milliquas
 - Astro-Colibri, when an API key is provided
+- TNS (Transient Name Server), when an API key and marker are configured
+
+Astro-Colibri and TNS are the two transient services. Both use a progressive
+match radius - 5, 10, 15, 20 and 30 arcsec - that pairs a transient with its
+closest detected source, keep the closest object when several claim the same
+source, and warn when an association is found only in the loose tiers
+(15 arcsec and beyond for Astro-Colibri, 20 arcsec and beyond for TNS).
+Astro-Colibri matches are exported as ``astrocolibri_*`` columns and TNS
+matches as ``tns_name``, ``tns_type``, ``tns_ra`` and ``tns_dec``.
+The TNS query uses the public catalogue staged daily by the TNS
+(``tns_public_objects.csv.zip``), downloaded at most once per UTC day and
+cached; it needs ``TNS_API_KEY`` plus ``TNS_BOT_ID``/``TNS_BOT_NAME`` (bot) or
+``TNS_USER_ID``/``TNS_USER_NAME`` (user) in the environment.
+A shared mirror of the catalogue can be queried instead of downloading it by
+setting ``RPP_TNS_MIRROR_URL`` to a ``tns-mirror`` HTTP API: it answers once per
+detected source through ``GET /v1/nearest``, is authoritative when it answers,
+and falls back to the daily catalogue on any failure.
+If the catalogue cannot be downloaded, the TNS Search API is queried with the
+same credentials (a cone search over the field, then one ``get/object`` call
+per object found, up to 100); ``RPP_TNS_SANDBOX=1`` selects the TNS sandbox.
+The CSV and VOTable outputs carry the same ``tns_name`` and ``tns_type``
+columns whichever source was used.
 
 These services are best-effort integrations. Timeouts, empty responses, or
 temporary network failures are reported in the logs and warnings, and the

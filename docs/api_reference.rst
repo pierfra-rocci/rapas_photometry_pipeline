@@ -21,6 +21,10 @@ Frontend and UI
    successful sign-in is written to the Streamlit log as
    ``[YYYY-MM-DD HH:MM:SS] RPP vX.Y.Z - User '<username>' logged in
    successfully (frontend, <backend> backend).``
+   Login, registration, password recovery, and backend selection workflow. Every
+   successful sign-in is written to the Streamlit log as
+   ``[YYYY-MM-DD HH:MM:SS] RPP vX.Y.Z - User '<username>' logged in
+   successfully (frontend, <backend> backend).``
 
 ``pages/api_client.py``
    Thin HTTP client used by the Streamlit frontend to talk to the FastAPI
@@ -79,6 +83,10 @@ Database and API Modules
 
 ``api/main.py``
    FastAPI application with health, authentication, config persistence, and
+   FITS upload/listing endpoints. A successful ``POST /api/login`` writes
+   ``[YYYY-MM-DD HH:MM:SS] RPP vX.Y.Z - User '<username>' logged in
+   successfully (FastAPI backend).`` to the service log; the legacy backend
+   (``backend.py``) emits the same line tagged ``(legacy backend)``.
    FITS upload/listing endpoints. A successful ``POST /api/login`` writes
    ``[YYYY-MM-DD HH:MM:SS] RPP vX.Y.Z - User '<username>' logged in
    successfully (FastAPI backend).`` to the service log; the legacy backend
@@ -143,7 +151,35 @@ Useful Functions
 
 ``src.xmatch_catalogs.enhance_catalog(...)``
    Enrich the photometry catalog with additional catalog matches such as
-   SIMBAD, SkyBoT, and Astro-Colibri.
+   SIMBAD, SkyBoT, Astro-Colibri and the TNS.
+
+``src.tns_catalog.cross_match_tns(...)``
+   Cross-match the photometry catalog with the public TNS objects in the field.
+   The daily staged catalogue is cached and reused, each TNS object is paired
+   with its closest source at 5, 10, 15, 20 then 30 arcsec, and the ``tns_*``
+   columns are only added once the catalogue is available (an unavailable TNS
+   leaves the exported columns untouched). A shared mirror configured through
+   ``RPP_TNS_MIRROR_URL`` is queried first and replaces the catalogue whenever
+   it answers.
+
+``src.tns_catalog.tns_field_mask(catalog, center, radius_deg)``
+   Return the boolean mask of the catalogue rows within ``radius_deg`` of a
+   field centre, using the KD-tree attached to the catalogue at parse time
+   (``tns_spatial_index``) or, when no index is available, the angular
+   separation of every row.
+
+``src.tns_catalog.mirror_tns_objects(...)``
+   Query a shared ``tns-mirror`` HTTP API once per detected source
+   (``GET /v1/nearest``). Returns a catalogue-like frame of the objects the
+   mirror found, or ``None`` when the caller must fall back to the daily
+   catalogue (no URL, more than 500 sources, or a failed query).
+
+``src.tns_catalog.api_tns_objects(credentials, ra, dec, radius_deg)``
+   Query the TNS Search API for a field: ``search_tns_api`` runs the
+   ``/api/get/search`` cone search and ``get_tns_api_object`` fetches the
+   position and type of each object through ``/api/get/object``. Returns a
+   catalogue-like frame, or ``None`` when the API cannot be used.
+   ``cross_match_tns`` calls it when the staged catalogue is unavailable.
 
 ``src.transient.find_candidates(...)``
    Run the transient candidate workflow after photometry and catalog
@@ -219,11 +255,17 @@ part of the downloadable archive.
       - Contents
       - Generation / writer
       - In ZIP
+      - Contents
+      - Generation / writer
+      - In ZIP
     * - ``*_catalog.csv`` and ``*_catalog.vot``
-      - Curated columns only (``id`` first, then coordinates, Astro-Colibri/SIMBAD/SkyBoT/AAVSO matches, S/N, aperture and PSF photometry); Astro-Colibri sources sorted first
+      - Curated columns only (``id`` first, then coordinates, Astro-Colibri/TNS/SIMBAD/SkyBoT/AAVSO matches, S/N, aperture and PSF photometry); Astro-Colibri sources sorted first
       - After photometry and catalog enrichment; ``src.utils.save_catalog_files`` (columns chosen by ``build_export_columns``/``prepare_export_table``)
       - Yes
     * - ``*_header.txt``
+      - Input FITS header
+      - When a science header is available; ``src.utils.save_header_to_txt``
+      - Yes
       - Input FITS header
       - When a science header is available; ``src.utils.save_header_to_txt``
       - Yes
@@ -231,7 +273,13 @@ part of the downloadable archive.
       - Header containing the available astrometric solution
       - When a WCS solution is available; ``src.utils.save_header_to_txt``
       - Yes
+      - Header containing the available astrometric solution
+      - When a WCS solution is available; ``src.utils.save_header_to_txt``
+      - Yes
     * - ``*.log``
+      - Processing log
+      - At the end of analysis; ``pages/app.py``
+      - Yes
       - Processing log
       - At the end of analysis; ``pages/app.py``
       - Yes
@@ -239,7 +287,13 @@ part of the downloadable archive.
       - Image and diagnostic plots (for example magnitude and PSF/aperture-offset plots)
       - Depending on the plots produced; ``pages/app.py``
       - Yes
+      - Image and diagnostic plots (for example magnitude and PSF/aperture-offset plots)
+      - Depending on the plots produced; ``pages/app.py``
+      - Yes
     * - ``*_transients.csv``
+      - Transient candidate table with the same columns as the catalog (including ``id``)
+      - When transient candidates are returned; ``src.transient.build_transient_table``
+      - Yes
       - Transient candidate table with the same columns as the catalog (including ``id``)
       - When transient candidates are returned; ``src.transient.build_transient_table``
       - Yes
@@ -247,7 +301,13 @@ part of the downloadable archive.
       - Empirical PSF model
       - When the ePSF model is saved; ``src/psf.py``
       - No
+      - Empirical PSF model
+      - When the ePSF model is saved; ``src/psf.py``
+      - No
     * - ``*_wcs.fits``
+      - Original image with the updated WCS header
+      - When WCS solving succeeds; ``src.utils.save_fits_with_wcs``. Also copied to ``rpp_data/fits/``.
+      - No
       - Original image with the updated WCS header
       - When WCS solving succeeds; ``src.utils.save_fits_with_wcs``. Also copied to ``rpp_data/fits/``.
       - No

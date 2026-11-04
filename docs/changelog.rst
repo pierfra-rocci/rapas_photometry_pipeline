@@ -3,6 +3,62 @@ Changelog
 
 This document records all notable changes to RAPAS Photometry Pipeline.
 
+Version 1.9.2
+-------------
+
+**Released: November 3, 2026**
+
+**TNS cross-match, shared mirror and wider transient radius**
+
+*   **TNS (Transient Name Server).** ``enhance_catalog`` now also cross-matches
+    the photometry catalog against the public TNS objects staged daily as
+    ``tns_public_objects.csv.zip``. The archive is downloaded at most once per
+    UTC day and cached (``RPP_TNS_CACHE_DIR``, system temp directory by
+    default); ``RPP_TNS_CATALOG_PATH`` points at a catalogue already on disk.
+    Access needs ``TNS_API_KEY`` plus ``TNS_BOT_ID``/``TNS_BOT_NAME`` (bot) or
+    ``TNS_USER_ID``/``TNS_USER_NAME`` (user). Without them, or on any network,
+    HTTP or parsing failure, the step is skipped with a warning and the run
+    continues, exactly like Astro-Colibri.
+*   **Progressive TNS matching up to 30 arcsec.** Each TNS object is paired
+    with its closest source at 5 -> 10 -> 15 -> 20 -> 30 arcsec; several
+    objects landing on one source keep the closest. Matches found only at the
+    20 or 30 arcsec tier raise a warning. New ``src/tns_catalog.py`` with
+    ``load_tns_public_objects``, ``cross_match_tns`` and ``tns_match_radius``.
+*   **Optional shared TNS mirror.** Setting ``RPP_TNS_MIRROR_URL`` to a
+    ``tns-mirror`` HTTP API makes the TNS step query ``GET /v1/nearest`` once
+    per detected source instead of downloading the catalogue, and fall back to
+    the daily catalogue on any failure. New ``mirror_tns_objects``,
+    ``query_tns_mirror`` and ``parse_tns_mirror_objects`` helpers.
+*   **TNS spatial index.** The parsed catalogue carries a KD-tree over the
+    object positions (``tns_spatial_index``), so selecting the objects of a
+    field no longer compares all ~170k rows with the field centre. The index is
+    built once at parse time and kept with the frame in the daily cache;
+    ``tns_field_mask`` falls back to the angular separation when no index is
+    available.
+*   **TNS columns in the exported files.** ``tns_name`` (full designation, for
+    example ``SN 2026abc``), ``tns_type``, ``tns_ra`` and ``tns_dec`` are
+    written right after the Astro-Colibri columns; matched rows get ``TNS; ``
+    in ``catalog_matches``. The app shows the match outcome and lists every TNS
+    object in the field with its match status and separation, and the Aladin
+    popups name the TNS object.
+*   **TNS Search API fallback.** When the staged catalogue cannot be obtained
+    (download refused, network error) and TNS credentials are available, the
+    TNS step queries the Search API instead: one ``/api/get/search`` cone
+    search covering the field, then ``/api/get/object`` for the position and
+    type of each object found (at most 100 objects; one rate-limit wait is
+    honoured). The matching, the ``tns_name``/``tns_type``/``tns_ra``/
+    ``tns_dec`` columns of the CSV and VOTable files and the app listing are
+    unchanged. ``RPP_TNS_SANDBOX=1`` selects ``sandbox.wis-tns.org``. It is not
+    used when ``RPP_TNS_CATALOG_PATH`` is set. New ``search_tns_api``,
+    ``get_tns_api_object`` and ``api_tns_objects`` helpers.
+*   **Astro-Colibri radius extended to 30 arcsec.** The progressive
+    Astro-Colibri match keeps the same tiers plus 30 arcsec, and associations
+    found only at 15, 20 or 30 arcsec are still reported as loose.
+*   **Tests.** New ``tests/test_tns_crossmatch.py`` (cache reuse, missing key,
+    HTTP failure, closest-object selection, field filtering, loose tiers,
+    export columns, Aladin popup, shared mirror, Search API fallback) and updated
+    Astro-Colibri radius tests.
+
 Version 1.9.1
 -------------
 
@@ -52,6 +108,17 @@ Version 1.9.0
 **Released: October 15, 2026**
 
 (Version 1.8.8 was not released; Version 1.8.9 followed 1.8.7 directly.)
+
+**Login audit log**
+
+*   Every successful login writes a timestamped line with the pipeline version
+    to the service log:
+    ``[YYYY-MM-DD HH:MM:SS] RPP vX.Y.Z - User '<username>' logged in successfully (<origin>).``
+*   ``api/main.py`` (FastAPI backend), ``backend.py`` (legacy backend) and
+    ``pages/login.py`` (frontend) each emit their own line; the origin suffix
+    tells them apart. The version is read at runtime from
+    ``src/__version__.py``, so the message follows future releases
+    automatically.
 
 **Login audit log**
 
@@ -122,6 +189,17 @@ Version 1.9.0
     ``PSF photometry is not available; using calibrated aperture photometry instead.``;
     the full transient variant is
     ``PSF photometry is not available; using calibrated aperture photometry instead. Transient candidates use the calibrated 1.1 x FWHM aperture magnitude.``
+    required to match the photometry table.
+*   **Transient finder without PSF photometry.** When the photometry table has
+    no PSF magnitude columns, or when the matched detections have no finite
+    PSF value, ``find_candidates()`` now falls back to the calibrated
+    1.1 x FWHM aperture magnitude (``aperture_mag_1_1`` and its error) instead
+    of aborting with "No transient candidates found". The app displays a
+    warning when candidates rely on this fallback, using the same
+    PSF-unavailable wording as the main pipeline. The shared warning is
+    ``PSF photometry is not available; using calibrated aperture photometry instead.``;
+    the full transient variant is
+    ``PSF photometry is not available; using calibrated aperture photometry instead. Transient candidates use the calibrated 1.1 x FWHM aperture magnitude.``
 
 **Finer astrometry and Astro-Colibri radius**
 
@@ -159,6 +237,32 @@ Version 1.9.0
     filter: 3 attempts on network errors and HTTP 429/5xx, ``-from`` label,
     epoch range check, HTTP error reporting, mid-exposure epoch and a per-object
     match tolerance of 10 to 30 arcsec derived from the ephemeris ``Err``.
+
+**Scale-aware photometric error model**
+
+*   **The Poisson term now follows the units of the frame.**
+    ``calc_total_error`` adds ``data / gain`` to the pixel variance, which is
+    only meaningful when the data are counts in the same units as the gain. A
+    rescaled frame (a normalised float stack with a sky level of about 1e-2, for
+    example) violates that: with a genuine e-/ADU gain the Poisson term at the
+    sky level exceeded the measured sky variance by a factor of 1e5, so the
+    error map said nothing about the real noise and the aperture S/N was
+    underestimated by one to two orders of magnitude. The PSF step was hit
+    hardest, because photutils weights the ePSF-to-star fits by
+    ``1 / error**2``: the star cores ended up ~1e-4 of the weight of the sky
+    pixels, 22 of 26 fitted fluxes came back negative, the next ePSF was
+    therefore inverted and ``EPSFBuilder`` aborted with
+    ``Cannot normalize ePSF: the data sum (...) is not finite and positive``,
+    dropping PSF photometry for the whole frame.
+*   **Resolution.** ``resolve_poisson_gain()`` keeps the resolved gain when the
+    Poisson variance it predicts at the sky level stays within
+    ``POISSON_SKY_VARIANCE_TOLERANCE`` (10x) of the measured background
+    variance, and otherwise replaces it with the largest value the frame allows,
+    ``gain = sky level / background_rms**2``. ``compute_error_map()`` builds the
+    per-pixel error from that gain, falling back to the background RMS map alone
+    when no usable gain exists. On the real normalised stack the core error
+    dropped from ~1.4e3x the sky RMS (larger than the data itself) to a few x
+    the sky RMS, and PSF photometry now runs.
 
 **Scale-aware photometric error model**
 

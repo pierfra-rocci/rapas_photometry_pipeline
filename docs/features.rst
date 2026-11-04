@@ -302,14 +302,42 @@ Multi-Catalog Cross-Matching
      each stamp shows the HiPS template (PanSTARRS north, SkyMapper south, with
      automatic fallback to the other survey), the circled source and its
      calibrated magnitude
-   - Progressive cross-match radius 5 -> 10 -> 15 -> 20 arcsec (nearest event per
-     source, radius reached reported in the log); matches found only at the
-     15 or 20 arcsec tier raise a warning; the match outcome is displayed in
-     the app
+   - Search API fallback: if the staged catalogue cannot be obtained, one
+     ``/api/get/search`` cone search over the field followed by
+     ``/api/get/object`` for each object (up to 100) is used instead;
+     ``RPP_TNS_SANDBOX=1`` selects ``sandbox.wis-tns.org``
+   - Progressive cross-match radius 5 -> 10 -> 15 -> 20 -> 30 arcsec (nearest
+     event per source, radius reached reported in the log); matches found only
+     at the 15, 20 or 30 arcsec tier raise a warning; the match outcome is
+     displayed in the app
    - Every source returned by Astro-Colibri for the field is listed (name,
      RA/Dec, type, classification, observatory, trigger ID, position error,
      date, redshift, matched flag, separation); the event
      RA/Dec are exported as ``astrocolibri_ra`` / ``astrocolibri_dec``
+
+**TNS (Transient Name Server)**:
+   - Public transients (AT/SN/FRB) from the daily staged catalogue
+     ``tns_public_objects.csv.zip``, downloaded at most once per UTC day and
+     cached locally (``RPP_TNS_CACHE_DIR``), or read from a local file
+     (``RPP_TNS_CATALOG_PATH``)
+   - API key authentication: ``TNS_API_KEY`` plus ``TNS_BOT_ID``/
+     ``TNS_BOT_NAME`` (bot) or ``TNS_USER_ID``/``TNS_USER_NAME`` (user);
+     without it the step is skipped with a warning, like Astro-Colibri
+   - Optional shared mirror: ``RPP_TNS_MIRROR_URL`` points at a ``tns-mirror``
+     HTTP API queried once per detected source (``GET /v1/nearest``), which
+     removes the download for multi-user deployments; the mirror is
+     authoritative when it answers, any failure falls back to the daily
+     catalogue, and fields with more than 500 sources use the catalogue directly
+   - Progressive cross-match radius 5 -> 10 -> 15 -> 20 -> 30 arcsec keeping the
+     closest object per source; matches found only at the 20 or 30 arcsec tier
+     raise a warning
+   - Spatial index: the parsed catalogue carries a ``scipy`` KD-tree over the
+     object positions, so the objects of a field are selected by walking the
+     tree instead of comparing every catalogue row with the field centre
+   - ``tns_name`` (full designation, e.g. ``SN 2026abc``), ``tns_type``,
+     ``tns_ra`` and ``tns_dec`` are exported; ``TNS; `` is added to
+     ``catalog_matches``, and every TNS object in the field is listed in the
+     app with its match status and separation
 
 **Solar System Objects (SkyBoT)**:
    - Moving object identification and ephemeris
@@ -458,8 +486,7 @@ Developer Utilities and Scripts
 Output Generation & Export
 --------------------------
 
-**Comprehensive Result Files**:
-   - CSV and VOTable catalogs with a curated, fixed column order (unique ``id`` first, matching the Aladin Lite popup ID; Astro-Colibri detections sorted first)
+**Comprehensive Result Files**:    - CSV and VOTable catalogs with a curated, fixed column order (unique ``id`` first, matching the Aladin Lite popup ID; Astro-Colibri, TNS, SIMBAD, SkyBoT and AAVSO matches; Astro-Colibri detections sorted first)
    - Transient candidate CSV sharing the same columns as the catalog
    - FITS files for background and PSF models
    - WCS-solved FITS files with refined astrometric headers

@@ -57,7 +57,9 @@ Without a configured key, the online fallback is skipped.
 
 ## 4. (Optional) Astro-Colibri API Key
 
-Enter your Astro-Colibri API key in the sidebar to enable transient and variable source cross-matching. After the cross-match, the app reports how many pipeline sources matched an Astro-Colibri event (progressive radius 5, 10, 15 then 20 arcsec; a warning is displayed when a match is only found at 15 or 20 arcsec), that none matched, or that the service was unavailable. The sources returned by Astro-Colibri for the field are listed in a table (name, RA/Dec, type, classification, observatory, trigger ID, position error, date, redshift, matched or not, separation), and the event coordinates of matched sources are exported as `astrocolibri_ra` and `astrocolibri_dec`. In the Aladin Lite viewer, cross-matched sources are drawn as larger red squares (layer "Astro-Colibri matches") so they stand out immediately. For each match, postage-stamp cutouts (science frame and HiPS template, PanSTARRS in the north, SkyMapper in the south with automatic fallback to the other survey) show the source with its calibrated magnitude.
+Enter your Astro-Colibri API key in the sidebar to enable transient and variable source cross-matching. After the cross-match, the app reports how many pipeline sources matched an Astro-Colibri event (progressive radius 5, 10, 15, 20 then 30 arcsec; a warning is displayed when a match is only found at 15, 20 or 30 arcsec), that none matched, or that the service was unavailable. The sources returned by Astro-Colibri for the field are listed in a table (name, RA/Dec, type, classification, observatory, trigger ID, position error, date, redshift, matched or not, separation), and the event coordinates of matched sources are exported as `astrocolibri_ra` and `astrocolibri_dec`. In the Aladin Lite viewer, cross-matched sources are drawn as larger red squares (layer "Astro-Colibri matches") so they stand out immediately. For each match, postage-stamp cutouts (science frame and HiPS template, PanSTARRS in the north, SkyMapper in the south with automatic fallback to the other survey) show the source with its calibrated magnitude.
+
+**TNS (Transient Name Server)**: set `TNS_API_KEY` together with `TNS_BOT_ID`/`TNS_BOT_NAME` (bot) or `TNS_USER_ID`/`TNS_USER_NAME` (user) in the environment before starting the app to also match the sources against the public TNS transients. The complete public catalogue staged daily by the TNS (`tns_public_objects.csv.zip`) is downloaded at most once per UTC day and cached (`RPP_TNS_CACHE_DIR` changes the location; `RPP_TNS_CATALOG_PATH` uses a CSV or ZIP already on disk). Setting `RPP_TNS_MIRROR_URL` to a shared `tns-mirror` API queries it once per detected source (`GET /v1/nearest`) and skips the download, falling back to the daily catalogue on any failure. If the catalogue cannot be downloaded, the TNS Search API is queried instead with the same credentials (`RPP_TNS_SANDBOX=1` selects the TNS sandbox). Matching is progressive from 5 to 30 arcsec and keeps the closest object per source; associations found only at 20 or 30 arcsec are flagged as loose. The app reports the outcome, lists every TNS object in the field (name, type, matched or not, separation), and the catalog files gain `tns_name` (for example `SN 2026abc`), `tns_type`, `tns_ra` and `tns_dec`. Without a key, or if the service cannot be reached, the step is skipped with a warning and the rest of the run is unaffected.
 
 ## 5. (Optional) Transient Candidates
 
@@ -82,7 +84,7 @@ The following steps are performed:
 3. **Photometry**: Multi-aperture (up to 3 apertures) and PSF photometry with a robust local background, aperture correction, S/N and error calculation, and quality-flag assignment
 4. **Astrometric Refinement** (if enabled)
 5. **Photometric Calibration**: Cross-match with catalogs for zero-point and, when possible, a simple color-term correction
-6. **Multi-Catalog Cross-Matching**: GAIA DR3, SIMBAD, SkyBoT, AAVSO VSX, Milliquas, 10 Parsec, Astro-Colibri. Available 10 Parsec proper motions are propagated to the observation epoch.
+6. **Multi-Catalog Cross-Matching**: GAIA DR3, SIMBAD, SkyBoT, AAVSO VSX, Milliquas, 10 Parsec, Astro-Colibri, TNS. Available 10 Parsec proper motions are propagated to the observation epoch.
 7. **Transient Detection** (if enabled)
 
 If **Astrometry Check** is enabled, the app forces a new plate-solving attempt
@@ -101,7 +103,7 @@ After processing, download the ZIP archive containing the catalog, text headers,
 processing log, and generated PNG diagnostics. The archive excludes all FITS
 files.
 
-- `*_catalog.csv` / `.vot`: Source catalog restricted to a curated set of columns, in this order: `id`, `ra`, `dec`, `astrocolibri_name`, `astrocolibri_type`, `astrocolibri_classification`, `astrocolibri_ra`, `astrocolibri_dec`, `simbad_main_id`, `simbad_otype`, `simbad_B`, `simbad_V`, `skybot_NAME`, `skybot_OBJECT_TYPE`, `skybot_MAGV`, `aavso_Name`, `aavso_Type`, `aavso_Period`, `catalog_matches`, `x_center`, `y_center`, then `snr_X_X`, the aperture magnitudes `aperture_mag_X_X` (each followed by its `quality_flag_X_X`), the PSF magnitude `psf_mag`, the errors `aperture_mag_err_X_X` and `psf_mag_err`, and the offsets `psf_minus_aperture_mag_X_X`. The apertures are the fixed `_1_1` and `_1_3` plus the user-defined one (for example `_1_5` at FWHM Radius Factor 1.5), so the last suffix follows your choice. Columns that do not exist for a run (for example without an Astro-Colibri key) are omitted.
+- `*_catalog.csv` / `.vot`: Source catalog restricted to a curated set of columns, in this order: `id`, `ra`, `dec`, `astrocolibri_name`, `astrocolibri_type`, `astrocolibri_classification`, `astrocolibri_ra`, `astrocolibri_dec`, `tns_name`, `tns_type`, `tns_ra`, `tns_dec`, `simbad_main_id`, `simbad_otype`, `simbad_B`, `simbad_V`, `skybot_NAME`, `skybot_OBJECT_TYPE`, `skybot_MAGV`, `aavso_Name`, `aavso_Type`, `aavso_Period`, `catalog_matches`, `x_center`, `y_center`, then `snr_X_X`, the aperture magnitudes `aperture_mag_X_X` (each followed by its `quality_flag_X_X`), the PSF magnitude `psf_mag`, the errors `aperture_mag_err_X_X` and `psf_mag_err`, and the offsets `psf_minus_aperture_mag_X_X`. The apertures are the fixed `_1_1` and `_1_3` plus the user-defined one (for example `_1_5` at FWHM Radius Factor 1.5), so the last suffix follows your choice. Columns that do not exist for a run (for example without an Astro-Colibri key) are omitted.
 
   `id` is a unique integer source number; it is the same ID displayed in the Aladin Lite popups, so you can find any source of the viewer in the files. If Astro-Colibri sources are detected, their rows are sorted by `astrocolibri_name` and appear at the very top of the CSV and VOT files.
 
@@ -174,7 +176,7 @@ method), and the results view plots it against the calibrated PSF magnitude
 ### External Services and Partial Results
 
 Some cross-match steps depend on external services such as GAIA, SIMBAD,
-SkyBoT, and Astro-Colibri. Network errors, timeouts, or empty catalog results do
+SkyBoT, Astro-Colibri and the TNS. Network errors, timeouts, or empty catalog results do
 not necessarily stop the full analysis. In many cases the pipeline continues with
 partial results and records warnings in the log. The same applies when SkyBoT
 returns a malformed or unreadable response payload.

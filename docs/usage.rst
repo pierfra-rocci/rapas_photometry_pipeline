@@ -117,9 +117,17 @@ Logging and Troubleshooting
 - For astrometry or plate solving, ensure external dependencies such as
   Astrometry.net indices and ``solve-field`` are installed and available on
   ``PATH``.
-- External catalog services such as GAIA, SIMBAD, SkyBoT, and Astro-Colibri
-  may time out or return partial results. In many cases the pipeline continues
-  and records warnings in the log instead of stopping completely.
+- External catalog services such as GAIA, SIMBAD, SkyBoT, Astro-Colibri and
+  the TNS may time out or return partial results. In many cases the pipeline
+  continues and records warnings in the log instead of stopping completely.
+- The TNS cross-match needs ``TNS_API_KEY`` plus ``TNS_BOT_ID``/
+  ``TNS_BOT_NAME`` (bot) or ``TNS_USER_ID``/``TNS_USER_NAME`` (user). Its
+  catalogue is downloaded once per UTC day and cached (``RPP_TNS_CACHE_DIR``),
+  or read from a local file with ``RPP_TNS_CATALOG_PATH``. Setting
+  ``RPP_TNS_MIRROR_URL`` queries a shared ``tns-mirror`` API instead of reading
+  the catalogue; if the mirror fails, the daily catalogue is used, and if that
+  cannot be downloaded the TNS Search API is queried (``RPP_TNS_SANDBOX=1``
+  selects the TNS sandbox).
 
 Next Steps
 ----------
