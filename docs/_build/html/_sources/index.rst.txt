@@ -116,6 +116,20 @@ Operational Notes
 
 
 
+Author
+------
+
+**Pier-Francesco Rocci**
+
+
+Acknowledgements
+----------------
+
+Development of this project was supported by AI language models: **ChatGPT**,
+**Claude**, **Mistral** and **DeepSeek**. Their assistance contributed to the
+design, implementation and documentation of the pipeline.
+
+
 Indices and tables
 
 ==================
