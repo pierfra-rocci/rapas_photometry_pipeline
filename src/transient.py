@@ -22,6 +22,7 @@ from src.tools_pipeline import (
     get_prefixed_photometry_column,
 )
 from src.utils import prepare_export_table, skybot_cone_search
+from src.catalog_mirrors import get_vizier_catalog_with_fallback
 
 # Shared singleton: configure once at import, never per request.
 Skybot._get_raw_response = False
@@ -551,9 +552,12 @@ def find_candidates(
 
     # Query the appropriate catalog
     try:
-        cat = catalogs.get_cat_vizier(
+        cat, used_vizier_fallback = get_vizier_catalog_with_fallback(
+            catalogs,
             ra_center, dec_center, sr, catalog, filters={filter_name + "mag": mag_limit}
         )
+        if used_vizier_fallback:
+            st.info("VizieR primary mirror unavailable; using the Harvard mirror.")
 
         # Debug: show what columns we got
         if cat is not None and len(cat) > 0:

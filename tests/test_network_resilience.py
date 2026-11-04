@@ -19,6 +19,12 @@ from astropy.wcs import WCS
 from xml.parsers.expat import ExpatError
 
 import src.xmatch_catalogs as xmatch_catalogs
+from src.catalog_mirrors import (
+    VIZIER_FALLBACK_SERVER,
+    VIZIER_PRIMARY_SERVER,
+    get_vizier_catalog_with_fallback,
+    query_vizier_with_fallback,
+)
 from src.tools_app import display_catalog_in_aladin
 from src.transient import filter_skybot_candidates
 from src.utils import ensure_source_ids, safe_catalog_query
@@ -55,6 +61,93 @@ def test_safe_catalog_query_reports_timeout_message():
 
     assert result is None
     assert error == "Failed to query SIMBAD: Query timed out"
+
+
+def test_vizier_query_retries_on_harvard_mirror():
+    """A VizieR failure should be retried through the Harvard mirror."""
+
+    class MirrorAwareVizier:
+        def __init__(self):
+            self.VIZIER_SERVER = VIZIER_PRIMARY_SERVER
+            self.servers = []
+
+        def query_region(self, *_args, **_kwargs):
+            self.servers.append(self.VIZIER_SERVER)
+            if self.VIZIER_SERVER == VIZIER_PRIMARY_SERVER:
+                raise requests.exceptions.ConnectTimeout("primary unavailable")
+            return ["fallback result"]
+
+    vizier = MirrorAwareVizier()
+    result, used_fallback = query_vizier_with_fallback(
+        vizier, "query_region", object()
+    )
+
+    assert result == ["fallback result"]
+    assert used_fallback is True
+    assert vizier.servers == [VIZIER_PRIMARY_SERVER, VIZIER_FALLBACK_SERVER]
+
+
+def test_stdpipe_vizier_query_retries_on_harvard_mirror():
+    """The stdpipe VizieR path should use the same mirror fallback."""
+
+    class MirrorAwareVizier:
+        def __init__(self, *, vizier_server=VIZIER_PRIMARY_SERVER):
+            self.server = vizier_server
+
+        def query_region(self):
+            if self.server == VIZIER_PRIMARY_SERVER:
+                raise requests.exceptions.ConnectTimeout("primary unavailable")
+            return "fallback result"
+
+    class FakeCatalogs:
+        Vizier = MirrorAwareVizier
+
+        def get_cat_vizier(self):
+            return self.Vizier().query_region()
+
+    catalogs = FakeCatalogs()
+    result, used_fallback = get_vizier_catalog_with_fallback(catalogs)
+
+    assert result == "fallback result"
+    assert used_fallback is True
+    assert catalogs.Vizier is MirrorAwareVizier
+
+
+def test_simbad_query_retries_on_harvard_cfa_mirror(monkeypatch):
+    """A SIMBAD failure should be retried through the Harvard CFA mirror."""
+    requested_servers = []
+
+    class FakeSimbad:
+        def __init__(self, server):
+            self.server = server
+            self.fields = []
+
+        def add_votable_fields(self, *fields):
+            self.fields.extend(fields)
+
+        def query_region(self, *_args, **_kwargs):
+            if self.server == xmatch_catalogs.SIMBAD_PRIMARY_SERVER:
+                raise requests.exceptions.ConnectTimeout("primary unavailable")
+            return ["fallback result"]
+
+    def _create_simbad_client(server):
+        requested_servers.append(server)
+        return FakeSimbad(server)
+
+    monkeypatch.setattr(xmatch_catalogs, "_create_simbad_client", _create_simbad_client)
+
+    result, used_fallback, error = xmatch_catalogs.query_simbad_region_with_fallback(
+        SkyCoord(ra=1.0, dec=2.0, unit="deg"),
+        1.0 * u.arcmin,
+    )
+
+    assert result == ["fallback result"]
+    assert used_fallback is True
+    assert error is None
+    assert requested_servers == [
+        xmatch_catalogs.SIMBAD_PRIMARY_SERVER,
+        xmatch_catalogs.SIMBAD_FALLBACK_SERVER,
+    ]
 
 
 def test_filter_skybot_candidates_returns_input_on_timeout(monkeypatch):
@@ -357,8 +450,12 @@ def test_enhance_catalog_matches_simbad_skybot_milliquas_and_10pc(monkeypatch):
         }
     )
 
-    def _simbad_query(_self, *_args, **_kwargs):
-        return simbad_result
+    class FakeSimbad:
+        def add_votable_fields(self, *_fields):
+            pass
+
+        def query_region(self, *_args, **_kwargs):
+            return simbad_result
 
     def _vizier_query(_self, *_args, catalog=None, **_kwargs):
         if catalog == ["B/vsx/vsx"]:
@@ -388,7 +485,9 @@ def test_enhance_catalog_matches_simbad_skybot_milliquas_and_10pc(monkeypatch):
         status_code = 503
         content = b""
 
-    monkeypatch.setattr(type(xmatch_catalogs.Simbad), "query_region", _simbad_query)
+    monkeypatch.setattr(
+        xmatch_catalogs, "_create_simbad_client", lambda _server: FakeSimbad()
+    )
     monkeypatch.setattr(type(xmatch_catalogs.Vizier), "query_region", _vizier_query)
     monkeypatch.setattr(
         type(xmatch_catalogs.Vizier), "query_constraints", _vizier_constraints
@@ -560,24 +659,29 @@ def test_astrocolibri_match_radius_helper():
     assert astrocolibri_match_radius(14.9) == 15.0
     assert astrocolibri_match_radius(15.0) == 20.0
     assert astrocolibri_match_radius(19.9) == 20.0
-    assert astrocolibri_match_radius(20.0) is None
+    assert astrocolibri_match_radius(20.0) == 30.0
+    assert astrocolibri_match_radius(25.0) == 30.0
+    assert astrocolibri_match_radius(29.9) == 30.0
+    assert astrocolibri_match_radius(30.0) is None
 
 
-def test_astrocolibri_progressive_radius_matches_up_to_20_arcsec(monkeypatch):
+def test_astrocolibri_progressive_radius_matches_up_to_30_arcsec(monkeypatch):
     enhanced, log_messages = _run_astrocolibri_match(
-        monkeypatch, [3.0, 12.0, 18.0, 25.0]
+        monkeypatch, [3.0, 12.0, 18.0, 25.0, 35.0]
     )
 
     assert enhanced.loc[0, "astrocolibri_name"] == "EVT0"
     assert enhanced.loc[1, "astrocolibri_name"] == "EVT1"
     assert enhanced.loc[2, "astrocolibri_name"] == "EVT2"
-    assert enhanced["astrocolibri_name"].iloc[3] is None
+    assert enhanced.loc[3, "astrocolibri_name"] == "EVT3"
+    assert enhanced["astrocolibri_name"].iloc[4] is None
     line = next(m for m in log_messages if "Astro-Colibri:" in m and "matched" in m)
-    assert "3 source(s) matched within 20 arcsec" in line
+    assert "4 source(s) matched within 30 arcsec" in line
     assert '5" x1' in line and '15" x1' in line and '20" x1' in line
+    assert '30" x1' in line
 
 
-def test_astrocolibri_warns_for_15_and_20_arcsec_tiers(monkeypatch):
+def test_astrocolibri_warns_for_15_20_and_30_arcsec_tiers(monkeypatch):
     _, log_messages = _run_astrocolibri_match(monkeypatch, [3.0, 7.0, 18.0])
     warnings = [m for m in log_messages if m.startswith("WARNING: Astro-Colibri:")]
     assert len(warnings) == 1 and "20 arcsec tier" in warnings[0]
@@ -591,6 +695,10 @@ def test_astrocolibri_warns_for_15_and_20_arcsec_tiers(monkeypatch):
     _, log_messages = _run_astrocolibri_match(monkeypatch, [3.0, 7.0])
     assert not [m for m in log_messages if m.startswith("WARNING: Astro-Colibri:")]
 
+    _, log_messages = _run_astrocolibri_match(monkeypatch, [3.0, 25.0])
+    warnings = [m for m in log_messages if m.startswith("WARNING: Astro-Colibri:")]
+    assert len(warnings) == 1 and "30 arcsec tier" in warnings[0]
+
 
 def test_astrocolibri_events_table_has_extra_fields(monkeypatch):
     enhanced, _ = _run_astrocolibri_match(monkeypatch, [3.0])
@@ -602,7 +710,7 @@ def test_astrocolibri_events_table_has_extra_fields(monkeypatch):
 
 
 def test_astrocolibri_event_coordinates_and_events_table(monkeypatch):
-    enhanced, _ = _run_astrocolibri_match(monkeypatch, [3.0, 12.0, 20.0])
+    enhanced, _ = _run_astrocolibri_match(monkeypatch, [3.0, 12.0, 31.0])
 
     # Event RA/Dec are stored on the matched sources only
     assert enhanced.loc[0, "astrocolibri_ra"] == pytest.approx(150.0)

@@ -29,6 +29,7 @@ from src.tools_app import (
     clear_all_caches,
     handle_log_messages,
     show_astrocolibri_status,
+    show_tns_status,
     cleanup_temp_files,
     try_gaia_server,
 )
@@ -1806,6 +1807,13 @@ if _run_analysis_now:
                                                 "astrocolibri_events"
                                             ),
                                         )
+                                        show_tns_status(
+                                            log_messages,
+                                            final_table,
+                                            objects=final_table.attrs.get(
+                                                "tns_objects"
+                                            ),
+                                        )
                                         final_table = apply_color_term_correction(
                                             final_table,
                                             color_term_result,
@@ -2009,6 +2017,7 @@ if _run_analysis_now:
                                 "aavso_Name",
                                 "gaia_source_id",
                                 "astrocolibri_name",
+                                "tns_name",
                                 "qso_name",
                             ],
                         )

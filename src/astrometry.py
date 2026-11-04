@@ -14,6 +14,7 @@ from astropy.io import fits
 from astropy.coordinates import SkyCoord
 from scipy.stats import chi2
 
+from src.catalog_mirrors import get_vizier_catalog_with_fallback
 from src.pipeline import resolve_effective_gain
 
 # stdpipe imports
@@ -1259,13 +1260,18 @@ def solve_with_astrometrynet(file_path):
                         f"RA={center_ra:.4f}, DEC={center_dec:.4f}, "
                         f"r={center_sr:.2f} deg"
                     )
-                    cat = catalogs.get_cat_vizier(
+                    cat, used_vizier_fallback = get_vizier_catalog_with_fallback(
+                        catalogs,
                         center_ra,
                         center_dec,
                         center_sr,
                         "ps1",
                         filters={"rmag": "<19"},
                     )
+                    if used_vizier_fallback:
+                        log_messages.append(
+                            "INFO: VizieR primary mirror unavailable; using the Harvard mirror."
+                        )
 
                     if cat is not None and len(cat) > 10:
                         log_messages.append(

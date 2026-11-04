@@ -461,6 +461,7 @@ def display_catalog_in_aladin(
         "simbad_main_id",
         "aavso_Name",
         "astrocolibri_name",
+        "tns_name",
         "skybot_NAME",
         "qso_name",
         "pc10_name",
@@ -544,6 +545,12 @@ def display_catalog_in_aladin(
                 colibri_name = str(row["astrocolibri_name"]).strip()
                 if colibri_name and colibri_name not in ["", "nan", "None"]:
                     catalog_matches["Astro-Colibri"] = colibri_name
+
+            # TNS (Transient Name Server) matches
+            if "tns_name" in present_optional_cols and pd.notna(row["tns_name"]):
+                tns_name = str(row["tns_name"]).strip()
+                if tns_name and tns_name not in ["", "nan", "None"]:
+                    catalog_matches["TNS"] = tns_name
 
             # Quasar matches
             if "qso_name" in present_optional_cols and pd.notna(row["qso_name"]):
@@ -1476,6 +1483,79 @@ def show_astrocolibri_status(log_messages, final_table, events=None):
             expanded=True,
         ):
             st.dataframe(events_view, use_container_width=True, hide_index=True)
+
+
+def show_tns_status(log_messages, final_table, objects=None):
+    """Display a visible summary of the TNS query and cross-match.
+
+    INFO log lines are not shown by :func:`handle_log_messages`, so without
+    this the user cannot tell whether TNS found nothing, was skipped (no API
+    key) or matched sources.
+
+    ``objects`` is the table of every TNS object in the field (see
+    :func:`format_tns_objects`); when given it is listed.
+    """
+    tns_lines = [
+        m.partition(":")[2].strip()
+        for m in (log_messages or [])
+        if m.startswith("INFO") and "tns" in m.lower()
+    ]
+    n_match = 0
+    if final_table is not None and "tns_name" in final_table.columns:
+        n_match = int(final_table["tns_name"].notna().sum())
+
+    if n_match > 0:
+        names = ", ".join(sorted({str(n) for n in final_table["tns_name"].dropna()}))
+        st.success(f"TNS: {n_match} source(s) matched ({names}).")
+    elif tns_lines:
+        st.info("TNS: " + " ".join(tns_lines))
+    else:
+        st.info("TNS: query not performed (no API key or no response).")
+
+    objects_view = format_tns_objects(objects)
+    if not objects_view.empty:
+        with st.expander(
+            f"TNS objects found in the field ({len(objects_view)})",
+            expanded=True,
+        ):
+            st.dataframe(objects_view, use_container_width=True, hide_index=True)
+
+
+def format_tns_objects(objects):
+    """Return the TNS objects in the field as a display-ready DataFrame.
+
+    Matched objects come first (closest first); the columns are renamed for
+    the user and the match flag becomes ``Yes``/``No``. An empty DataFrame is
+    returned when there is nothing to show.
+    """
+    if not isinstance(objects, pd.DataFrame) or objects.empty:
+        return pd.DataFrame()
+    view = objects.copy()
+    sort_cols = [c for c in ("matched", "separation_arcsec") if c in view.columns]
+    if sort_cols:
+        ascending = [False if c == "matched" else True for c in sort_cols]
+        view = view.sort_values(sort_cols, ascending=ascending, na_position="last")
+    if "matched" in view.columns:
+        view["matched"] = view["matched"].map({True: "Yes", False: "No"})
+    renames = {
+        "designation": "Name",
+        "ra": "RA (deg)",
+        "dec": "Dec (deg)",
+        "type": "Type",
+        "redshift": "Redshift",
+        "discoverydate": "Discovery date",
+        "discoverymag": "Discovery mag",
+        "matched": "Matched",
+        "separation_arcsec": "Separation (arcsec)",
+    }
+    view = view.rename(columns=renames)
+    for col in ("RA (deg)", "Dec (deg)"):
+        if col in view.columns:
+            view[col] = pd.to_numeric(view[col], errors="coerce").round(6)
+    for col in ("Separation (arcsec)", "Discovery mag"):
+        if col in view.columns:
+            view[col] = pd.to_numeric(view[col], errors="coerce").round(2)
+    return view.reset_index(drop=True)
 
 
 def format_astrocolibri_events(events):

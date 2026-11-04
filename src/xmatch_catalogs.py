@@ -1,5 +1,6 @@
 import os
 import json
+import threading
 from datetime import datetime, timedelta, timezone
 import requests
 
@@ -13,20 +14,81 @@ from astropy.time import Time
 import astropy.units as u
 from astroquery.gaia import Gaia
 from astroquery.simbad import Simbad
+from astroquery.simbad import conf as simbad_conf
 from astroquery.vizier import Vizier
 from astroquery.imcce import Skybot
 
+from src.catalog_mirrors import query_vizier_with_fallback
+from src.tns_catalog import cross_match_tns
 from src.tools_pipeline import URL
 from src.utils import safe_catalog_query, skybot_cone_search
 
 # Timeout (seconds) for outbound HTTP requests so a slow service cannot hang a run
 HTTP_TIMEOUT_SECONDS = 30
+SIMBAD_PRIMARY_SERVER = "simbad.cds.unistra.fr"
+SIMBAD_FALLBACK_SERVER = "simbad.cfa.harvard.edu"
+_SIMBAD_CLIENT_CREATION_LOCK = threading.Lock()
 
 # astroquery clients are process-wide singletons shared by every Streamlit session.
 # Their settings are therefore fixed once at import time (never per request), and
 # anything request-specific (columns, row limits) lives on per-call instances.
 Gaia.MAIN_GAIA_TABLE = "gaiadr3.gaia_source"
 Skybot._get_raw_response = False
+
+
+def _create_simbad_client(server: str) -> object:
+    """Create a SIMBAD client for one mirror without persisting config changes."""
+    with _SIMBAD_CLIENT_CREATION_LOCK:
+        server_was_known = server in simbad_conf.servers_list
+        try:
+            if not server_was_known:
+                simbad_conf.servers_list.append(server)
+            simbad_client = Simbad()
+            simbad_client.server = server
+            return simbad_client
+        finally:
+            if not server_was_known:
+                simbad_conf.servers_list.remove(server)
+
+
+def _query_simbad_region(
+    server: str, center_coord: SkyCoord, radius: object
+) -> object:
+    """Run the project's SIMBAD region query against one specified mirror."""
+    simbad_client = _create_simbad_client(server)
+    simbad_client.add_votable_fields("otype", "main_id", "ids", "B", "V")
+    return simbad_client.query_region(center_coord, radius=radius)
+
+
+def query_simbad_region_with_fallback(
+    center_coord: SkyCoord, radius: object
+) -> tuple[object | None, bool, str | None]:
+    """Query SIMBAD, retrying on the Harvard mirror after a primary failure."""
+    result, primary_error = safe_catalog_query(
+        _query_simbad_region,
+        "SIMBAD query failed",
+        SIMBAD_PRIMARY_SERVER,
+        center_coord,
+        radius,
+    )
+    if primary_error is None:
+        return result, False, None
+
+    result, fallback_error = safe_catalog_query(
+        _query_simbad_region,
+        "SIMBAD Harvard mirror query failed",
+        SIMBAD_FALLBACK_SERVER,
+        center_coord,
+        radius,
+    )
+    if fallback_error is None:
+        return result, True, None
+
+    return (
+        None,
+        True,
+        f"{primary_error}; {fallback_error}",
+    )
 
 
 def cross_match_with_gaia(
@@ -174,11 +236,17 @@ def cross_match_with_gaia(
                             columns=["**", "+_r"]
                         )  # Get all columns plus distance
                         v.ROW_LIMIT = -1  # No row limit
-                        catalog_table = v.query_region(
+                        catalog_table, used_vizier_fallback = query_vizier_with_fallback(
+                            v,
+                            "query_region",
                             center_coord,
                             radius=radius_query_deg * u.deg,
                             catalog="II/379/smssdr4",  # SkyMapper DR4
                         )
+                        if used_vizier_fallback:
+                            log_messages.append(
+                                "INFO: VizieR primary mirror unavailable; using the Harvard mirror."
+                            )
                         if len(catalog_table) > 0:
                             catalog_table = catalog_table[0]
                             log_messages.append(
@@ -198,11 +266,17 @@ def cross_match_with_gaia(
                             columns=["**", "+_r"]
                         )  # Get all columns plus distance
                         v.ROW_LIMIT = -1  # No row limit
-                        catalog_table = v.query_region(
+                        catalog_table, used_vizier_fallback = query_vizier_with_fallback(
+                            v,
+                            "query_region",
                             center_coord,
                             radius=radius_query_deg * u.deg,
                             catalog="II/349/ps1",  # PANSTARRS DR1
                         )
+                        if used_vizier_fallback:
+                            log_messages.append(
+                                "INFO: VizieR primary mirror unavailable; using the Harvard mirror."
+                            )
                         if len(catalog_table) > 0:
                             catalog_table = catalog_table[0]
                             log_messages.append(
@@ -276,11 +350,17 @@ def cross_match_with_gaia(
                     ],
                     row_limit=2000,
                 )
-                vizier_result = gaia_vizier.query_region(
+                vizier_result, used_vizier_fallback = query_vizier_with_fallback(
+                    gaia_vizier,
+                    "query_region",
                     center_coord,
                     radius=gaia_radius_query_deg * u.deg,
                     catalog="I/355/gaiadr3",
                 )
+                if used_vizier_fallback:
+                    log_messages.append(
+                        "INFO: VizieR primary mirror unavailable; using the Harvard mirror."
+                    )
 
                 if vizier_result and len(vizier_result) > 0:
                     catalog_table = vizier_result[0]
@@ -662,8 +742,14 @@ def cross_match_with_gaia(
 
 
 # Progressive cross-match radii (arcsec) between an Astro-Colibri event and a
-# detected source: the tightest radius is tried first, then the next ones.
-ASTROCOLIBRI_MATCH_RADII_ARCSEC = (5.0, 10.0, 15.0, 20.0)
+# detected source: the tightest radius is tried first, then the next ones, up to
+# 30 arcsec (transient positions are not always astrometrically accurate). The
+# tiers match the TNS cross-match, so both services use the same maximum.
+ASTROCOLIBRI_MATCH_RADII_ARCSEC = (5.0, 10.0, 15.0, 20.0, 30.0)
+# detected source: the tightest radius is tried first, then the next ones, up to
+# 30 arcsec (transient positions are not always astrometrically accurate). The
+# tiers match the TNS cross-match, so both services use the same maximum.
+ASTROCOLIBRI_MATCH_RADII_ARCSEC = (5.0, 10.0, 15.0, 20.0, 30.0)
 ASTROCOLIBRI_MATCH_RADIUS_ARCSEC = max(ASTROCOLIBRI_MATCH_RADII_ARCSEC)
 # Matches at or beyond this radius are loose and flagged with a WARNING
 ASTROCOLIBRI_WARN_RADIUS_ARCSEC = 15.0
@@ -706,6 +792,8 @@ def enhance_catalog(
     This function queries several catalogs and databases including:
     - GAIA DR3 (using previously matched sources)
     - Astro-Colibri (for known astronomical sources)
+    - TNS (Transient Name Server, for public transients)
+    - TNS (Transient Name Server, for public transients)
     - SIMBAD (for object identifications and classifications)
     - SkyBoT (for solar system objects)
     - AAVSO VSX (for variable stars)
@@ -1160,24 +1248,51 @@ def enhance_catalog(
         log_messages.append(f"ERROR: Error querying Astro-Colibri: {str(e)}")
         log_messages.append("INFO: No Astro-Colibri sources found.")
 
-    log_messages.append("INFO: Querying SIMBAD for object identifications...")
+    log_messages.append("INFO: Querying TNS (Transient Name Server)...")
+    try:
+        enhanced_table, tns_messages = cross_match_tns(
+            enhanced_table,
+            valid_coords_mask,
+            ra_center=field_center_ra,
+            dec_center=field_center_dec,
+            field_width_arcmin=field_width_arcmin,
+        )
+        log_messages.extend(tns_messages)
+    except Exception as e:
+        # The TNS association is an extra and must never fail the pipeline.
+        log_messages.append(f"WARNING: TNS cross-match failed: {e}")
 
-    custom_simbad = Simbad()
-    custom_simbad.add_votable_fields("otype", "main_id", "ids", "B", "V")
+    log_messages.append("INFO: Querying TNS (Transient Name Server)...")
+    try:
+        enhanced_table, tns_messages = cross_match_tns(
+            enhanced_table,
+            valid_coords_mask,
+            ra_center=field_center_ra,
+            dec_center=field_center_dec,
+            field_width_arcmin=field_width_arcmin,
+        )
+        log_messages.extend(tns_messages)
+    except Exception as e:
+        # The TNS association is an extra and must never fail the pipeline.
+        log_messages.append(f"WARNING: TNS cross-match failed: {e}")
+
+    log_messages.append("INFO: Querying SIMBAD for object identifications...")
 
     log_messages.append("INFO: Querying SIMBAD")
 
     try:
         center_coord = SkyCoord(ra=field_center_ra, dec=field_center_dec, unit="deg")
-        simbad_result, error = safe_catalog_query(
-            custom_simbad.query_region,
-            "SIMBAD query failed",
+        simbad_result, used_simbad_fallback, error = query_simbad_region_with_fallback(
             center_coord,
-            radius=field_width_arcmin * u.arcmin,
+            field_width_arcmin * u.arcmin,
         )
         if error:
             log_messages.append(f"WARNING: {error}")
         else:
+            if used_simbad_fallback:
+                log_messages.append(
+                    "INFO: SIMBAD primary mirror unavailable; using the Harvard CFA mirror."
+                )
             if simbad_result is not None and len(simbad_result) > 0:
                 enhanced_table["simbad_main_id"] = None
                 enhanced_table["simbad_otype"] = None
@@ -1467,11 +1582,17 @@ def enhance_catalog(
     try:
         if field_center_ra is not None and field_center_dec is not None:
             _vsx = Vizier(row_limit=-1)
-            vizier_result = _vsx.query_region(
+            vizier_result, used_vizier_fallback = query_vizier_with_fallback(
+                _vsx,
+                "query_region",
                 SkyCoord(ra=field_center_ra, dec=field_center_dec, unit=u.deg),
                 radius=field_width_arcmin * u.arcmin,
                 catalog=["B/vsx/vsx"],
             )
+            if used_vizier_fallback:
+                log_messages.append(
+                    "INFO: VizieR primary mirror unavailable; using the Harvard mirror."
+                )
 
             if (
                 vizier_result
@@ -1537,11 +1658,17 @@ def enhance_catalog(
             v.ROW_LIMIT = -1  # No row limit
 
             # Query the VII/294 catalog around the field center
-            result = v.query_region(
+            result, used_vizier_fallback = query_vizier_with_fallback(
+                v,
+                "query_region",
                 SkyCoord(ra=field_center_ra, dec=field_center_dec, unit=(u.deg, u.deg)),
                 width=field_width_arcmin * u.arcmin,
                 catalog="VII/294",
             )
+            if used_vizier_fallback:
+                log_messages.append(
+                    "INFO: VizieR primary mirror unavailable; using the Harvard mirror."
+                )
 
             if result and len(result) > 0:
                 qso_table = result[0]
@@ -1630,11 +1757,17 @@ def enhance_catalog(
             v.ROW_LIMIT = -1
 
             # Query the 10 Parsec catalog (J/A+A/650/A201/tablea1)
-            result = v.query_region(
+            result, used_vizier_fallback = query_vizier_with_fallback(
+                v,
+                "query_region",
                 SkyCoord(ra=field_center_ra, dec=field_center_dec, unit=(u.deg, u.deg)),
                 width=field_width_arcmin * u.arcmin,
                 catalog="J/A+A/650/A201/tablea1",
             )
+            if used_vizier_fallback:
+                log_messages.append(
+                    "INFO: VizieR primary mirror unavailable; using the Harvard mirror."
+                )
 
             if result and len(result) > 0:
                 pc10_table = result[0]
@@ -1857,6 +1990,12 @@ def enhance_catalog(
         # Add catalog cross-match columns
         catalog_cols = [
             "astrocolibri_name", "astrocolibri_type", "astrocolibri_classification",
+            "astrocolibri_ra", "astrocolibri_dec",
+            "tns_name", "tns_type", "tns_ra", "tns_dec",
+            "tns_separation_arcsec",
+            "astrocolibri_ra", "astrocolibri_dec",
+            "tns_name", "tns_type", "tns_ra", "tns_dec",
+            "tns_separation_arcsec",
             "simbad_main_id", "simbad_otype", "simbad_B", "simbad_V",
             "skybot_NAME", "skybot_OBJECT_TYPE", "skybot_MAGV", "skybot_epoch",
             "aavso_Name", "aavso_Type", "aavso_Period",
