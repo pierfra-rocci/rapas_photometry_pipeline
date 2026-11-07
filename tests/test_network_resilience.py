@@ -865,17 +865,20 @@ def test_aladin_reports_missing_webgl2(monkeypatch):
     helper_index = html.index("function aladinShowProblem(message)")
     probe_index = html.index("document.createElement('canvas').getContext('webgl2')")
     assert status_index < probe_index
-    assert helper_index < html.index("A.init.then")
+    assert helper_index < html.index("aladinScriptPromise.then(() => A.init).then")
 
 
-def test_aladin_reports_failed_aladin_script_download(monkeypatch):
-    """A blocked aladin.js download must surface as a message, not silence."""
+def test_aladin_falls_back_when_primary_script_download_fails(monkeypatch):
+    """A blocked CDS aladin.js download should load the jsDelivr fallback."""
     html = _render_aladin_widget(monkeypatch)
 
     script_tag = re.search(r'<script[^>]*src="[^"]*aladin\.js"[^>]*>', html).group(0)
-    assert "onerror=" in script_tag
-    assert "aladinShowProblem(" in script_tag
-    assert "could not be downloaded from aladin.cds.unistra.fr" in script_tag
+    assert 'src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js"' in script_tag
+    assert 'onerror="aladinLoadFallback(this)"' in script_tag
+    assert "https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js" in html
+    assert "fallbackScript.onerror" in html
+    assert "Aladin Lite could not be downloaded from either the CDS server or jsDelivr" in html
+    assert "aladinScriptPromise.then(() => A.init).then(() => {" in html
 
     # The helper and the status box already exist when onerror can fire.
     helper_index = html.index("function aladinShowProblem(message)")

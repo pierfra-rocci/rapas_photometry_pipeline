@@ -104,6 +104,19 @@ def test_prepare_export_table_without_detection_keeps_order():
     assert list(out["id"].iloc[[0, 1, 3]]) == [1, 2, 4]
 
 
+def test_save_catalog_files_tolerates_duplicate_column_labels(tmp_path):
+    df = _make_table()
+    dup = pd.concat([df, df[["astrocolibri_name", "simbad_main_id"]]], axis=1)
+    assert dup.columns.duplicated().any()
+    ok, errors = save_catalog_files(
+        dup, "field", str(tmp_path), filter_band=FILTER_BAND
+    )
+    assert not errors, errors
+    vot = parse_single_table(str(tmp_path / "field.vot")).to_table()
+    assert len(vot.colnames) == len(set(vot.colnames))
+    assert vot["astrocolibri_name"][0] == "AT2024xyz"
+
+
 def test_save_catalog_files_csv_and_vot(tmp_path):
     ok, errors = save_catalog_files(
         _make_table(), "field", str(tmp_path), filter_band=FILTER_BAND
