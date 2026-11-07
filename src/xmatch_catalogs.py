@@ -1993,9 +1993,6 @@ def enhance_catalog(
             "astrocolibri_ra", "astrocolibri_dec",
             "tns_name", "tns_type", "tns_ra", "tns_dec",
             "tns_separation_arcsec",
-            "astrocolibri_ra", "astrocolibri_dec",
-            "tns_name", "tns_type", "tns_ra", "tns_dec",
-            "tns_separation_arcsec",
             "simbad_main_id", "simbad_otype", "simbad_B", "simbad_V",
             "skybot_NAME", "skybot_OBJECT_TYPE", "skybot_MAGV", "skybot_epoch",
             "aavso_Name", "aavso_Type", "aavso_Period",
@@ -2017,7 +2014,7 @@ def enhance_catalog(
     
     # Apply the new column order
     try:
-        column_order = get_column_order()
+        column_order = list(dict.fromkeys(get_column_order()))
         enhanced_table = enhanced_table[column_order]
         log_messages.append("INFO: Reorganized table columns for better readability")
     except Exception as e:

@@ -821,6 +821,8 @@ def prepare_export_table(table, filter_band=None):
         return table
 
     df = ensure_source_ids(table).reset_index(drop=True)
+    # Duplicate labels make df[col] return a DataFrame and break VOTable/CSV export.
+    df = df.loc[:, ~df.columns.duplicated()]
 
     for centre, fallback in (("x_center", "xcenter"), ("y_center", "ycenter")):
         if fallback in df.columns:

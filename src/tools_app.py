@@ -654,10 +654,32 @@ def display_catalog_in_aladin(
         }}
     </script>
     <script type="text/javascript" src="https://code.jquery.com/jquery-1.12.1.min.js" charset="utf-8"></script>
-    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8" onerror="aladinShowProblem('Aladin Lite could not be downloaded from aladin.cds.unistra.fr: this network cannot reach the CDS server (proxy, firewall or offline).')"></script>
+    <script type="text/javascript">
+        let resolveAladinScript;
+        let rejectAladinScript;
+        const aladinScriptPromise = new Promise((resolve, reject) => {{
+            resolveAladinScript = resolve;
+            rejectAladinScript = reject;
+        }});
+        function aladinScriptLoaded() {{
+            resolveAladinScript();
+        }}
+        function aladinLoadFallback(script) {{
+            script.onerror = null;
+            const fallbackScript = document.createElement('script');
+            fallbackScript.src = 'https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js';
+            fallbackScript.charset = 'utf-8';
+            fallbackScript.onload = aladinScriptLoaded;
+            fallbackScript.onerror = () => {{
+                rejectAladinScript(new Error('Aladin Lite could not be downloaded from either the CDS server or jsDelivr. Check network access, proxy, or firewall settings.'));
+            }};
+            document.head.appendChild(fallbackScript);
+        }}
+    </script>
+    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8" onload="aladinScriptLoaded()" onerror="aladinLoadFallback(this)"></script>
     <script type="text/javascript">
         let aladin;
-        A.init.then(() => {{
+        aladinScriptPromise.then(() => A.init).then(() => {{
             try {{
                 // Initialize Aladin v3
                 aladin = A.aladin('#aladin-lite-div', {{
@@ -928,7 +950,8 @@ def display_catalog_in_aladin(
                 document.getElementById('aladin-lite-div').innerHTML = '<p style="color:red;">Error loading Aladin v3 viewer. Try refreshing the page or use a modern browser.</p>';
             }}
         }}).catch((error) => {{
-            console.error("A.init promise rejected:", error);
+            console.error("Aladin Lite initialization failed:", error);
+            aladinShowProblem(error.message || "Error initializing Aladin Lite.");
             document.getElementById('aladin-lite-div').innerHTML = '<p style="color:red;">Error initializing Aladin v3. Please check your browser console for details.</p>';
         }});
     </script>
