@@ -449,31 +449,20 @@ of the normal end-user pipeline:
 Aladin Lite v3 paints the sky with WebGL2 and fetches its HiPS tiles from CDS
 (`alasky.cds.unistra.fr`), so an empty viewer is usually a WebGL2 or a network
 issue, not a caching one.
-**Aladin Lite viewer stays empty (any browser)**:
-
-Aladin Lite v3 paints the sky with WebGL2 and fetches its HiPS tiles from CDS
-(`alasky.cds.unistra.fr`), so an empty viewer is usually a WebGL2 or a network
-issue, not a caching one.
 
 - **Read the red line under the viewer**: the widget now names the cause (no
-  WebGL2 context, or `aladin.js` could not be downloaded from
-  `aladin.cds.unistra.fr`) instead of showing a blank box.
+  WebGL2 context, or `aladin.js` could not be downloaded) instead of showing
+  a blank box. If the CDS script cannot be reached, the widget automatically
+  retries it from jsDelivr at
+  `https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js`; if both
+  downloads fail, the widget reports both sources.
 - **Firefox**: enable hardware acceleration, or set `webgl.force-enabled` to
   `true` in `about:config` and restart the browser.
 - **Tiles blocked**: check the browser console for failed requests to
   `alasky.cds.unistra.fr` (proxy, firewall, HTTPS-Only mode); the viewer then
   falls back to `CDS/P/DSS2/red` on its own.
-- **Alternative browsers**: use Chrome or Edge when WebGL2 cannot be enabled.
-- **Full details**: `docs/troubleshooting.rst`, section *Aladin Lite Viewer
-  Issues*.
-- **Read the red line under the viewer**: the widget now names the cause (no
-  WebGL2 context, or `aladin.js` could not be downloaded from
-  `aladin.cds.unistra.fr`) instead of showing a blank box.
-- **Firefox**: enable hardware acceleration, or set `webgl.force-enabled` to
-  `true` in `about:config` and restart the browser.
-- **Tiles blocked**: check the browser console for failed requests to
-  `alasky.cds.unistra.fr` (proxy, firewall, HTTPS-Only mode); the viewer then
-  falls back to `CDS/P/DSS2/red` on its own.
+- **Note**: the jsDelivr fallback provides the Aladin Lite JavaScript library;
+  survey imagery still requires access to the HiPS tile server.
 - **Alternative browsers**: use Chrome or Edge when WebGL2 cannot be enabled.
 - **Full details**: `docs/troubleshooting.rst`, section *Aladin Lite Viewer
   Issues*.
@@ -510,6 +499,10 @@ issue, not a caching one.
   (`RPP_TNS_SANDBOX=1` selects `sandbox.wis-tns.org`).
 - Temporary network failures or empty responses may reduce the available
   cross-match results without stopping the whole pipeline.
+- If the cross-match step itself fails, the photometry catalogue (CSV and
+  VOTable) is still written and available for download, without the
+  cross-match columns. The transient finder runs independently, so a failure
+  there does not affect the catalogue either.
 - Check the generated log file to see which catalog steps completed, timed out,
   or were skipped.
 
