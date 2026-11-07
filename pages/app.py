@@ -1769,6 +1769,12 @@ if _run_analysis_now:
                                     # Fallback: assume 1800 arcsec (0.5 degrees) as reasonable default
                                     search_radius = 1800.0
 
+                                # Keep the photometry-only table so the catalogue can still be
+                                # exported if the cross-match step fails.
+                                photometry_only_table = (
+                                    final_table.copy() if final_table is not None else None
+                                )
+
                                 if (
                                     final_table is not None
                                     and "ra" in final_table.columns
@@ -1791,29 +1797,36 @@ if _run_analysis_now:
                                         )
 
                                     if final_table is not None and len(final_table) > 0:
-                                        final_table, log_messages = enhance_catalog(
-                                            colibri_api_key,
-                                            final_table,
-                                            matched_table,
-                                            header_to_process,
-                                            pixel_size_arcsec,
-                                            search_radius_arcsec=search_radius,
-                                        )
-                                        handle_log_messages(log_messages)
-                                        show_astrocolibri_status(
-                                            log_messages,
-                                            final_table,
-                                            events=final_table.attrs.get(
-                                                "astrocolibri_events"
-                                            ),
-                                        )
-                                        show_tns_status(
-                                            log_messages,
-                                            final_table,
-                                            objects=final_table.attrs.get(
-                                                "tns_objects"
-                                            ),
-                                        )
+                                        try:
+                                            final_table, log_messages = enhance_catalog(
+                                                colibri_api_key,
+                                                final_table,
+                                                matched_table,
+                                                header_to_process,
+                                                pixel_size_arcsec,
+                                                search_radius_arcsec=search_radius,
+                                            )
+                                            handle_log_messages(log_messages)
+                                            show_astrocolibri_status(
+                                                log_messages,
+                                                final_table,
+                                                events=final_table.attrs.get(
+                                                    "astrocolibri_events"
+                                                ),
+                                            )
+                                            show_tns_status(
+                                                log_messages,
+                                                final_table,
+                                                objects=final_table.attrs.get(
+                                                    "tns_objects"
+                                                ),
+                                            )
+                                        except Exception as e:
+                                            st.error(
+                                                "Cross-match failed. The catalogue will be "
+                                                f"exported without cross-match columns: {e}"
+                                            )
+                                            final_table = photometry_only_table
                                         final_table = apply_color_term_correction(
                                             final_table,
                                             color_term_result,
