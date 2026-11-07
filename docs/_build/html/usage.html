@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Usage Guide &mdash; RAPAS Photometry Pipeline (RPP) v1.9.1 Documentation</title>
+  <title>Usage Guide &mdash; RAPAS Photometry Pipeline (RPP) v1.9.2 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=60b3a732"></script>
+      <script src="_static/documentation_options.js?v=574b2d58"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -197,9 +197,17 @@ especially <code class="docutils literal notranslate"><span class="pre">SMTP_SER
 <li><p>For astrometry or plate solving, ensure external dependencies such as
 Astrometry.net indices and <code class="docutils literal notranslate"><span class="pre">solve-field</span></code> are installed and available on
 <code class="docutils literal notranslate"><span class="pre">PATH</span></code>.</p></li>
-<li><p>External catalog services such as GAIA, SIMBAD, SkyBoT, and Astro-Colibri
-may time out or return partial results. In many cases the pipeline continues
-and records warnings in the log instead of stopping completely.</p></li>
+<li><p>External catalog services such as GAIA, SIMBAD, SkyBoT, Astro-Colibri and
+the TNS may time out or return partial results. In many cases the pipeline
+continues and records warnings in the log instead of stopping completely.</p></li>
+<li><p>The TNS cross-match needs <code class="docutils literal notranslate"><span class="pre">TNS_API_KEY</span></code> plus <code class="docutils literal notranslate"><span class="pre">TNS_BOT_ID</span></code>/
+<code class="docutils literal notranslate"><span class="pre">TNS_BOT_NAME</span></code> (bot) or <code class="docutils literal notranslate"><span class="pre">TNS_USER_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_USER_NAME</span></code> (user). Its
+catalogue is downloaded once per UTC day and cached (<code class="docutils literal notranslate"><span class="pre">RPP_TNS_CACHE_DIR</span></code>),
+or read from a local file with <code class="docutils literal notranslate"><span class="pre">RPP_TNS_CATALOG_PATH</span></code>. Setting
+<code class="docutils literal notranslate"><span class="pre">RPP_TNS_MIRROR_URL</span></code> queries a shared <code class="docutils literal notranslate"><span class="pre">tns-mirror</span></code> API instead of reading
+the catalogue; if the mirror fails, the daily catalogue is used, and if that
+cannot be downloaded the TNS Search API is queried (<code class="docutils literal notranslate"><span class="pre">RPP_TNS_SANDBOX=1</span></code>
+selects the TNS sandbox).</p></li>
 </ul>
 </section>
 <section id="next-steps">

@@ -19,7 +19,7 @@ Highlights
 - FITS upload staging before any scientific processing starts
 - Local WCS validation and optional Astrometry.net solving/refinement
 - Aperture and PSF photometry with propagated uncertainties
-- Catalog enhancement with GAIA, SIMBAD, SkyBoT, VSX, Milliquas, and optional Astro-Colibri
+- Catalog enhancement with GAIA, SIMBAD, SkyBoT, VSX, Milliquas, optional Astro-Colibri and TNS
 - Optional transient candidate workflow with PanSTARRS or SkyMapper references
 - SQLite-backed user settings, FITS tracking, and result archive tracking
 - ZIP export of catalogs, logs, plots, and generated intermediate products
@@ -72,8 +72,7 @@ System Architecture
    - Graceful handling of remote-service timeouts and partial-result returns
 
 **External Integration:**
-   - Astrometry.net and optional SCAMP for astrometric workflows
-   - GAIA, SIMBAD, SkyBoT, VSX, Milliquas, and Astro-Colibri services
+   - Astrometry.net and optional SCAMP for astrometric workflows    - GAIA, SIMBAD, SkyBoT, VSX, Milliquas, Astro-Colibri and TNS services
    - Aladin Lite for interactive sky visualization
 
 

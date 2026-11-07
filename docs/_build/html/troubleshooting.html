@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Troubleshooting &mdash; RAPAS Photometry Pipeline (RPP) v1.9.1 Documentation</title>
+  <title>Troubleshooting &mdash; RAPAS Photometry Pipeline (RPP) v1.9.2 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=60b3a732"></script>
+      <script src="_static/documentation_options.js?v=574b2d58"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -412,6 +412,10 @@ log: 10 stars is the hard minimum and 25 the quality target.</p></li>
 service is down or slow.</p></li>
 <li><p><strong>Solution</strong>:</p>
 <ul>
+<li><p>VizieR queries automatically retry through the Harvard mirror
+(<code class="docutils literal notranslate"><span class="pre">vizier.cfa.harvard.edu</span></code>), and SIMBAD region queries retry through
+<code class="docutils literal notranslate"><span class="pre">simbad.cfa.harvard.edu</span></code>. The log records when either fallback is
+used.</p></li>
 <li><p>Wait and try processing the image again later.</p></li>
 <li><p>Check your internet connection.</p></li>
 <li><p>Review the generated log file to see which catalog step timed out or was
@@ -457,8 +461,58 @@ sidebar.</p></li>
 <li><p>Check the Astro-Colibri service status.</p></li>
 <li><p>HTTP 429 means the daily quota (100 requests/day) is exhausted; the
 log message states the reason returned by the API.</p></li>
-<li><p>A warning about the 15 or 20 arcsec tier means the association is
+<li><p>A warning about the 15, 20 or 30 arcsec tier means the association is
 loose: check it visually in Aladin.</p></li>
+</ul>
+</li>
+</ul>
+<p><strong>TNS: No matches, skipped or Error</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: No TNS credentials, network issue, or no public transient in
+the field. The TNS staged files require an API key and marker, so an
+anonymous download answers HTTP 403.</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ul>
+<li><p>Set <code class="docutils literal notranslate"><span class="pre">TNS_API_KEY</span></code> and <code class="docutils literal notranslate"><span class="pre">TNS_BOT_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_BOT_NAME</span></code> (bot) or
+<code class="docutils literal notranslate"><span class="pre">TNS_USER_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_USER_NAME</span></code> (user) in the environment of the
+Streamlit process, then restart it.</p></li>
+<li><p>The catalogue is downloaded once per UTC day and cached in the system
+temp directory; <code class="docutils literal notranslate"><span class="pre">RPP_TNS_CACHE_DIR</span></code> changes the location and
+removing the <code class="docutils literal notranslate"><span class="pre">tns_public_objects_YYYYMMDD.csv</span></code> file forces a refresh.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">RPP_TNS_CATALOG_PATH</span></code> uses a CSV or ZIP catalogue already on disk and
+skips the download entirely.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">RPP_TNS_MIRROR_URL</span></code> queries a shared <code class="docutils literal notranslate"><span class="pre">tns-mirror</span></code> API instead of
+reading the catalogue, once per detected source. A <code class="docutils literal notranslate"><span class="pre">WARNING</span></code> naming
+the mirror means the queries failed and the daily catalogue was used:
+check that the URL is the API root (<code class="docutils literal notranslate"><span class="pre">/v1/nearest</span></code> is appended) and
+that the service is reachable. Fields with more than 500 sources use
+the catalogue directly.</p></li>
+<li><p>When the catalogue download fails, the TNS Search API is queried
+instead (<code class="docutils literal notranslate"><span class="pre">INFO:</span> <span class="pre">TNS:</span> <span class="pre">querying</span> <span class="pre">the</span> <span class="pre">Search</span> <span class="pre">API</span> <span class="pre">instead.</span></code>). A
+<code class="docutils literal notranslate"><span class="pre">Search</span> <span class="pre">API</span> <span class="pre">failed</span></code> warning gives the reason (HTTP status, network
+error or rate limit); a field holding more than 100 objects is
+truncated with a warning. <code class="docutils literal notranslate"><span class="pre">RPP_TNS_SANDBOX=1</span></code> targets
+<code class="docutils literal notranslate"><span class="pre">sandbox.wis-tns.org</span></code>, whose keys differ from production.</p></li>
+<li><p>An HTTP 403/401 message means the key or the <code class="docutils literal notranslate"><span class="pre">tns_marker</span></code> is missing
+or invalid; HTTP 429 is the TNS rate limit.</p></li>
+<li><p>A warning about the 20 or 30 arcsec tier means the association is loose:
+transient positions are not always astrometrically accurate, so check
+it visually in Aladin.</p></li>
+<li><p>The step is best-effort: without the catalogue the export simply omits
+the <code class="docutils literal notranslate"><span class="pre">tns_*</span></code> columns and the rest of the run is unaffected.</p></li>
+</ul>
+</li>
+</ul>
+<p><strong>Cross-match fails entirely</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: An unexpected error stops the cross-match step (for example a
+service response the parser cannot handle).</p></li>
+<li><p><strong>Solution</strong>:</p>
+<ul>
+<li><p>The app shows <code class="docutils literal notranslate"><span class="pre">Cross-match</span> <span class="pre">failed</span></code>, and the catalogue is still written
+without the cross-match columns. Download it from the results.</p></li>
+<li><p>The transient finder runs independently; its failure does not prevent
+the catalogue export.</p></li>
 </ul>
 </li>
 </ul>
@@ -517,17 +571,20 @@ the sky with WebGL2. Enable hardware acceleration; on Firefox set
 <code class="docutils literal notranslate"><span class="pre">webgl.force-enabled</span></code> to <code class="docutils literal notranslate"><span class="pre">true</span></code> in <code class="docutils literal notranslate"><span class="pre">about:config</span></code> and restart the
 browser; or use Chrome/Edge. A blocklisted or outdated GPU driver has
 the same effect.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">Aladin</span> <span class="pre">Lite</span> <span class="pre">could</span> <span class="pre">not</span> <span class="pre">be</span> <span class="pre">downloaded</span> <span class="pre">from</span> <span class="pre">aladin.cds.unistra.fr</span> <span class="pre">...</span></code>:
-the network cannot reach CDS (proxy, firewall, Firefox HTTPS-Only mode,
-or no connection).</p></li>
+<li><p>If the CDS <code class="docutils literal notranslate"><span class="pre">aladin.js</span></code> download fails, the widget retries from
+jsDelivr using
+<code class="docutils literal notranslate"><span class="pre">https://cdn.jsdelivr.net/npm/aladin-lite&#64;3.8.2/dist/aladin.js</span></code>.
+If both downloads fail, the red line reports that neither source could
+be reached; check the proxy, firewall, HTTPS-Only mode, or connection.
+The fallback covers the JavaScript library only; the sky imagery still
+requires access to the HiPS tile server.</p></li>
 <li><p>No red line and still a black view: open the browser console (F12) and
 look for failed requests to <code class="docutils literal notranslate"><span class="pre">alasky.cds.unistra.fr</span></code>, which serves the
 HiPS tiles. The analysis itself and the exported files are unaffected.</p></li>
 <li><p>The console also logs <code class="docutils literal notranslate"><span class="pre">[RPP</span> <span class="pre">Aladin]</span> <span class="pre">version</span> <span class="pre">...</span></code> with the Aladin Lite
-release actually loaded. The script is fetched from
-<code class="docutils literal notranslate"><span class="pre">.../api/v3/latest/aladin.js</span></code>, which follows the CDS releases, so pin
-a numbered version inside <code class="docutils literal notranslate"><span class="pre">display_catalog_in_aladin</span></code> when a release
-regression is suspected.</p></li>
+release actually loaded. The widget tries the CDS latest script first
+(<code class="docutils literal notranslate"><span class="pre">.../api/v3/latest/aladin.js</span></code>), then the pinned jsDelivr v3.8.2
+script if the CDS download fails.</p></li>
 </ul>
 </li>
 </ul>

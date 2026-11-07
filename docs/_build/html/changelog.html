@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Changelog &mdash; RAPAS Photometry Pipeline (RPP) v1.9.1 Documentation</title>
+  <title>Changelog &mdash; RAPAS Photometry Pipeline (RPP) v1.9.2 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=60b3a732"></script>
+      <script src="_static/documentation_options.js?v=574b2d58"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -54,6 +54,8 @@
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 <li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Changelog</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#unreleased">Unreleased</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#version-1-9-2">Version 1.9.2</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#version-1-9-1">Version 1.9.1</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#version-1-9-0">Version 1.9.0</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#version-1-8-7">Version 1.8.7</a></li>
@@ -106,6 +108,87 @@
   <section id="changelog">
 <h1>Changelog<a class="headerlink" href="#changelog" title="Link to this heading"></a></h1>
 <p>This document records all notable changes to RAPAS Photometry Pipeline.</p>
+<section id="unreleased">
+<h2>Unreleased<a class="headerlink" href="#unreleased" title="Link to this heading"></a></h2>
+<p><strong>Aladin Lite script fallback</strong></p>
+<ul class="simple">
+<li><p>If the Aladin Lite script cannot be downloaded from CDS, the viewer retries
+with the pinned v3.8.2 script from jsDelivr. If neither source is
+reachable, the widget reports the failure; HiPS imagery still requires
+access to the tile server.</p></li>
+</ul>
+<p><strong>VOTable export with Astro-Colibri and TNS columns</strong></p>
+<ul class="simple">
+<li><p>Fixed <code class="docutils literal notranslate"><span class="pre">Error</span> <span class="pre">preparing</span> <span class="pre">VOTable</span> <span class="pre">download:</span> <span class="pre">'DataFrame'</span> <span class="pre">object</span> <span class="pre">has</span> <span class="pre">no</span> <span class="pre">attribute</span>
+<span class="pre">'dtype'</span></code>. The Astro-Colibri and TNS columns were listed twice in the
+cross-match column order, which produced duplicate column labels. The
+column order is now de-duplicated and the export step drops any duplicate
+labels before writing the CSV and VOTable.</p></li>
+</ul>
+<p><strong>Catalogue export when cross-match fails</strong></p>
+<ul class="simple">
+<li><p>If the cross-match step raises an error, the photometry catalogue (CSV and
+VOTable) is still written and offered for download, without the
+cross-match columns. The error is shown in the app. The transient finder
+runs independently, so a failure there does not prevent the catalogue
+export.</p></li>
+</ul>
+</section>
+<section id="version-1-9-2">
+<h2>Version 1.9.2<a class="headerlink" href="#version-1-9-2" title="Link to this heading"></a></h2>
+<p><strong>Released: November 3, 2026</strong></p>
+<p><strong>TNS cross-match, shared mirror and wider transient radius</strong></p>
+<ul class="simple">
+<li><p><strong>TNS (Transient Name Server).</strong> <code class="docutils literal notranslate"><span class="pre">enhance_catalog</span></code> now also cross-matches
+the photometry catalog against the public TNS objects staged daily as
+<code class="docutils literal notranslate"><span class="pre">tns_public_objects.csv.zip</span></code>. The archive is downloaded at most once per
+UTC day and cached (<code class="docutils literal notranslate"><span class="pre">RPP_TNS_CACHE_DIR</span></code>, system temp directory by
+default); <code class="docutils literal notranslate"><span class="pre">RPP_TNS_CATALOG_PATH</span></code> points at a catalogue already on disk.
+Access needs <code class="docutils literal notranslate"><span class="pre">TNS_API_KEY</span></code> plus <code class="docutils literal notranslate"><span class="pre">TNS_BOT_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_BOT_NAME</span></code> (bot) or
+<code class="docutils literal notranslate"><span class="pre">TNS_USER_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_USER_NAME</span></code> (user). Without them, or on any network,
+HTTP or parsing failure, the step is skipped with a warning and the run
+continues, exactly like Astro-Colibri.</p></li>
+<li><p><strong>Progressive TNS matching up to 30 arcsec.</strong> Each TNS object is paired
+with its closest source at 5 -&gt; 10 -&gt; 15 -&gt; 20 -&gt; 30 arcsec; several
+objects landing on one source keep the closest. Matches found only at the
+20 or 30 arcsec tier raise a warning. New <code class="docutils literal notranslate"><span class="pre">src/tns_catalog.py</span></code> with
+<code class="docutils literal notranslate"><span class="pre">load_tns_public_objects</span></code>, <code class="docutils literal notranslate"><span class="pre">cross_match_tns</span></code> and <code class="docutils literal notranslate"><span class="pre">tns_match_radius</span></code>.</p></li>
+<li><p><strong>Optional shared TNS mirror.</strong> Setting <code class="docutils literal notranslate"><span class="pre">RPP_TNS_MIRROR_URL</span></code> to a
+<code class="docutils literal notranslate"><span class="pre">tns-mirror</span></code> HTTP API makes the TNS step query <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/nearest</span></code> once
+per detected source instead of downloading the catalogue, and fall back to
+the daily catalogue on any failure. New <code class="docutils literal notranslate"><span class="pre">mirror_tns_objects</span></code>,
+<code class="docutils literal notranslate"><span class="pre">query_tns_mirror</span></code> and <code class="docutils literal notranslate"><span class="pre">parse_tns_mirror_objects</span></code> helpers.</p></li>
+<li><p><strong>TNS spatial index.</strong> The parsed catalogue carries a KD-tree over the
+object positions (<code class="docutils literal notranslate"><span class="pre">tns_spatial_index</span></code>), so selecting the objects of a
+field no longer compares all ~170k rows with the field centre. The index is
+built once at parse time and kept with the frame in the daily cache;
+<code class="docutils literal notranslate"><span class="pre">tns_field_mask</span></code> falls back to the angular separation when no index is
+available.</p></li>
+<li><p><strong>TNS columns in the exported files.</strong> <code class="docutils literal notranslate"><span class="pre">tns_name</span></code> (full designation, for
+example <code class="docutils literal notranslate"><span class="pre">SN</span> <span class="pre">2026abc</span></code>), <code class="docutils literal notranslate"><span class="pre">tns_type</span></code>, <code class="docutils literal notranslate"><span class="pre">tns_ra</span></code> and <code class="docutils literal notranslate"><span class="pre">tns_dec</span></code> are
+written right after the Astro-Colibri columns; matched rows get <code class="docutils literal notranslate"><span class="pre">TNS;</span> <span class="pre">``</span>
+<span class="pre">in</span> <span class="pre">``catalog_matches</span></code>. The app shows the match outcome and lists every TNS
+object in the field with its match status and separation, and the Aladin
+popups name the TNS object.</p></li>
+<li><p><strong>TNS Search API fallback.</strong> When the staged catalogue cannot be obtained
+(download refused, network error) and TNS credentials are available, the
+TNS step queries the Search API instead: one <code class="docutils literal notranslate"><span class="pre">/api/get/search</span></code> cone
+search covering the field, then <code class="docutils literal notranslate"><span class="pre">/api/get/object</span></code> for the position and
+type of each object found (at most 100 objects; one rate-limit wait is
+honoured). The matching, the <code class="docutils literal notranslate"><span class="pre">tns_name</span></code>/<code class="docutils literal notranslate"><span class="pre">tns_type</span></code>/<code class="docutils literal notranslate"><span class="pre">tns_ra</span></code>/
+<code class="docutils literal notranslate"><span class="pre">tns_dec</span></code> columns of the CSV and VOTable files and the app listing are
+unchanged. <code class="docutils literal notranslate"><span class="pre">RPP_TNS_SANDBOX=1</span></code> selects <code class="docutils literal notranslate"><span class="pre">sandbox.wis-tns.org</span></code>. It is not
+used when <code class="docutils literal notranslate"><span class="pre">RPP_TNS_CATALOG_PATH</span></code> is set. New <code class="docutils literal notranslate"><span class="pre">search_tns_api</span></code>,
+<code class="docutils literal notranslate"><span class="pre">get_tns_api_object</span></code> and <code class="docutils literal notranslate"><span class="pre">api_tns_objects</span></code> helpers.</p></li>
+<li><p><strong>Astro-Colibri radius extended to 30 arcsec.</strong> The progressive
+Astro-Colibri match keeps the same tiers plus 30 arcsec, and associations
+found only at 15, 20 or 30 arcsec are still reported as loose.</p></li>
+<li><p><strong>Tests.</strong> New <code class="docutils literal notranslate"><span class="pre">tests/test_tns_crossmatch.py</span></code> (cache reuse, missing key,
+HTTP failure, closest-object selection, field filtering, loose tiers,
+export columns, Aladin popup, shared mirror, Search API fallback) and updated
+Astro-Colibri radius tests.</p></li>
+</ul>
+</section>
 <section id="version-1-9-1">
 <h2>Version 1.9.1<a class="headerlink" href="#version-1-9-1" title="Link to this heading"></a></h2>
 <p><strong>Released: October 30, 2026</strong></p>
@@ -152,6 +235,17 @@ covering every message above and the fallback behaviour.</p></li>
 <h2>Version 1.9.0<a class="headerlink" href="#version-1-9-0" title="Link to this heading"></a></h2>
 <p><strong>Released: October 15, 2026</strong></p>
 <p>(Version 1.8.8 was not released; Version 1.8.9 followed 1.8.7 directly.)</p>
+<p><strong>Login audit log</strong></p>
+<ul class="simple">
+<li><p>Every successful login writes a timestamped line with the pipeline version
+to the service log:
+<code class="docutils literal notranslate"><span class="pre">[YYYY-MM-DD</span> <span class="pre">HH:MM:SS]</span> <span class="pre">RPP</span> <span class="pre">vX.Y.Z</span> <span class="pre">-</span> <span class="pre">User</span> <span class="pre">'&lt;username&gt;'</span> <span class="pre">logged</span> <span class="pre">in</span> <span class="pre">successfully</span> <span class="pre">(&lt;origin&gt;).</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">api/main.py</span></code> (FastAPI backend), <code class="docutils literal notranslate"><span class="pre">backend.py</span></code> (legacy backend) and
+<code class="docutils literal notranslate"><span class="pre">pages/login.py</span></code> (frontend) each emit their own line; the origin suffix
+tells them apart. The version is read at runtime from
+<code class="docutils literal notranslate"><span class="pre">src/__version__.py</span></code>, so the message follows future releases
+automatically.</p></li>
+</ul>
 <p><strong>Login audit log</strong></p>
 <ul class="simple">
 <li><p>Every successful login writes a timestamped line with the pipeline version
@@ -220,6 +314,17 @@ warning when candidates rely on this fallback, using the same
 PSF-unavailable wording as the main pipeline. The shared warning is
 <code class="docutils literal notranslate"><span class="pre">PSF</span> <span class="pre">photometry</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">available;</span> <span class="pre">using</span> <span class="pre">calibrated</span> <span class="pre">aperture</span> <span class="pre">photometry</span> <span class="pre">instead.</span></code>;
 the full transient variant is
+<code class="docutils literal notranslate"><span class="pre">PSF</span> <span class="pre">photometry</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">available;</span> <span class="pre">using</span> <span class="pre">calibrated</span> <span class="pre">aperture</span> <span class="pre">photometry</span> <span class="pre">instead.</span> <span class="pre">Transient</span> <span class="pre">candidates</span> <span class="pre">use</span> <span class="pre">the</span> <span class="pre">calibrated</span> <span class="pre">1.1</span> <span class="pre">x</span> <span class="pre">FWHM</span> <span class="pre">aperture</span> <span class="pre">magnitude.</span></code>
+required to match the photometry table.</p></li>
+<li><p><strong>Transient finder without PSF photometry.</strong> When the photometry table has
+no PSF magnitude columns, or when the matched detections have no finite
+PSF value, <code class="docutils literal notranslate"><span class="pre">find_candidates()</span></code> now falls back to the calibrated
+1.1 x FWHM aperture magnitude (<code class="docutils literal notranslate"><span class="pre">aperture_mag_1_1</span></code> and its error) instead
+of aborting with “No transient candidates found”. The app displays a
+warning when candidates rely on this fallback, using the same
+PSF-unavailable wording as the main pipeline. The shared warning is
+<code class="docutils literal notranslate"><span class="pre">PSF</span> <span class="pre">photometry</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">available;</span> <span class="pre">using</span> <span class="pre">calibrated</span> <span class="pre">aperture</span> <span class="pre">photometry</span> <span class="pre">instead.</span></code>;
+the full transient variant is
 <code class="docutils literal notranslate"><span class="pre">PSF</span> <span class="pre">photometry</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">available;</span> <span class="pre">using</span> <span class="pre">calibrated</span> <span class="pre">aperture</span> <span class="pre">photometry</span> <span class="pre">instead.</span> <span class="pre">Transient</span> <span class="pre">candidates</span> <span class="pre">use</span> <span class="pre">the</span> <span class="pre">calibrated</span> <span class="pre">1.1</span> <span class="pre">x</span> <span class="pre">FWHM</span> <span class="pre">aperture</span> <span class="pre">magnitude.</span></code></p></li>
 </ul>
 <p><strong>Finer astrometry and Astro-Colibri radius</strong></p>
@@ -258,6 +363,32 @@ and the response is parsed defensively.</p></li>
 filter: 3 attempts on network errors and HTTP 429/5xx, <code class="docutils literal notranslate"><span class="pre">-from</span></code> label,
 epoch range check, HTTP error reporting, mid-exposure epoch and a per-object
 match tolerance of 10 to 30 arcsec derived from the ephemeris <code class="docutils literal notranslate"><span class="pre">Err</span></code>.</p></li>
+</ul>
+<p><strong>Scale-aware photometric error model</strong></p>
+<ul class="simple">
+<li><p><strong>The Poisson term now follows the units of the frame.</strong>
+<code class="docutils literal notranslate"><span class="pre">calc_total_error</span></code> adds <code class="docutils literal notranslate"><span class="pre">data</span> <span class="pre">/</span> <span class="pre">gain</span></code> to the pixel variance, which is
+only meaningful when the data are counts in the same units as the gain. A
+rescaled frame (a normalised float stack with a sky level of about 1e-2, for
+example) violates that: with a genuine e-/ADU gain the Poisson term at the
+sky level exceeded the measured sky variance by a factor of 1e5, so the
+error map said nothing about the real noise and the aperture S/N was
+underestimated by one to two orders of magnitude. The PSF step was hit
+hardest, because photutils weights the ePSF-to-star fits by
+<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">/</span> <span class="pre">error**2</span></code>: the star cores ended up ~1e-4 of the weight of the sky
+pixels, 22 of 26 fitted fluxes came back negative, the next ePSF was
+therefore inverted and <code class="docutils literal notranslate"><span class="pre">EPSFBuilder</span></code> aborted with
+<code class="docutils literal notranslate"><span class="pre">Cannot</span> <span class="pre">normalize</span> <span class="pre">ePSF:</span> <span class="pre">the</span> <span class="pre">data</span> <span class="pre">sum</span> <span class="pre">(...)</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">finite</span> <span class="pre">and</span> <span class="pre">positive</span></code>,
+dropping PSF photometry for the whole frame.</p></li>
+<li><p><strong>Resolution.</strong> <code class="docutils literal notranslate"><span class="pre">resolve_poisson_gain()</span></code> keeps the resolved gain when the
+Poisson variance it predicts at the sky level stays within
+<code class="docutils literal notranslate"><span class="pre">POISSON_SKY_VARIANCE_TOLERANCE</span></code> (10x) of the measured background
+variance, and otherwise replaces it with the largest value the frame allows,
+<code class="docutils literal notranslate"><span class="pre">gain</span> <span class="pre">=</span> <span class="pre">sky</span> <span class="pre">level</span> <span class="pre">/</span> <span class="pre">background_rms**2</span></code>. <code class="docutils literal notranslate"><span class="pre">compute_error_map()</span></code> builds the
+per-pixel error from that gain, falling back to the background RMS map alone
+when no usable gain exists. On the real normalised stack the core error
+dropped from ~1.4e3x the sky RMS (larger than the data itself) to a few x
+the sky RMS, and PSF photometry now runs.</p></li>
 </ul>
 <p><strong>Scale-aware photometric error model</strong></p>
 <ul class="simple">
