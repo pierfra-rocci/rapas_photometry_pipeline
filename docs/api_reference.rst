@@ -255,9 +255,6 @@ part of the downloadable archive.
       - Contents
       - Generation / writer
       - In ZIP
-      - Contents
-      - Generation / writer
-      - In ZIP
     * - ``*_catalog.csv`` and ``*_catalog.vot``
       - Curated columns only (``id`` first, then coordinates, Astro-Colibri/TNS/SIMBAD/SkyBoT/AAVSO matches, S/N, aperture and PSF photometry); Astro-Colibri sources sorted first
       - After photometry and catalog enrichment; ``src.utils.save_catalog_files`` (columns chosen by ``build_export_columns``/``prepare_export_table``)
@@ -266,13 +263,7 @@ part of the downloadable archive.
       - Input FITS header
       - When a science header is available; ``src.utils.save_header_to_txt``
       - Yes
-      - Input FITS header
-      - When a science header is available; ``src.utils.save_header_to_txt``
-      - Yes
     * - ``*_wcs_header.txt``
-      - Header containing the available astrometric solution
-      - When a WCS solution is available; ``src.utils.save_header_to_txt``
-      - Yes
       - Header containing the available astrometric solution
       - When a WCS solution is available; ``src.utils.save_header_to_txt``
       - Yes
@@ -280,13 +271,7 @@ part of the downloadable archive.
       - Processing log
       - At the end of analysis; ``pages/app.py``
       - Yes
-      - Processing log
-      - At the end of analysis; ``pages/app.py``
-      - Yes
     * - ``*_*.png``
-      - Image and diagnostic plots (for example magnitude and PSF/aperture-offset plots)
-      - Depending on the plots produced; ``pages/app.py``
-      - Yes
       - Image and diagnostic plots (for example magnitude and PSF/aperture-offset plots)
       - Depending on the plots produced; ``pages/app.py``
       - Yes
@@ -294,20 +279,11 @@ part of the downloadable archive.
       - Transient candidate table with the same columns as the catalog (including ``id``)
       - When transient candidates are returned; ``src.transient.build_transient_table``
       - Yes
-      - Transient candidate table with the same columns as the catalog (including ``id``)
-      - When transient candidates are returned; ``src.transient.build_transient_table``
-      - Yes
     * - ``*_psf.fits``
       - Empirical PSF model
       - When the ePSF model is saved; ``src/psf.py``
       - No
-      - Empirical PSF model
-      - When the ePSF model is saved; ``src/psf.py``
-      - No
     * - ``*_wcs.fits``
-      - Original image with the updated WCS header
-      - When WCS solving succeeds; ``src.utils.save_fits_with_wcs``. Also copied to ``rpp_data/fits/``.
-      - No
       - Original image with the updated WCS header
       - When WCS solving succeeds; ``src.utils.save_fits_with_wcs``. Also copied to ``rpp_data/fits/``.
       - No

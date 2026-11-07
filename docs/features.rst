@@ -405,6 +405,7 @@ Data Visualization & Analysis
 
 **Interactive Sky Viewer**:
    - Aladin Lite integration for source exploration
+   - Automatic jsDelivr fallback for the viewer script if the CDS download fails
    - Overlay of detected sources with catalog information
    - Clickable source markers with detailed information
    - Astro-Colibri cross-matches drawn as larger red squares in their own

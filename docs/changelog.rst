@@ -3,6 +3,32 @@ Changelog
 
 This document records all notable changes to RAPAS Photometry Pipeline.
 
+Unreleased
+----------
+
+**Aladin Lite script fallback**
+
+*   If the Aladin Lite script cannot be downloaded from CDS, the viewer retries
+    with the pinned v3.8.2 script from jsDelivr. If neither source is
+    reachable, the widget reports the failure; HiPS imagery still requires
+    access to the tile server.
+
+**VOTable export with Astro-Colibri and TNS columns**
+
+*   Fixed ``Error preparing VOTable download: 'DataFrame' object has no attribute
+    'dtype'``. The Astro-Colibri and TNS columns were listed twice in the
+    cross-match column order, which produced duplicate column labels. The
+    column order is now de-duplicated and the export step drops any duplicate
+    labels before writing the CSV and VOTable.
+
+**Catalogue export when cross-match fails**
+
+*   If the cross-match step raises an error, the photometry catalogue (CSV and
+    VOTable) is still written and offered for download, without the
+    cross-match columns. The error is shown in the app. The transient finder
+    runs independently, so a failure there does not prevent the catalogue
+    export.
+
 Version 1.9.2
 -------------
 

@@ -173,7 +173,7 @@ mesurées par une seule méthode), et la vue des résultats le trace en fonction
 la magnitude PSF calibrée (avec les lignes de médiane et de zéro par ouverture)
 ainsi que son histogramme.
 
-**Analyse interactive** : Utilisez le visualiseur Aladin Lite intégré pour l'exploration en temps réel, ou exportez les coordonnées vers ESA SkyView.
+**Analyse interactive** : Utilisez le visualiseur Aladin Lite intégré pour l'exploration en temps réel, ou exportez les coordonnées vers ESA SkyView. Si le script Aladin hébergé par le CDS est inaccessible, le visualiseur réessaie avec la version 3.8.2 épinglée sur jsDelivr. Ce repli charge la bibliothèque du visualiseur ; l'affichage du ciel nécessite toujours l'accès au serveur de tuiles HiPS.
 
 ### Services Externes et Résultats Partiels
 

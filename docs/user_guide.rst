@@ -214,7 +214,8 @@ The main panel can show:
 - Image previews and diagnostic plots
 - Source and calibration tables
 - Processing logs
-- Interactive Aladin views
+- Interactive Aladin views, with an automatic jsDelivr fallback if the CDS
+  viewer script cannot be downloaded
 - Download buttons for result archives
 
 **Statistics section**: the target field center RA and DEC are shown in both

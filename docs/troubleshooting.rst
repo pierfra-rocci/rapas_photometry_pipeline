@@ -376,6 +376,17 @@ Catalog Query Issues (SIMBAD, SkyBoT, etc.)
     *   The step is best-effort: without the catalogue the export simply omits
         the ``tns_*`` columns and the rest of the run is unaffected.
 
+**Cross-match fails entirely**
+
+*   **Problem**: An unexpected error stops the cross-match step (for example a
+    service response the parser cannot handle).
+*   **Solution**:
+
+    *   The app shows ``Cross-match failed``, and the catalogue is still written
+        without the cross-match columns. Download it from the results.
+    *   The transient finder runs independently; its failure does not prevent
+        the catalogue export.
+
 Database and Migration Issues
 -----------------------------
 
@@ -427,17 +438,20 @@ Aladin Lite Viewer Issues
         ``webgl.force-enabled`` to ``true`` in ``about:config`` and restart the
         browser; or use Chrome/Edge. A blocklisted or outdated GPU driver has
         the same effect.
-    *   ``Aladin Lite could not be downloaded from aladin.cds.unistra.fr ...``:
-        the network cannot reach CDS (proxy, firewall, Firefox HTTPS-Only mode,
-        or no connection).
+    *   If the CDS ``aladin.js`` download fails, the widget retries from
+        jsDelivr using
+        ``https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js``.
+        If both downloads fail, the red line reports that neither source could
+        be reached; check the proxy, firewall, HTTPS-Only mode, or connection.
+        The fallback covers the JavaScript library only; the sky imagery still
+        requires access to the HiPS tile server.
     *   No red line and still a black view: open the browser console (F12) and
         look for failed requests to ``alasky.cds.unistra.fr``, which serves the
         HiPS tiles. The analysis itself and the exported files are unaffected.
     *   The console also logs ``[RPP Aladin] version ...`` with the Aladin Lite
-        release actually loaded. The script is fetched from
-        ``.../api/v3/latest/aladin.js``, which follows the CDS releases, so pin
-        a numbered version inside ``display_catalog_in_aladin`` when a release
-        regression is suspected.
+        release actually loaded. The widget tries the CDS latest script first
+        (``.../api/v3/latest/aladin.js``), then the pinned jsDelivr v3.8.2
+        script if the CDS download fails.
 
 **Aladin falls back to a second survey, or shows none at all**
 

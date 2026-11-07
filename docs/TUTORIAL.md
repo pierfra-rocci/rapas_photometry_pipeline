@@ -171,7 +171,7 @@ visible directly in the run. The per-source offset is exported as
 method), and the results view plots it against the calibrated PSF magnitude
 (with per-aperture median and zero lines) alongside its histogram.
 
-**Interactive Analysis**: Use the embedded Aladin Lite viewer for real-time exploration, or export coordinates to ESA SkyView.
+**Interactive Analysis**: Use the embedded Aladin Lite viewer for real-time exploration, or export coordinates to ESA SkyView. If the CDS-hosted Aladin script cannot be reached, the viewer retries with the pinned v3.8.2 script from jsDelivr. This fallback loads the viewer library; the sky imagery still requires access to the HiPS tile server.
 
 ### External Services and Partial Results
 
@@ -184,4 +184,3 @@ returns a malformed or unreadable response payload.
 ## Support
 
 If you encounter issues, check the log file. For bugs or feedback, contact `rpp_support@saf-astronomie.fr`.
-
