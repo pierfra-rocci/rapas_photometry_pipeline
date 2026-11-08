@@ -1272,20 +1272,6 @@ def enhance_catalog(
         # The TNS association is an extra and must never fail the pipeline.
         log_messages.append(f"WARNING: TNS cross-match failed: {e}")
 
-    log_messages.append("INFO: Querying TNS (Transient Name Server)...")
-    try:
-        enhanced_table, tns_messages = cross_match_tns(
-            enhanced_table,
-            valid_coords_mask,
-            ra_center=field_center_ra,
-            dec_center=field_center_dec,
-            field_width_arcmin=field_width_arcmin,
-        )
-        log_messages.extend(tns_messages)
-    except Exception as e:
-        # The TNS association is an extra and must never fail the pipeline.
-        log_messages.append(f"WARNING: TNS cross-match failed: {e}")
-
     log_messages.append("INFO: Querying SIMBAD for object identifications...")
 
     log_messages.append("INFO: Querying SIMBAD")

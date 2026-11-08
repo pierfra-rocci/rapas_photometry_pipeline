@@ -293,6 +293,24 @@ part of the downloadable archive.
       - Original image with the updated WCS header
       - When WCS solving succeeds; ``src.utils.save_fits_with_wcs``. Also copied to ``rpp_data/fits/``.
       - No
+    * - ``tns_public_objects.csv``
+      - Shared cache of the public TNS catalogue: one file per deployment, overwritten in place once it is more than 24 hours old and read by every user
+      - Outside the results directory, in the system temp directory or ``RPP_TNS_CACHE_DIR``; downloaded by ``src.tns_catalog.load_tns_public_objects`` (prepared at app startup by ``warm_tns_catalogue_cache``)
+      - No
+    * - ``tns_public_objects.download.lock`` and ``tns_public_objects.csv.<pid>.tmp``
+      - Download lock serialising concurrent sessions, and the half-written file of a download in progress; leftover copies belong to an interrupted download
+      - In the same cache directory; removed by the next catalogue load once older than 10 minutes, reported as ``INFO: TNS: removed stale cache file(s) ...``
+      - No
+
+**TNS cache lifecycle**: ``tns_public_objects.csv`` is created by the first
+catalogue load of a deployment (the app starts it at startup), reused by every
+later run while it is under 24 hours old, and rebuilt by the first load after
+that. Deleting it is safe at any time and is the way to force a refresh: the
+next load downloads it again. The lock and ``.tmp`` files can be deleted only
+while no download is running; otherwise wait ten minutes and let the next load
+remove whatever an interrupted download left behind. Readers never see a
+half-written catalogue, because the file is written to the ``.tmp`` copy and
+moved into place.
 
 HTTP API Endpoints
 ------------------

@@ -110,6 +110,37 @@
 <p>This document records all notable changes to RAPAS Photometry Pipeline.</p>
 <section id="version-1-9-3">
 <h2>Version 1.9.3<a class="headerlink" href="#version-1-9-3" title="Link to this heading"></a></h2>
+<p><strong>TNS catalogue downloaded without an API key</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">tns_public_objects.csv.zip</span></code> is public: it is now fetched from
+<code class="docutils literal notranslate"><span class="pre">https://www.wis-tns.org/sites/default/files/tns_public_objects/</span></code> with a
+plain <code class="docutils literal notranslate"><span class="pre">GET</span></code> carrying only the <code class="docutils literal notranslate"><span class="pre">tns_marker</span></code> user agent, so no
+<code class="docutils literal notranslate"><span class="pre">TNS_API_KEY</span></code> is needed for the TNS cross-match. The marker is a guest
+marker whose name can be set with <code class="docutils literal notranslate"><span class="pre">RPP_TNS_MARKER_NAME</span></code>; the older
+<code class="docutils literal notranslate"><span class="pre">/system/files/</span></code> path is tried when the first URL fails.</p></li>
+<li><p>A single copy of the catalogue is cached and shared by every user: the
+first run of the day downloads it, the other runs read it, and a copy older
+than 24 hours is downloaded again and overwritten in place. A lock file
+serialises concurrent downloads, and a failed refresh keeps the previous
+copy with a warning giving its age instead of dropping the cross-match.
+The cache file is <code class="docutils literal notranslate"><span class="pre">tns_public_objects.csv</span></code> (no date suffix);
+<code class="docutils literal notranslate"><span class="pre">RPP_TNS_CACHE_DIR</span></code> moves it, for example to a shared cache drive.</p></li>
+<li><p>The catalogue is prepared at app startup in a background daemon thread (once
+per process, through <code class="docutils literal notranslate"><span class="pre">st.cache_resource</span></code>) so neither the first page load
+nor the first analysis of the day pays for the download; the parsed
+catalogue stays cached for the first cross-match, and an analysis that needs
+it meanwhile waits on the download lock and reuses the downloaded file. The
+warm-up is skipped when <code class="docutils literal notranslate"><span class="pre">RPP_TNS_MIRROR_URL</span></code> is set, since the catalogue is
+then only a fallback.</p></li>
+<li><p>Leftovers of a download killed mid-way (for instance a warm-up thread
+stopped with the process) are cleaned up: the <code class="docutils literal notranslate"><span class="pre">tns_public_objects.csv.&lt;pid&gt;.tmp</span></code>
+file and the download lock are removed once they are older than 10 minutes,
+which the cache loader checks even when the catalogue is still fresh.</p></li>
+<li><p>The TNS status panel reports the catalogue state: how long ago it was
+downloaded, when the next refresh is due, and whether a background download
+is running.</p></li>
+<li><p>TNS credentials are now only used by the Search API fallback.</p></li>
+</ul>
 <p><strong>Instrumental catalog fallback</strong></p>
 <ul class="simple">
 <li><p>If the calibration catalog or zero point is unavailable, the pipeline
@@ -275,28 +306,6 @@ tells them apart. The version is read at runtime from
 <code class="docutils literal notranslate"><span class="pre">src/__version__.py</span></code>, so the message follows future releases
 automatically.</p></li>
 </ul>
-<p><strong>Login audit log</strong></p>
-<ul class="simple">
-<li><p>Every successful login writes a timestamped line with the pipeline version
-to the service log:
-<code class="docutils literal notranslate"><span class="pre">[YYYY-MM-DD</span> <span class="pre">HH:MM:SS]</span> <span class="pre">RPP</span> <span class="pre">vX.Y.Z</span> <span class="pre">-</span> <span class="pre">User</span> <span class="pre">'&lt;username&gt;'</span> <span class="pre">logged</span> <span class="pre">in</span> <span class="pre">successfully</span> <span class="pre">(&lt;origin&gt;).</span></code></p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">api/main.py</span></code> (FastAPI backend), <code class="docutils literal notranslate"><span class="pre">backend.py</span></code> (legacy backend) and
-<code class="docutils literal notranslate"><span class="pre">pages/login.py</span></code> (frontend) each emit their own line; the origin suffix
-tells them apart. The version is read at runtime from
-<code class="docutils literal notranslate"><span class="pre">src/__version__.py</span></code>, so the message follows future releases
-automatically.</p></li>
-</ul>
-<p><strong>Login audit log</strong></p>
-<ul class="simple">
-<li><p>Every successful login writes a timestamped line with the pipeline version
-to the service log:
-<code class="docutils literal notranslate"><span class="pre">[YYYY-MM-DD</span> <span class="pre">HH:MM:SS]</span> <span class="pre">RPP</span> <span class="pre">vX.Y.Z</span> <span class="pre">-</span> <span class="pre">User</span> <span class="pre">'&lt;username&gt;'</span> <span class="pre">logged</span> <span class="pre">in</span> <span class="pre">successfully</span> <span class="pre">(&lt;origin&gt;).</span></code></p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">api/main.py</span></code> (FastAPI backend), <code class="docutils literal notranslate"><span class="pre">backend.py</span></code> (legacy backend) and
-<code class="docutils literal notranslate"><span class="pre">pages/login.py</span></code> (frontend) each emit their own line; the origin suffix
-tells them apart. The version is read at runtime from
-<code class="docutils literal notranslate"><span class="pre">src/__version__.py</span></code>, so the message follows future releases
-automatically.</p></li>
-</ul>
 <p><strong>Curated catalog export</strong></p>
 <ul class="simple">
 <li><p><strong>Fixed export columns.</strong> <code class="docutils literal notranslate"><span class="pre">*_catalog.csv</span></code> and <code class="docutils literal notranslate"><span class="pre">*_catalog.vot</span></code> now contain
@@ -365,17 +374,6 @@ warning when candidates rely on this fallback, using the same
 PSF-unavailable wording as the main pipeline. The shared warning is
 <code class="docutils literal notranslate"><span class="pre">PSF</span> <span class="pre">photometry</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">available;</span> <span class="pre">using</span> <span class="pre">calibrated</span> <span class="pre">aperture</span> <span class="pre">photometry</span> <span class="pre">instead.</span></code>;
 the full transient variant is
-<code class="docutils literal notranslate"><span class="pre">PSF</span> <span class="pre">photometry</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">available;</span> <span class="pre">using</span> <span class="pre">calibrated</span> <span class="pre">aperture</span> <span class="pre">photometry</span> <span class="pre">instead.</span> <span class="pre">Transient</span> <span class="pre">candidates</span> <span class="pre">use</span> <span class="pre">the</span> <span class="pre">calibrated</span> <span class="pre">1.1</span> <span class="pre">x</span> <span class="pre">FWHM</span> <span class="pre">aperture</span> <span class="pre">magnitude.</span></code>
-required to match the photometry table.</p></li>
-<li><p><strong>Transient finder without PSF photometry.</strong> When the photometry table has
-no PSF magnitude columns, or when the matched detections have no finite
-PSF value, <code class="docutils literal notranslate"><span class="pre">find_candidates()</span></code> now falls back to the calibrated
-1.1 x FWHM aperture magnitude (<code class="docutils literal notranslate"><span class="pre">aperture_mag_1_1</span></code> and its error) instead
-of aborting with “No transient candidates found”. The app displays a
-warning when candidates rely on this fallback, using the same
-PSF-unavailable wording as the main pipeline. The shared warning is
-<code class="docutils literal notranslate"><span class="pre">PSF</span> <span class="pre">photometry</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">available;</span> <span class="pre">using</span> <span class="pre">calibrated</span> <span class="pre">aperture</span> <span class="pre">photometry</span> <span class="pre">instead.</span></code>;
-the full transient variant is
 <code class="docutils literal notranslate"><span class="pre">PSF</span> <span class="pre">photometry</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">available;</span> <span class="pre">using</span> <span class="pre">calibrated</span> <span class="pre">aperture</span> <span class="pre">photometry</span> <span class="pre">instead.</span> <span class="pre">Transient</span> <span class="pre">candidates</span> <span class="pre">use</span> <span class="pre">the</span> <span class="pre">calibrated</span> <span class="pre">1.1</span> <span class="pre">x</span> <span class="pre">FWHM</span> <span class="pre">aperture</span> <span class="pre">magnitude.</span></code></p></li>
 </ul>
 <p><strong>Finer astrometry and Astro-Colibri radius</strong></p>
@@ -414,58 +412,6 @@ and the response is parsed defensively.</p></li>
 filter: 3 attempts on network errors and HTTP 429/5xx, <code class="docutils literal notranslate"><span class="pre">-from</span></code> label,
 epoch range check, HTTP error reporting, mid-exposure epoch and a per-object
 match tolerance of 10 to 30 arcsec derived from the ephemeris <code class="docutils literal notranslate"><span class="pre">Err</span></code>.</p></li>
-</ul>
-<p><strong>Scale-aware photometric error model</strong></p>
-<ul class="simple">
-<li><p><strong>The Poisson term now follows the units of the frame.</strong>
-<code class="docutils literal notranslate"><span class="pre">calc_total_error</span></code> adds <code class="docutils literal notranslate"><span class="pre">data</span> <span class="pre">/</span> <span class="pre">gain</span></code> to the pixel variance, which is
-only meaningful when the data are counts in the same units as the gain. A
-rescaled frame (a normalised float stack with a sky level of about 1e-2, for
-example) violates that: with a genuine e-/ADU gain the Poisson term at the
-sky level exceeded the measured sky variance by a factor of 1e5, so the
-error map said nothing about the real noise and the aperture S/N was
-underestimated by one to two orders of magnitude. The PSF step was hit
-hardest, because photutils weights the ePSF-to-star fits by
-<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">/</span> <span class="pre">error**2</span></code>: the star cores ended up ~1e-4 of the weight of the sky
-pixels, 22 of 26 fitted fluxes came back negative, the next ePSF was
-therefore inverted and <code class="docutils literal notranslate"><span class="pre">EPSFBuilder</span></code> aborted with
-<code class="docutils literal notranslate"><span class="pre">Cannot</span> <span class="pre">normalize</span> <span class="pre">ePSF:</span> <span class="pre">the</span> <span class="pre">data</span> <span class="pre">sum</span> <span class="pre">(...)</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">finite</span> <span class="pre">and</span> <span class="pre">positive</span></code>,
-dropping PSF photometry for the whole frame.</p></li>
-<li><p><strong>Resolution.</strong> <code class="docutils literal notranslate"><span class="pre">resolve_poisson_gain()</span></code> keeps the resolved gain when the
-Poisson variance it predicts at the sky level stays within
-<code class="docutils literal notranslate"><span class="pre">POISSON_SKY_VARIANCE_TOLERANCE</span></code> (10x) of the measured background
-variance, and otherwise replaces it with the largest value the frame allows,
-<code class="docutils literal notranslate"><span class="pre">gain</span> <span class="pre">=</span> <span class="pre">sky</span> <span class="pre">level</span> <span class="pre">/</span> <span class="pre">background_rms**2</span></code>. <code class="docutils literal notranslate"><span class="pre">compute_error_map()</span></code> builds the
-per-pixel error from that gain, falling back to the background RMS map alone
-when no usable gain exists. On the real normalised stack the core error
-dropped from ~1.4e3x the sky RMS (larger than the data itself) to a few x
-the sky RMS, and PSF photometry now runs.</p></li>
-</ul>
-<p><strong>Scale-aware photometric error model</strong></p>
-<ul class="simple">
-<li><p><strong>The Poisson term now follows the units of the frame.</strong>
-<code class="docutils literal notranslate"><span class="pre">calc_total_error</span></code> adds <code class="docutils literal notranslate"><span class="pre">data</span> <span class="pre">/</span> <span class="pre">gain</span></code> to the pixel variance, which is
-only meaningful when the data are counts in the same units as the gain. A
-rescaled frame (a normalised float stack with a sky level of about 1e-2, for
-example) violates that: with a genuine e-/ADU gain the Poisson term at the
-sky level exceeded the measured sky variance by a factor of 1e5, so the
-error map said nothing about the real noise and the aperture S/N was
-underestimated by one to two orders of magnitude. The PSF step was hit
-hardest, because photutils weights the ePSF-to-star fits by
-<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">/</span> <span class="pre">error**2</span></code>: the star cores ended up ~1e-4 of the weight of the sky
-pixels, 22 of 26 fitted fluxes came back negative, the next ePSF was
-therefore inverted and <code class="docutils literal notranslate"><span class="pre">EPSFBuilder</span></code> aborted with
-<code class="docutils literal notranslate"><span class="pre">Cannot</span> <span class="pre">normalize</span> <span class="pre">ePSF:</span> <span class="pre">the</span> <span class="pre">data</span> <span class="pre">sum</span> <span class="pre">(...)</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">finite</span> <span class="pre">and</span> <span class="pre">positive</span></code>,
-dropping PSF photometry for the whole frame.</p></li>
-<li><p><strong>Resolution.</strong> <code class="docutils literal notranslate"><span class="pre">resolve_poisson_gain()</span></code> keeps the resolved gain when the
-Poisson variance it predicts at the sky level stays within
-<code class="docutils literal notranslate"><span class="pre">POISSON_SKY_VARIANCE_TOLERANCE</span></code> (10x) of the measured background
-variance, and otherwise replaces it with the largest value the frame allows,
-<code class="docutils literal notranslate"><span class="pre">gain</span> <span class="pre">=</span> <span class="pre">sky</span> <span class="pre">level</span> <span class="pre">/</span> <span class="pre">background_rms**2</span></code>. <code class="docutils literal notranslate"><span class="pre">compute_error_map()</span></code> builds the
-per-pixel error from that gain, falling back to the background RMS map alone
-when no usable gain exists. On the real normalised stack the core error
-dropped from ~1.4e3x the sky RMS (larger than the data itself) to a few x
-the sky RMS, and PSF photometry now runs.</p></li>
 </ul>
 <p><strong>Scale-aware photometric error model</strong></p>
 <ul class="simple">

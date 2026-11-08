@@ -154,14 +154,18 @@ Logging and Troubleshooting
 - External catalog services such as GAIA, SIMBAD, SkyBoT, Astro-Colibri and
   the TNS may time out or return partial results. In many cases the pipeline
   continues and records warnings in the log instead of stopping completely.
-- The TNS cross-match needs ``TNS_API_KEY`` plus ``TNS_BOT_ID``/
-  ``TNS_BOT_NAME`` (bot) or ``TNS_USER_ID``/``TNS_USER_NAME`` (user). Its
-  catalogue is downloaded once per UTC day and cached (``RPP_TNS_CACHE_DIR``),
-  or read from a local file with ``RPP_TNS_CATALOG_PATH``. Setting
-  ``RPP_TNS_MIRROR_URL`` queries a shared ``tns-mirror`` API instead of reading
-  the catalogue; if the mirror fails, the daily catalogue is used, and if that
-  cannot be downloaded the TNS Search API is queried (``RPP_TNS_SANDBOX=1``
-  selects the TNS sandbox).
+- The TNS cross-match downloads the public catalogue staged once a day by the
+  TNS with a plain ``GET``; it needs no API key, only the ``tns_marker`` user
+  agent (``RPP_TNS_MARKER_NAME`` names it). One cached copy is shared by every
+  user: the first run of the day downloads it, the later ones read it, and a
+  copy older than 24 hours is downloaded again and overwritten
+  (``RPP_TNS_CACHE_DIR``), or read from a local file with
+  ``RPP_TNS_CATALOG_PATH``. Setting ``RPP_TNS_MIRROR_URL`` queries a shared
+  ``tns-mirror`` API instead of reading the catalogue; if the mirror fails, the
+  daily catalogue is used, and if that cannot be downloaded the TNS Search API
+  is queried when ``TNS_API_KEY`` plus ``TNS_BOT_ID``/``TNS_BOT_NAME`` (bot) or
+  ``TNS_USER_ID``/``TNS_USER_NAME`` (user) are configured
+  (``RPP_TNS_SANDBOX=1`` selects the TNS sandbox).
 
 Next Steps
 ----------

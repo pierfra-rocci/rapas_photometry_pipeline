@@ -95,6 +95,23 @@ Frontend/backend URLs may also be overridden when needed.
    $env:RPP_API_URL = 'http://localhost:8000'
    $env:RPP_LEGACY_URL = 'http://localhost:5000'
 
+Shared TNS catalogue cache (optional):
+
+.. code-block:: powershell
+
+   $env:RPP_TNS_CACHE_DIR = 'D:/rpp_cache/tns'
+   $env:RPP_TNS_MARKER_NAME = 'My observatory'
+
+``RPP_TNS_CACHE_DIR`` sets where the public TNS catalogue
+(``tns_public_objects.csv``) is kept. It defaults to ``rpp_tns`` in the system
+temp directory; point it at a directory every user can read and write, for
+example a shared cache drive, so that the one download per day serves the whole
+deployment and is refreshed once the file is older than 24 hours.
+``RPP_TNS_MARKER_NAME`` is the name sent in the ``tns_marker`` user agent when
+the catalogue is fetched; it identifies the deployment to the TNS and defaults
+to ``RPP pipeline``. Neither variable needs an API key: the catalogue is public,
+and TNS credentials are only used by the Search API fallback.
+
 Verification
 ------------
 

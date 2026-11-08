@@ -1,5 +1,6 @@
 import os
 import shutil
+import threading
 import zipfile
 import gzip
 import base64
@@ -1597,12 +1598,108 @@ def show_astrocolibri_status(log_messages, final_table, events=None):
             st.dataframe(events_view, use_container_width=True, hide_index=True)
 
 
+def _load_shared_tns_catalogue() -> tuple[bool, list[str]]:
+    """Download or read the shared TNS catalogue, or say why it is missing.
+
+    Free of Streamlit so it can be tested; :func:`warm_tns_catalogue_cache`
+    wraps it in a process-wide resource cache.
+    """
+    from src.tns_catalog import load_tns_public_objects, tns_mirror_url
+
+    # With a shared mirror the catalogue is only a fallback, so there is no
+    # point in fetching the whole archive at startup for it.
+    if tns_mirror_url():
+        return True, []
+
+    try:
+        frame, messages = load_tns_public_objects()
+    except Exception as error:  # the warm-up must never break the app start
+        return False, [f"WARNING: TNS: catalogue warm-up failed: {error}"]
+    return frame is not None, messages
+
+
+# The warm-up runs once per process; this keeps its thread around so a second
+# call never starts another download.
+_TNS_WARM_UP_THREAD = None
+
+
+def _start_tns_warm_up() -> threading.Thread:
+    """Start the shared catalogue download in the background, once per process.
+
+    The thread is a daemon so it never holds the app open, and the loader it
+    runs already swallows its errors. An analysis that needs the catalogue
+    meanwhile waits on the download lock and then reuses the downloaded file.
+    """
+    global _TNS_WARM_UP_THREAD
+    thread = _TNS_WARM_UP_THREAD
+    if thread is not None:
+        return thread
+    thread = threading.Thread(
+        target=_load_shared_tns_catalogue,
+        name="tns-catalogue-warm-up",
+        daemon=True,
+    )
+    thread.start()
+    _TNS_WARM_UP_THREAD = thread
+    return thread
+
+
+@st.cache_resource(show_spinner=False)
+def warm_tns_catalogue_cache() -> threading.Thread:
+    """Prepare the TNS catalogue once per app process, without blocking startup.
+
+    One catalogue copy is cached on disk and shared by every user, so only the
+    first session of the day downloads it. Doing it in the background keeps that
+    cost out of the first page load and out of the first analysis, and the
+    parsed frame stays in the module cache, so the first cross-match does not
+    read the file again.
+    """
+    return _start_tns_warm_up()
+
+
+def tns_catalogue_status_line():
+    """Return one line on the shared TNS catalogue: its age and refresh state.
+
+    :func:`show_tns_status` prints it under the query result, so the user can
+    see how old the catalogue is, when the next refresh is due, and whether a
+    background download is running.
+    """
+    from src.tns_catalog import (
+        TNS_CACHE_MAX_AGE_SECONDS,
+        tns_cache_age_seconds,
+        tns_cache_path,
+    )
+
+    thread = _TNS_WARM_UP_THREAD
+    downloading = thread is not None and thread.is_alive()
+    age = tns_cache_age_seconds(tns_cache_path())
+    if age is None:
+        if downloading:
+            return "TNS catalogue: download in progress in the background."
+        return "TNS catalogue: not downloaded yet."
+    if age < 60:
+        cached = "downloaded just now"
+    elif age < 3600:
+        cached = f"downloaded {age / 60:.0f} min ago"
+    else:
+        cached = f"downloaded {age / 3600:.1f} h ago"
+    if downloading:
+        return f"TNS catalogue: {cached}, refreshing in the background."
+    remaining = TNS_CACHE_MAX_AGE_SECONDS - age
+    if remaining <= 0:
+        return f"TNS catalogue: {cached}, refresh on the next load."
+    if remaining < 3600:
+        return f"TNS catalogue: {cached}, refresh in {remaining / 60:.0f} min."
+    return f"TNS catalogue: {cached}, refresh in {remaining / 3600:.1f} h."
+
+
 def show_tns_status(log_messages, final_table, objects=None):
     """Display a visible summary of the TNS query and cross-match.
 
     INFO log lines are not shown by :func:`handle_log_messages`, so without
-    this the user cannot tell whether TNS found nothing, was skipped (no API
-    key) or matched sources.
+    this the user cannot tell whether TNS found nothing, was skipped (no
+    catalogue) or matched sources. The catalogue age and refresh state are
+    shown as a caption (see :func:`tns_catalogue_status_line`).
 
     ``objects`` is the table of every TNS object in the field (see
     :func:`format_tns_objects`); when given it is listed.
@@ -1622,7 +1719,9 @@ def show_tns_status(log_messages, final_table, objects=None):
     elif tns_lines:
         st.info("TNS: " + " ".join(tns_lines))
     else:
-        st.info("TNS: query not performed (no API key or no response).")
+        st.info("TNS: query not performed (no catalogue or no response).")
+
+    st.caption(tns_catalogue_status_line())
 
     objects_view = format_tns_objects(objects)
     if not objects_view.empty:

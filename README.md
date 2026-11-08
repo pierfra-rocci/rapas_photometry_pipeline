@@ -8,14 +8,6 @@
 [![Documentation](https://img.shields.io/badge/Documentation-GitHub%20Pages-blue)](https://pierfra-rocci.github.io/rapas_photometry_pipeline/)
 [![Documentation build](https://github.com/pierfra-rocci/rapas_photometry_pipeline/actions/workflows/docs.yml/badge.svg)](https://github.com/pierfra-rocci/rapas_photometry_pipeline/actions/workflows/docs.yml)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/pierfra-rocci/rapas_photometry_pipeline/blob/main/LICENSE)
-[![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue)](https://www.python.org/)
-[![GitHub stars](https://img.shields.io/github/stars/pierfra-rocci/rapas_photometry_pipeline)](https://github.com/pierfra-rocci/rapas_photometry_pipeline/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/pierfra-rocci/rapas_photometry_pipeline)](https://github.com/pierfra-rocci/rapas_photometry_pipeline/forks)
-[![GitHub issues](https://img.shields.io/github/issues/pierfra-rocci/rapas_photometry_pipeline)](https://github.com/pierfra-rocci/rapas_photometry_pipeline/issues)
-[![Documentation](https://img.shields.io/badge/Documentation-GitHub%20Pages-blue)](https://pierfra-rocci.github.io/rapas_photometry_pipeline/)
-[![Documentation build](https://github.com/pierfra-rocci/rapas_photometry_pipeline/actions/workflows/docs.yml/badge.svg)](https://github.com/pierfra-rocci/rapas_photometry_pipeline/actions/workflows/docs.yml)
-
 ![RAPAS Logo](rapas_logo.png)
 
 ![Version](https://img.shields.io/badge/version-1.9.3-blue)
@@ -64,7 +56,6 @@ A comprehensive astronomical photometry pipeline built with Streamlit, featuring
 - **Cosmic ray removal**: Automatic L.A.Cosmic algorithm implementation via astroscrappy
 - **Image enhancement**: Multiple visualization modes (ZScale, histogram equalization)
 - **Quality filtering**: Automated source quality assessment with S/N-based flags
-- **Error propagation**: Comprehensive per-pixel error model (background RMS plus Poisson source noise, added only when the resolved gain matches the units of the frame), robust local-background uncertainty, and zero-point error propagation into every calibrated magnitude error
 - **Error propagation**: Comprehensive per-pixel error model (background RMS plus Poisson source noise, added only when the resolved gain matches the units of the frame), robust local-background uncertainty, and zero-point error propagation into every calibrated magnitude error
 - **Transient Detection**: Identification of transient candidates using survey templates (PanSTARRS north, SkyMapper south)
 
@@ -157,12 +148,6 @@ and the pipeline version, for example
 The FastAPI backend, the legacy Flask backend and the Streamlit frontend each
 emit their own line (see [Service Logs](#service-logs)).
 
-Every successful login is written to the service logs with a local timestamp
-and the pipeline version, for example
-`[2026-10-18 18:46:22] RPP v1.9.0 - User 'intern1' logged in successfully (FastAPI backend).`
-The FastAPI backend, the legacy Flask backend and the Streamlit frontend each
-emit their own line (see [Service Logs](#service-logs)).
-
 ### 4. Configure Observatory
 
 Set your observatory location and parameters in the sidebar (name, latitude, longitude, elevation).
@@ -218,21 +203,6 @@ used by `pages/login.py` and `pages/app.py`.
   to a comma-separated list of trusted database user IDs, such as `1,3`.
   Usernames alone do not grant access. Verify the IDs against the shared
   database and update the setting whenever accounts or the database change.
-
-## Service Logs
-
-- `run_all_linux.sh` (and `manage_streamlit.sh`) write the backend output to
-  `fastapi_backend.log` and the frontend output to `streamlit_frontend.log` in
-  the project directory; when the services are started manually, the same
-  messages go to the terminal.
-- Every successful login writes a timestamped line with the pipeline version,
-  for example
-  `[2026-10-18 18:46:22] RPP v1.9.0 - User 'intern1' logged in successfully (FastAPI backend).`
-  The legacy backend emits the same line tagged `(legacy backend)`, and the
-  frontend emits `(frontend, FastAPI backend)` or `(frontend, legacy backend)`.
-  The version is read at runtime from `src/__version__.py`.
-- The in-app **Pipeline Logs** page (`pages/showlogs.py`) requires trusted
-  database user IDs in `RPP_LOG_ADMIN_USER_IDS`; it is disabled by default.
 
 ## Account and API Features
 
@@ -521,18 +491,20 @@ issue, not a caching one.
 **External Catalog Timeout or Network Failure**:
 
 - SkyBoT, SIMBAD, GAIA, Astro-Colibri and TNS depend on external services.
-- The TNS cross-match uses the daily staged catalogue
-  (`tns_public_objects.csv.zip`), downloaded at most once per UTC day and cached
-  in the system temp directory (`RPP_TNS_CACHE_DIR` overrides the location). It
-  needs a TNS API key and marker in the environment: `TNS_API_KEY` plus
-  `TNS_BOT_ID`/`TNS_BOT_NAME` (bot) or `TNS_USER_ID`/`TNS_USER_NAME` (user).
-  Without them the step is skipped with a warning and the rest of the pipeline
-  continues. A catalogue already on disk can be used with
-  `RPP_TNS_CATALOG_PATH`, and `RPP_TNS_MIRROR_URL` makes the step query a shared
-  `tns-mirror` HTTP API (`GET /v1/nearest`) instead of reading the catalogue.
-  If the staged catalogue cannot be downloaded, the TNS Search API
-  (`/api/get/search` + `/api/get/object`) is queried with the same credentials
-  (`RPP_TNS_SANDBOX=1` selects `sandbox.wis-tns.org`).
+- The TNS cross-match uses the public catalogue staged once a day by the TNS
+  (`tns_public_objects.csv.zip`), downloaded with a plain `GET` and no API key:
+  only the `tns_marker` user agent is sent (`RPP_TNS_MARKER_NAME` names it). One
+  copy is shared by every user through the cache directory (system temp
+  directory by default, `RPP_TNS_CACHE_DIR` for a shared cache drive): the first
+  run of the day downloads it, the others read it, and a copy older than 24
+  hours is downloaded again and overwritten. If the refresh fails the previous
+  copy is still used, with a warning. A catalogue already on disk can be used
+  with `RPP_TNS_CATALOG_PATH`, and `RPP_TNS_MIRROR_URL` makes the step query a
+  shared `tns-mirror` HTTP API (`GET /v1/nearest`) instead of reading the
+  catalogue. If the staged catalogue cannot be downloaded, the TNS Search API
+  (`/api/get/search` + `/api/get/object`) is queried when `TNS_API_KEY` plus
+  `TNS_BOT_ID`/`TNS_BOT_NAME` (bot) or `TNS_USER_ID`/`TNS_USER_NAME` (user) are
+  set (`RPP_TNS_SANDBOX=1` selects `sandbox.wis-tns.org`).
 - Temporary network failures or empty responses may reduce the available
   cross-match results without stopping the whole pipeline.
 - If the cross-match step itself fails, the photometry catalogue (CSV and
@@ -550,6 +522,10 @@ issue, not a caching one.
 
 ### Current Release (1.9.3)
 
+- **TNS public catalogue without an API key**: the daily `tns_public_objects.csv.zip` is downloaded from `https://www.wis-tns.org/sites/default/files/tns_public_objects/` with a plain `GET` that only carries the `tns_marker` user agent (a guest marker, named with `RPP_TNS_MARKER_NAME`); the older `/system/files/` path is tried if it fails. One copy is cached and shared by every user: the first run of the day downloads it, the others read it, and a copy older than 24 hours is downloaded again and overwritten, with a lock file so concurrent sessions do not download it twice. TNS credentials are now only needed by the Search API fallback.
+- **TNS catalogue warm-up**: the shared catalogue is prepared at app startup in a background daemon thread (once per process), so neither the first page load nor the first analysis of the day pays for the download; an analysis that needs it meanwhile waits on the download lock and reuses the downloaded file, and the warm-up is skipped when `RPP_TNS_MIRROR_URL` is set.
+- **TNS cache cleanup**: the download lock and any half-written `tns_public_objects.csv.<pid>.tmp` left by an interrupted download are removed by the next catalogue load once they are older than 10 minutes, reported as one `INFO: TNS: removed stale cache file(s) ...` line.
+- **TNS status line**: the TNS status panel reports the catalogue state — how long ago it was downloaded, when the next refresh is due, and whether a background download is running.
 - **Partial results and downloads**: when calibration is unavailable, the pipeline exports instrumental CSV and VOTable catalogs instead of calibrated results and skips transient finding. A failed later cross-match or transient search does not prevent the photometry catalog from being exported. The archived ZIP remains downloadable after a Streamlit rerun.
 - **Aladin Lite resilience**: if the CDS script fails, the viewer tries the pinned jsDelivr module; a source-coordinate table remains available without the viewer. The default HiPS imagery still requires access to CDS.
 - **Catalog service mirrors**: failed VizieR and SIMBAD requests can retry on Harvard mirrors. This retries the same service, not a different photometric catalog.
@@ -580,9 +556,7 @@ issue, not a caching one.
 - **Astro-Colibri cross-match**: events are matched to the nearest catalog source with a progressive radius (5, then 10, 15 and finally 20 arcsec; events without coordinates are ignored); the log reports how many matches were found at each radius, and a warning is shown when sources were matched only at the loose 15 or 20 arcsec tiers. SkyBoT requests are now retried on network/HTTP 429/5xx errors, use the mid-exposure epoch and the ephemeris uncertainty (up to 30 arcsec) for the match. The outcome (number of matches, none, or service unavailable) is now displayed in the app instead of being buried in the log.
 - **Astro-Colibri cutouts**: postage stamps show the science frame and the HiPS template with the source circled and its calibrated magnitude in the title. The survey follows the field declination (PanSTARRS north, SkyMapper south) and automatically falls back to the other survey when the field is not covered.
 - **Transient finder** now detects sources with SExtractor (via `stdpipe`) and accepts `uint16` images. When the photometry table has no usable PSF magnitudes, it falls back to the calibrated 1.1 x FWHM aperture photometry instead of returning no candidates.
-- **Transient finder** now detects sources with SExtractor (via `stdpipe`) and accepts `uint16` images. When the photometry table has no usable PSF magnitudes, it falls back to the calibrated 1.1 x FWHM aperture photometry instead of returning no candidates.
 - **SCAMP refinement** retries with wider tolerances when too few reference matches are found.
-- **Scale-aware error model**: the Poisson term of the per-pixel error is now validated against the frame itself. A normalised float stack used to get a Poisson term ~1e5 times the measured sky variance, because the resolved gain is in e-/ADU while the data are not in counts; the inflated uncertainties made 22 of 26 ePSF-to-star fits return a negative flux, which inverted the ePSF and made `EPSFBuilder` abort with *Cannot normalize ePSF*, dropping PSF photometry for the whole frame. `resolve_poisson_gain()` keeps the gain when it matches the data's scale and otherwise re-derives it from the sky level and its RMS (`gain = sky / rms²`), and `compute_error_map()` builds the error map from it (background RMS alone when no gain is usable). PSF photometry and the aperture S/N are restored on such frames.
 - **Scale-aware error model**: the Poisson term of the per-pixel error is now validated against the frame itself. A normalised float stack used to get a Poisson term ~1e5 times the measured sky variance, because the resolved gain is in e-/ADU while the data are not in counts; the inflated uncertainties made 22 of 26 ePSF-to-star fits return a negative flux, which inverted the ePSF and made `EPSFBuilder` abort with *Cannot normalize ePSF*, dropping PSF photometry for the whole frame. `resolve_poisson_gain()` keeps the gain when it matches the data's scale and otherwise re-derives it from the sky level and its RMS (`gain = sky / rms²`), and `compute_error_map()` builds the error map from it (background RMS alone when no gain is usable). PSF photometry and the aperture S/N are restored on such frames.
 - **PSF star minimum lowered to 10** (was 15); a quality warning is shown when fewer than 25 PSF stars are available.
 - **Session isolation**: each browser session now has its own `work_<id>` folder for temporary uploads and intermediate results, so concurrent users (or several tabs of the same account) can no longer mix FITS files, headers or outputs. Final ZIP archives remain in the user-level results folder. (Version 1.8.8 was skipped.)
@@ -591,7 +565,6 @@ issue, not a caching one.
 - **Safer shared state**: the cached FITS parser is pure (no UI side effects), Matplotlib figures are closed after use, result-file matching respects name delimiters, and shared `astroquery` clients are configured once at import.
 - **Tests**: new session-isolation tests and UI regression checks.
 
-
 ### Version 1.8.7
 
 - **Pixel scale**: the silent 1 arcsec/pixel fallback is removed. When the scale cannot be derived from the header (or the solved WCS), the pipeline stops and asks for the *Pixel scale override* sidebar value.
@@ -599,15 +572,6 @@ issue, not a caching one.
 - **Robustness**: PSF S/N guards for non-positive fluxes, safer cross-match and Astro-Colibri handling, scoped ZIP/temp-file cleanup, HTML-escaped Aladin popups.
 - **Login**: a hint reminds Firefox users to press Enter after typing the password.
 
-## Author
-
-**Pier-Francesco Rocci**
-
-## Acknowledgements
-
-Development of this project was supported by AI language models: **ChatGPT**,
-**Claude**, **Mistral** and **DeepSeek**. Their assistance contributed to the
-design, implementation and documentation of the pipeline.
 ## Author
 
 **Pier-Francesco Rocci**

@@ -429,6 +429,10 @@ service is down or slow.</p></li>
 (<code class="docutils literal notranslate"><span class="pre">vizier.cfa.harvard.edu</span></code>), and SIMBAD region queries retry through
 <code class="docutils literal notranslate"><span class="pre">simbad.cfa.harvard.edu</span></code>. The log records when either fallback is
 used.</p></li>
+<li><p>VizieR queries automatically retry through the Harvard mirror
+(<code class="docutils literal notranslate"><span class="pre">vizier.cfa.harvard.edu</span></code>), and SIMBAD region queries retry through
+<code class="docutils literal notranslate"><span class="pre">simbad.cfa.harvard.edu</span></code>. The log records when either fallback is
+used.</p></li>
 <li><p>Wait and try processing the image again later.</p></li>
 <li><p>Check your internet connection.</p></li>
 <li><p>Review the generated log file to see which catalog step timed out or was
@@ -481,17 +485,23 @@ loose: check it visually in Aladin.</p></li>
 </ul>
 <p><strong>TNS: No matches, skipped or Error</strong></p>
 <ul class="simple">
-<li><p><strong>Problem</strong>: No TNS credentials, network issue, or no public transient in
-the field. The TNS staged files require an API key and marker, so an
-anonymous download answers HTTP 403.</p></li>
+<li><p><strong>Problem</strong>: Network issue, or no public transient in the field. The TNS
+catalogue itself is public and needs no API key, only the <code class="docutils literal notranslate"><span class="pre">tns_marker</span></code>
+user agent, so a restricted proxy or an unreachable staging URL is the usual
+cause of a failed download.</p></li>
 <li><p><strong>Solution</strong>:</p>
 <ul>
-<li><p>Set <code class="docutils literal notranslate"><span class="pre">TNS_API_KEY</span></code> and <code class="docutils literal notranslate"><span class="pre">TNS_BOT_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_BOT_NAME</span></code> (bot) or
-<code class="docutils literal notranslate"><span class="pre">TNS_USER_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_USER_NAME</span></code> (user) in the environment of the
-Streamlit process, then restart it.</p></li>
-<li><p>The catalogue is downloaded once per UTC day and cached in the system
-temp directory; <code class="docutils literal notranslate"><span class="pre">RPP_TNS_CACHE_DIR</span></code> changes the location and
-removing the <code class="docutils literal notranslate"><span class="pre">tns_public_objects_YYYYMMDD.csv</span></code> file forces a refresh.</p></li>
+<li><p>The catalogue is downloaded from
+<code class="docutils literal notranslate"><span class="pre">https://www.wis-tns.org/sites/default/files/tns_public_objects/</span></code>
+(the older <code class="docutils literal notranslate"><span class="pre">/system/files/</span></code> path is tried next) with a plain <code class="docutils literal notranslate"><span class="pre">GET</span></code>
+carrying only the <code class="docutils literal notranslate"><span class="pre">tns_marker</span></code> header; <code class="docutils literal notranslate"><span class="pre">RPP_TNS_MARKER_NAME</span></code> sets
+the name sent in the guest marker.</p></li>
+<li><p>One copy is cached for every user: the first run of the day downloads
+it, the others read it, and a copy older than 24 hours is downloaded
+again and overwritten. <code class="docutils literal notranslate"><span class="pre">RPP_TNS_CACHE_DIR</span></code> moves the cache (use the
+shared cache drive) and removing <code class="docutils literal notranslate"><span class="pre">tns_public_objects.csv</span></code> forces a
+refresh. If the refresh fails the previous copy is still used and a
+warning gives its age.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">RPP_TNS_CATALOG_PATH</span></code> uses a CSV or ZIP catalogue already on disk and
 skips the download entirely.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">RPP_TNS_MIRROR_URL</span></code> queries a shared <code class="docutils literal notranslate"><span class="pre">tns-mirror</span></code> API instead of
@@ -500,14 +510,17 @@ the mirror means the queries failed and the daily catalogue was used:
 check that the URL is the API root (<code class="docutils literal notranslate"><span class="pre">/v1/nearest</span></code> is appended) and
 that the service is reachable. Fields with more than 500 sources use
 the catalogue directly.</p></li>
-<li><p>When the catalogue download fails, the TNS Search API is queried
-instead (<code class="docutils literal notranslate"><span class="pre">INFO:</span> <span class="pre">TNS:</span> <span class="pre">querying</span> <span class="pre">the</span> <span class="pre">Search</span> <span class="pre">API</span> <span class="pre">instead.</span></code>). A
-<code class="docutils literal notranslate"><span class="pre">Search</span> <span class="pre">API</span> <span class="pre">failed</span></code> warning gives the reason (HTTP status, network
-error or rate limit); a field holding more than 100 objects is
-truncated with a warning. <code class="docutils literal notranslate"><span class="pre">RPP_TNS_SANDBOX=1</span></code> targets
-<code class="docutils literal notranslate"><span class="pre">sandbox.wis-tns.org</span></code>, whose keys differ from production.</p></li>
-<li><p>An HTTP 403/401 message means the key or the <code class="docutils literal notranslate"><span class="pre">tns_marker</span></code> is missing
-or invalid; HTTP 429 is the TNS rate limit.</p></li>
+<li><p>When the catalogue download fails and <code class="docutils literal notranslate"><span class="pre">TNS_API_KEY</span></code> plus
+<code class="docutils literal notranslate"><span class="pre">TNS_BOT_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_BOT_NAME</span></code> (bot) or <code class="docutils literal notranslate"><span class="pre">TNS_USER_ID</span></code>/
+<code class="docutils literal notranslate"><span class="pre">TNS_USER_NAME</span></code> (user) are set, the TNS Search API is queried instead
+(<code class="docutils literal notranslate"><span class="pre">INFO:</span> <span class="pre">TNS:</span> <span class="pre">querying</span> <span class="pre">the</span> <span class="pre">Search</span> <span class="pre">API</span> <span class="pre">instead.</span></code>). A <code class="docutils literal notranslate"><span class="pre">Search</span> <span class="pre">API</span>
+<span class="pre">failed</span></code> warning gives the reason (HTTP status, network error or rate
+limit); a field holding more than 100 objects is truncated with a
+warning. <code class="docutils literal notranslate"><span class="pre">RPP_TNS_SANDBOX=1</span></code> targets <code class="docutils literal notranslate"><span class="pre">sandbox.wis-tns.org</span></code>, whose
+keys differ from production.</p></li>
+<li><p>An HTTP 403/401 on the staging URL means the request was refused (check
+the proxy and the marker); on the Search API it means the key or the
+<code class="docutils literal notranslate"><span class="pre">tns_marker</span></code> is invalid. HTTP 429 is the TNS rate limit.</p></li>
 <li><p>A warning about the 20 or 30 arcsec tier means the association is loose:
 transient positions are not always astrometrically accurate, so check
 it visually in Aladin.</p></li>

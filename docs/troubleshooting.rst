@@ -361,17 +361,23 @@ Catalog Query Issues (SIMBAD, SkyBoT, etc.)
 
 **TNS: No matches, skipped or Error**
 
-*   **Problem**: No TNS credentials, network issue, or no public transient in
-    the field. The TNS staged files require an API key and marker, so an
-    anonymous download answers HTTP 403.
+*   **Problem**: Network issue, or no public transient in the field. The TNS
+    catalogue itself is public and needs no API key, only the ``tns_marker``
+    user agent, so a restricted proxy or an unreachable staging URL is the usual
+    cause of a failed download.
 *   **Solution**:
 
-    *   Set ``TNS_API_KEY`` and ``TNS_BOT_ID``/``TNS_BOT_NAME`` (bot) or
-        ``TNS_USER_ID``/``TNS_USER_NAME`` (user) in the environment of the
-        Streamlit process, then restart it.
-    *   The catalogue is downloaded once per UTC day and cached in the system
-        temp directory; ``RPP_TNS_CACHE_DIR`` changes the location and
-        removing the ``tns_public_objects_YYYYMMDD.csv`` file forces a refresh.
+    *   The catalogue is downloaded from
+        ``https://www.wis-tns.org/sites/default/files/tns_public_objects/``
+        (the older ``/system/files/`` path is tried next) with a plain ``GET``
+        carrying only the ``tns_marker`` header; ``RPP_TNS_MARKER_NAME`` sets
+        the name sent in the guest marker.
+    *   One copy is cached for every user: the first run of the day downloads
+        it, the others read it, and a copy older than 24 hours is downloaded
+        again and overwritten. ``RPP_TNS_CACHE_DIR`` moves the cache (use the
+        shared cache drive) and removing ``tns_public_objects.csv`` forces a
+        refresh. If the refresh fails the previous copy is still used and a
+        warning gives its age.
     *   ``RPP_TNS_CATALOG_PATH`` uses a CSV or ZIP catalogue already on disk and
         skips the download entirely.
     *   ``RPP_TNS_MIRROR_URL`` queries a shared ``tns-mirror`` API instead of
@@ -380,14 +386,17 @@ Catalog Query Issues (SIMBAD, SkyBoT, etc.)
         check that the URL is the API root (``/v1/nearest`` is appended) and
         that the service is reachable. Fields with more than 500 sources use
         the catalogue directly.
-    *   When the catalogue download fails, the TNS Search API is queried
-        instead (``INFO: TNS: querying the Search API instead.``). A
-        ``Search API failed`` warning gives the reason (HTTP status, network
-        error or rate limit); a field holding more than 100 objects is
-        truncated with a warning. ``RPP_TNS_SANDBOX=1`` targets
-        ``sandbox.wis-tns.org``, whose keys differ from production.
-    *   An HTTP 403/401 message means the key or the ``tns_marker`` is missing
-        or invalid; HTTP 429 is the TNS rate limit.
+    *   When the catalogue download fails and ``TNS_API_KEY`` plus
+        ``TNS_BOT_ID``/``TNS_BOT_NAME`` (bot) or ``TNS_USER_ID``/
+        ``TNS_USER_NAME`` (user) are set, the TNS Search API is queried instead
+        (``INFO: TNS: querying the Search API instead.``). A ``Search API
+        failed`` warning gives the reason (HTTP status, network error or rate
+        limit); a field holding more than 100 objects is truncated with a
+        warning. ``RPP_TNS_SANDBOX=1`` targets ``sandbox.wis-tns.org``, whose
+        keys differ from production.
+    *   An HTTP 403/401 on the staging URL means the request was refused (check
+        the proxy and the marker); on the Search API it means the key or the
+        ``tns_marker`` is invalid. HTTP 429 is the TNS rate limit.
     *   A warning about the 20 or 30 arcsec tier means the association is loose:
         transient positions are not always astrometrically accurate, so check
         it visually in Aladin.

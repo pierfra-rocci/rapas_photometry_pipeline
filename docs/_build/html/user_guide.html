@@ -238,8 +238,7 @@ as:</p>
 <li><p>AAVSO VSX</p></li>
 <li><p>Milliquas</p></li>
 <li><p>Astro-Colibri, when an API key is provided</p></li>
-<li><p>TNS (Transient Name Server), when an API key and marker are configured</p></li>
-<li><p>TNS (Transient Name Server), when an API key and marker are configured</p></li>
+<li><p>TNS (Transient Name Server), from its public catalogue (no API key needed)</p></li>
 </ul>
 <p>Astro-Colibri and TNS are the two transient services. Both use a progressive
 match radius - 5, 10, 15, 20 and 30 arcsec - that pairs a transient with its
@@ -249,36 +248,36 @@ source, and warn when an association is found only in the loose tiers
 Astro-Colibri matches are exported as <code class="docutils literal notranslate"><span class="pre">astrocolibri_*</span></code> columns and TNS
 matches as <code class="docutils literal notranslate"><span class="pre">tns_name</span></code>, <code class="docutils literal notranslate"><span class="pre">tns_type</span></code>, <code class="docutils literal notranslate"><span class="pre">tns_ra</span></code> and <code class="docutils literal notranslate"><span class="pre">tns_dec</span></code>.
 The TNS query uses the public catalogue staged daily by the TNS
-(<code class="docutils literal notranslate"><span class="pre">tns_public_objects.csv.zip</span></code>), downloaded at most once per UTC day and
-cached; it needs <code class="docutils literal notranslate"><span class="pre">TNS_API_KEY</span></code> plus <code class="docutils literal notranslate"><span class="pre">TNS_BOT_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_BOT_NAME</span></code> (bot) or
-<code class="docutils literal notranslate"><span class="pre">TNS_USER_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_USER_NAME</span></code> (user) in the environment.
-A shared mirror of the catalogue can be queried instead of downloading it by
+(<code class="docutils literal notranslate"><span class="pre">tns_public_objects.csv.zip</span></code>), downloaded with a plain <code class="docutils literal notranslate"><span class="pre">GET</span></code> and no API
+key. One copy is shared by every user: the first run of the day downloads it,
+the others read it, and a copy older than 24 hours is downloaded again and
+overwritten.
+The TNS status panel under each result shows the catalogue state as a caption,
+built from the cached file and from the background download started when the app
+opens:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">TNS</span> <span class="pre">catalogue:</span> <span class="pre">downloaded</span> <span class="pre">3.5</span> <span class="pre">h</span> <span class="pre">ago,</span> <span class="pre">refresh</span> <span class="pre">in</span> <span class="pre">20.5</span> <span class="pre">h.</span></code> - the age of the
+cached copy and when it will be replaced (<code class="docutils literal notranslate"><span class="pre">min</span></code> under an hour, otherwise
+<code class="docutils literal notranslate"><span class="pre">h</span></code>; <code class="docutils literal notranslate"><span class="pre">just</span> <span class="pre">now</span></code> right after a download).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">TNS</span> <span class="pre">catalogue:</span> <span class="pre">download</span> <span class="pre">in</span> <span class="pre">progress</span> <span class="pre">in</span> <span class="pre">the</span> <span class="pre">background.</span></code> - nothing is cached
+yet and the first download is running; the next analysis waits for it instead
+of starting a second one.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">TNS</span> <span class="pre">catalogue:</span> <span class="pre">downloaded</span> <span class="pre">3.0</span> <span class="pre">h</span> <span class="pre">ago,</span> <span class="pre">refreshing</span> <span class="pre">in</span> <span class="pre">the</span> <span class="pre">background.</span></code> - a
+refresh is running while the current copy still serves the analyses.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">TNS</span> <span class="pre">catalogue:</span> <span class="pre">downloaded</span> <span class="pre">X</span> <span class="pre">h</span> <span class="pre">ago,</span> <span class="pre">refresh</span> <span class="pre">on</span> <span class="pre">the</span> <span class="pre">next</span> <span class="pre">load.</span></code> - the copy is
+past 24 hours and will be replaced by the next catalogue load.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">TNS</span> <span class="pre">catalogue:</span> <span class="pre">not</span> <span class="pre">downloaded</span> <span class="pre">yet.</span></code> - no copy is cached and no download is
+running, so the next analysis downloads it.</p></li>
+</ul>
+<p>A shared mirror of the catalogue can be queried instead of downloading it by
 setting <code class="docutils literal notranslate"><span class="pre">RPP_TNS_MIRROR_URL</span></code> to a <code class="docutils literal notranslate"><span class="pre">tns-mirror</span></code> HTTP API: it answers once per
 detected source through <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/nearest</span></code>, is authoritative when it answers,
 and falls back to the daily catalogue on any failure.
-If the catalogue cannot be downloaded, the TNS Search API is queried with the
-same credentials (a cone search over the field, then one <code class="docutils literal notranslate"><span class="pre">get/object</span></code> call
-per object found, up to 100); <code class="docutils literal notranslate"><span class="pre">RPP_TNS_SANDBOX=1</span></code> selects the TNS sandbox.
-The CSV and VOTable outputs carry the same <code class="docutils literal notranslate"><span class="pre">tns_name</span></code> and <code class="docutils literal notranslate"><span class="pre">tns_type</span></code>
-columns whichever source was used.</p>
-<p>Astro-Colibri and TNS are the two transient services. Both use a progressive
-match radius - 5, 10, 15, 20 and 30 arcsec - that pairs a transient with its
-closest detected source, keep the closest object when several claim the same
-source, and warn when an association is found only in the loose tiers
-(15 arcsec and beyond for Astro-Colibri, 20 arcsec and beyond for TNS).
-Astro-Colibri matches are exported as <code class="docutils literal notranslate"><span class="pre">astrocolibri_*</span></code> columns and TNS
-matches as <code class="docutils literal notranslate"><span class="pre">tns_name</span></code>, <code class="docutils literal notranslate"><span class="pre">tns_type</span></code>, <code class="docutils literal notranslate"><span class="pre">tns_ra</span></code> and <code class="docutils literal notranslate"><span class="pre">tns_dec</span></code>.
-The TNS query uses the public catalogue staged daily by the TNS
-(<code class="docutils literal notranslate"><span class="pre">tns_public_objects.csv.zip</span></code>), downloaded at most once per UTC day and
-cached; it needs <code class="docutils literal notranslate"><span class="pre">TNS_API_KEY</span></code> plus <code class="docutils literal notranslate"><span class="pre">TNS_BOT_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_BOT_NAME</span></code> (bot) or
-<code class="docutils literal notranslate"><span class="pre">TNS_USER_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_USER_NAME</span></code> (user) in the environment.
-A shared mirror of the catalogue can be queried instead of downloading it by
-setting <code class="docutils literal notranslate"><span class="pre">RPP_TNS_MIRROR_URL</span></code> to a <code class="docutils literal notranslate"><span class="pre">tns-mirror</span></code> HTTP API: it answers once per
-detected source through <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/nearest</span></code>, is authoritative when it answers,
-and falls back to the daily catalogue on any failure.
-If the catalogue cannot be downloaded, the TNS Search API is queried with the
-same credentials (a cone search over the field, then one <code class="docutils literal notranslate"><span class="pre">get/object</span></code> call
-per object found, up to 100); <code class="docutils literal notranslate"><span class="pre">RPP_TNS_SANDBOX=1</span></code> selects the TNS sandbox.
+If the catalogue cannot be downloaded, the TNS Search API is queried when
+<code class="docutils literal notranslate"><span class="pre">TNS_API_KEY</span></code> plus <code class="docutils literal notranslate"><span class="pre">TNS_BOT_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_BOT_NAME</span></code> (bot) or
+<code class="docutils literal notranslate"><span class="pre">TNS_USER_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_USER_NAME</span></code> (user) are configured (a cone search over the
+field, then one <code class="docutils literal notranslate"><span class="pre">get/object</span></code> call per object found, up to 100);
+<code class="docutils literal notranslate"><span class="pre">RPP_TNS_SANDBOX=1</span></code> selects the TNS sandbox.
 The CSV and VOTable outputs carry the same <code class="docutils literal notranslate"><span class="pre">tns_name</span></code> and <code class="docutils literal notranslate"><span class="pre">tns_type</span></code>
 columns whichever source was used.</p>
 <p>These services are best-effort integrations. Timeouts, empty responses, or
@@ -320,8 +319,6 @@ filters.</p>
 <li><p>Image previews and diagnostic plots</p></li>
 <li><p>Source and calibration tables</p></li>
 <li><p>Processing logs</p></li>
-<li><p>Interactive Aladin views, with an automatic jsDelivr fallback if the CDS
-viewer script cannot be downloaded</p></li>
 <li><p>Interactive Aladin views, with an automatic jsDelivr fallback if the CDS
 viewer script cannot be downloaded</p></li>
 <li><p>Download buttons for result archives</p></li>

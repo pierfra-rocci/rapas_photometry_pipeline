@@ -233,25 +233,18 @@ Astrometry.net indices and <code class="docutils literal notranslate"><span clas
 <li><p>External catalog services such as GAIA, SIMBAD, SkyBoT, Astro-Colibri and
 the TNS may time out or return partial results. In many cases the pipeline
 continues and records warnings in the log instead of stopping completely.</p></li>
-<li><p>The TNS cross-match needs <code class="docutils literal notranslate"><span class="pre">TNS_API_KEY</span></code> plus <code class="docutils literal notranslate"><span class="pre">TNS_BOT_ID</span></code>/
-<code class="docutils literal notranslate"><span class="pre">TNS_BOT_NAME</span></code> (bot) or <code class="docutils literal notranslate"><span class="pre">TNS_USER_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_USER_NAME</span></code> (user). Its
-catalogue is downloaded once per UTC day and cached (<code class="docutils literal notranslate"><span class="pre">RPP_TNS_CACHE_DIR</span></code>),
-or read from a local file with <code class="docutils literal notranslate"><span class="pre">RPP_TNS_CATALOG_PATH</span></code>. Setting
-<code class="docutils literal notranslate"><span class="pre">RPP_TNS_MIRROR_URL</span></code> queries a shared <code class="docutils literal notranslate"><span class="pre">tns-mirror</span></code> API instead of reading
-the catalogue; if the mirror fails, the daily catalogue is used, and if that
-cannot be downloaded the TNS Search API is queried (<code class="docutils literal notranslate"><span class="pre">RPP_TNS_SANDBOX=1</span></code>
-selects the TNS sandbox).</p></li>
-<li><p>External catalog services such as GAIA, SIMBAD, SkyBoT, Astro-Colibri and
-the TNS may time out or return partial results. In many cases the pipeline
-continues and records warnings in the log instead of stopping completely.</p></li>
-<li><p>The TNS cross-match needs <code class="docutils literal notranslate"><span class="pre">TNS_API_KEY</span></code> plus <code class="docutils literal notranslate"><span class="pre">TNS_BOT_ID</span></code>/
-<code class="docutils literal notranslate"><span class="pre">TNS_BOT_NAME</span></code> (bot) or <code class="docutils literal notranslate"><span class="pre">TNS_USER_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_USER_NAME</span></code> (user). Its
-catalogue is downloaded once per UTC day and cached (<code class="docutils literal notranslate"><span class="pre">RPP_TNS_CACHE_DIR</span></code>),
-or read from a local file with <code class="docutils literal notranslate"><span class="pre">RPP_TNS_CATALOG_PATH</span></code>. Setting
-<code class="docutils literal notranslate"><span class="pre">RPP_TNS_MIRROR_URL</span></code> queries a shared <code class="docutils literal notranslate"><span class="pre">tns-mirror</span></code> API instead of reading
-the catalogue; if the mirror fails, the daily catalogue is used, and if that
-cannot be downloaded the TNS Search API is queried (<code class="docutils literal notranslate"><span class="pre">RPP_TNS_SANDBOX=1</span></code>
-selects the TNS sandbox).</p></li>
+<li><p>The TNS cross-match downloads the public catalogue staged once a day by the
+TNS with a plain <code class="docutils literal notranslate"><span class="pre">GET</span></code>; it needs no API key, only the <code class="docutils literal notranslate"><span class="pre">tns_marker</span></code> user
+agent (<code class="docutils literal notranslate"><span class="pre">RPP_TNS_MARKER_NAME</span></code> names it). One cached copy is shared by every
+user: the first run of the day downloads it, the later ones read it, and a
+copy older than 24 hours is downloaded again and overwritten
+(<code class="docutils literal notranslate"><span class="pre">RPP_TNS_CACHE_DIR</span></code>), or read from a local file with
+<code class="docutils literal notranslate"><span class="pre">RPP_TNS_CATALOG_PATH</span></code>. Setting <code class="docutils literal notranslate"><span class="pre">RPP_TNS_MIRROR_URL</span></code> queries a shared
+<code class="docutils literal notranslate"><span class="pre">tns-mirror</span></code> API instead of reading the catalogue; if the mirror fails, the
+daily catalogue is used, and if that cannot be downloaded the TNS Search API
+is queried when <code class="docutils literal notranslate"><span class="pre">TNS_API_KEY</span></code> plus <code class="docutils literal notranslate"><span class="pre">TNS_BOT_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_BOT_NAME</span></code> (bot) or
+<code class="docutils literal notranslate"><span class="pre">TNS_USER_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_USER_NAME</span></code> (user) are configured
+(<code class="docutils literal notranslate"><span class="pre">RPP_TNS_SANDBOX=1</span></code> selects the TNS sandbox).</p></li>
 </ul>
 </section>
 <section id="next-steps">

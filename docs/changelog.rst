@@ -6,6 +6,37 @@ This document records all notable changes to RAPAS Photometry Pipeline.
 Version 1.9.3
 -------------
 
+**TNS catalogue downloaded without an API key**
+
+*   ``tns_public_objects.csv.zip`` is public: it is now fetched from
+    ``https://www.wis-tns.org/sites/default/files/tns_public_objects/`` with a
+    plain ``GET`` carrying only the ``tns_marker`` user agent, so no
+    ``TNS_API_KEY`` is needed for the TNS cross-match. The marker is a guest
+    marker whose name can be set with ``RPP_TNS_MARKER_NAME``; the older
+    ``/system/files/`` path is tried when the first URL fails.
+*   A single copy of the catalogue is cached and shared by every user: the
+    first run of the day downloads it, the other runs read it, and a copy older
+    than 24 hours is downloaded again and overwritten in place. A lock file
+    serialises concurrent downloads, and a failed refresh keeps the previous
+    copy with a warning giving its age instead of dropping the cross-match.
+    The cache file is ``tns_public_objects.csv`` (no date suffix);
+    ``RPP_TNS_CACHE_DIR`` moves it, for example to a shared cache drive.
+*   The catalogue is prepared at app startup in a background daemon thread (once
+    per process, through ``st.cache_resource``) so neither the first page load
+    nor the first analysis of the day pays for the download; the parsed
+    catalogue stays cached for the first cross-match, and an analysis that needs
+    it meanwhile waits on the download lock and reuses the downloaded file. The
+    warm-up is skipped when ``RPP_TNS_MIRROR_URL`` is set, since the catalogue is
+    then only a fallback.
+*   Leftovers of a download killed mid-way (for instance a warm-up thread
+    stopped with the process) are cleaned up: the ``tns_public_objects.csv.<pid>.tmp``
+    file and the download lock are removed once they are older than 10 minutes,
+    which the cache loader checks even when the catalogue is still fresh.
+*   The TNS status panel reports the catalogue state: how long ago it was
+    downloaded, when the next refresh is due, and whether a background download
+    is running.
+*   TNS credentials are now only used by the Search API fallback.
+
 **Instrumental catalog fallback**
 
 *   If the calibration catalog or zero point is unavailable, the pipeline
@@ -175,17 +206,6 @@ Version 1.9.0
     ``src/__version__.py``, so the message follows future releases
     automatically.
 
-**Login audit log**
-
-*   Every successful login writes a timestamped line with the pipeline version
-    to the service log:
-    ``[YYYY-MM-DD HH:MM:SS] RPP vX.Y.Z - User '<username>' logged in successfully (<origin>).``
-*   ``api/main.py`` (FastAPI backend), ``backend.py`` (legacy backend) and
-    ``pages/login.py`` (frontend) each emit their own line; the origin suffix
-    tells them apart. The version is read at runtime from
-    ``src/__version__.py``, so the message follows future releases
-    automatically.
-
 **Curated catalog export**
 
 *   **Fixed export columns.** ``*_catalog.csv`` and ``*_catalog.vot`` now contain
@@ -292,32 +312,6 @@ Version 1.9.0
     filter: 3 attempts on network errors and HTTP 429/5xx, ``-from`` label,
     epoch range check, HTTP error reporting, mid-exposure epoch and a per-object
     match tolerance of 10 to 30 arcsec derived from the ephemeris ``Err``.
-
-**Scale-aware photometric error model**
-
-*   **The Poisson term now follows the units of the frame.**
-    ``calc_total_error`` adds ``data / gain`` to the pixel variance, which is
-    only meaningful when the data are counts in the same units as the gain. A
-    rescaled frame (a normalised float stack with a sky level of about 1e-2, for
-    example) violates that: with a genuine e-/ADU gain the Poisson term at the
-    sky level exceeded the measured sky variance by a factor of 1e5, so the
-    error map said nothing about the real noise and the aperture S/N was
-    underestimated by one to two orders of magnitude. The PSF step was hit
-    hardest, because photutils weights the ePSF-to-star fits by
-    ``1 / error**2``: the star cores ended up ~1e-4 of the weight of the sky
-    pixels, 22 of 26 fitted fluxes came back negative, the next ePSF was
-    therefore inverted and ``EPSFBuilder`` aborted with
-    ``Cannot normalize ePSF: the data sum (...) is not finite and positive``,
-    dropping PSF photometry for the whole frame.
-*   **Resolution.** ``resolve_poisson_gain()`` keeps the resolved gain when the
-    Poisson variance it predicts at the sky level stays within
-    ``POISSON_SKY_VARIANCE_TOLERANCE`` (10x) of the measured background
-    variance, and otherwise replaces it with the largest value the frame allows,
-    ``gain = sky level / background_rms**2``. ``compute_error_map()`` builds the
-    per-pixel error from that gain, falling back to the background RMS map alone
-    when no usable gain exists. On the real normalised stack the core error
-    dropped from ~1.4e3x the sky RMS (larger than the data itself) to a few x
-    the sky RMS, and PSF photometry now runs.
 
 **Scale-aware photometric error model**
 

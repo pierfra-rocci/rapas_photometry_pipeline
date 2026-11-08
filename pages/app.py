@@ -31,6 +31,7 @@ from src.tools_app import (
     handle_log_messages,
     show_astrocolibri_status,
     show_tns_status,
+    warm_tns_catalogue_cache,
     cleanup_temp_files,
     try_gaia_server,
 )
@@ -236,6 +237,11 @@ LOGO_PATH = os.path.join(PROJECT_ROOT, "rapas_logo.png")
 PADC_LOGO_PATH = os.path.join(PROJECT_ROOT, "padc_logo.jpg")
 
 initialize_session_state()
+
+# The shared TNS catalogue is downloaded at most once a day and reused by every
+# user: prepare it in the background so neither the first page load nor the
+# first analysis pays for it.
+warm_tns_catalogue_cache()
 
 # Initialize session state for photometry pipeline button
 if "run_photometry_pipeline" not in st.session_state:

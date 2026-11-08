@@ -180,6 +180,20 @@ Frontend/backend URLs may also be overridden when needed.</p>
 <span class="nv">$env:RPP_LEGACY_URL</span> <span class="p">=</span> <span class="s1">'http://localhost:5000'</span>
 </pre></div>
 </div>
+<p>Shared TNS catalogue cache (optional):</p>
+<div class="highlight-powershell notranslate"><div class="highlight"><pre><span></span><span class="nv">$env:RPP_TNS_CACHE_DIR</span> <span class="p">=</span> <span class="s1">'D:/rpp_cache/tns'</span>
+<span class="nv">$env:RPP_TNS_MARKER_NAME</span> <span class="p">=</span> <span class="s1">'My observatory'</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">RPP_TNS_CACHE_DIR</span></code> sets where the public TNS catalogue
+(<code class="docutils literal notranslate"><span class="pre">tns_public_objects.csv</span></code>) is kept. It defaults to <code class="docutils literal notranslate"><span class="pre">rpp_tns</span></code> in the system
+temp directory; point it at a directory every user can read and write, for
+example a shared cache drive, so that the one download per day serves the whole
+deployment and is refreshed once the file is older than 24 hours.
+<code class="docutils literal notranslate"><span class="pre">RPP_TNS_MARKER_NAME</span></code> is the name sent in the <code class="docutils literal notranslate"><span class="pre">tns_marker</span></code> user agent when
+the catalogue is fetched; it identifies the deployment to the TNS and defaults
+to <code class="docutils literal notranslate"><span class="pre">RPP</span> <span class="pre">pipeline</span></code>. Neither variable needs an API key: the catalogue is public,
+and TNS credentials are only used by the Search API fallback.</p>
 </section>
 <section id="verification">
 <h2>Verification<a class="headerlink" href="#verification" title="Link to this heading"></a></h2>

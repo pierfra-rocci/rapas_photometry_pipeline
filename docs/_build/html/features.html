@@ -448,14 +448,6 @@ calibrated magnitude</p></li>
 event per source, radius reached reported in the log); matches found only
 at the 15, 20 or 30 arcsec tier raise a warning; the match outcome is
 displayed in the app</p></li>
-<li><p>Search API fallback: if the staged catalogue cannot be obtained, one
-<code class="docutils literal notranslate"><span class="pre">/api/get/search</span></code> cone search over the field followed by
-<code class="docutils literal notranslate"><span class="pre">/api/get/object</span></code> for each object (up to 100) is used instead;
-<code class="docutils literal notranslate"><span class="pre">RPP_TNS_SANDBOX=1</span></code> selects <code class="docutils literal notranslate"><span class="pre">sandbox.wis-tns.org</span></code></p></li>
-<li><p>Progressive cross-match radius 5 -&gt; 10 -&gt; 15 -&gt; 20 -&gt; 30 arcsec (nearest
-event per source, radius reached reported in the log); matches found only
-at the 15, 20 or 30 arcsec tier raise a warning; the match outcome is
-displayed in the app</p></li>
 <li><p>Every source returned by Astro-Colibri for the field is listed (name,
 RA/Dec, type, classification, observatory, trigger ID, position error,
 date, redshift, matched flag, separation); the event
@@ -464,37 +456,20 @@ RA/Dec are exported as <code class="docutils literal notranslate"><span class="p
 </dd>
 <dt><strong>TNS (Transient Name Server)</strong>:</dt><dd><ul class="simple">
 <li><p>Public transients (AT/SN/FRB) from the daily staged catalogue
-<code class="docutils literal notranslate"><span class="pre">tns_public_objects.csv.zip</span></code>, downloaded at most once per UTC day and
-cached locally (<code class="docutils literal notranslate"><span class="pre">RPP_TNS_CACHE_DIR</span></code>), or read from a local file
-(<code class="docutils literal notranslate"><span class="pre">RPP_TNS_CATALOG_PATH</span></code>)</p></li>
-<li><p>API key authentication: <code class="docutils literal notranslate"><span class="pre">TNS_API_KEY</span></code> plus <code class="docutils literal notranslate"><span class="pre">TNS_BOT_ID</span></code>/
-<code class="docutils literal notranslate"><span class="pre">TNS_BOT_NAME</span></code> (bot) or <code class="docutils literal notranslate"><span class="pre">TNS_USER_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_USER_NAME</span></code> (user);
-without it the step is skipped with a warning, like Astro-Colibri</p></li>
-<li><p>Optional shared mirror: <code class="docutils literal notranslate"><span class="pre">RPP_TNS_MIRROR_URL</span></code> points at a <code class="docutils literal notranslate"><span class="pre">tns-mirror</span></code>
-HTTP API queried once per detected source (<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/nearest</span></code>), which
-removes the download for multi-user deployments; the mirror is
-authoritative when it answers, any failure falls back to the daily
-catalogue, and fields with more than 500 sources use the catalogue directly</p></li>
-<li><p>Progressive cross-match radius 5 -&gt; 10 -&gt; 15 -&gt; 20 -&gt; 30 arcsec keeping the
-closest object per source; matches found only at the 20 or 30 arcsec tier
-raise a warning</p></li>
-<li><p>Spatial index: the parsed catalogue carries a <code class="docutils literal notranslate"><span class="pre">scipy</span></code> KD-tree over the
-object positions, so the objects of a field are selected by walking the
-tree instead of comparing every catalogue row with the field centre</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">tns_name</span></code> (full designation, e.g. <code class="docutils literal notranslate"><span class="pre">SN</span> <span class="pre">2026abc</span></code>), <code class="docutils literal notranslate"><span class="pre">tns_type</span></code>,
-<code class="docutils literal notranslate"><span class="pre">tns_ra</span></code> and <code class="docutils literal notranslate"><span class="pre">tns_dec</span></code> are exported; <code class="docutils literal notranslate"><span class="pre">TNS;</span> <span class="pre">``</span> <span class="pre">is</span> <span class="pre">added</span> <span class="pre">to</span>
-<span class="pre">``catalog_matches</span></code>, and every TNS object in the field is listed in the
-app with its match status and separation</p></li>
-</ul>
-</dd>
-<dt><strong>TNS (Transient Name Server)</strong>:</dt><dd><ul class="simple">
-<li><p>Public transients (AT/SN/FRB) from the daily staged catalogue
-<code class="docutils literal notranslate"><span class="pre">tns_public_objects.csv.zip</span></code>, downloaded at most once per UTC day and
-cached locally (<code class="docutils literal notranslate"><span class="pre">RPP_TNS_CACHE_DIR</span></code>), or read from a local file
-(<code class="docutils literal notranslate"><span class="pre">RPP_TNS_CATALOG_PATH</span></code>)</p></li>
-<li><p>API key authentication: <code class="docutils literal notranslate"><span class="pre">TNS_API_KEY</span></code> plus <code class="docutils literal notranslate"><span class="pre">TNS_BOT_ID</span></code>/
-<code class="docutils literal notranslate"><span class="pre">TNS_BOT_NAME</span></code> (bot) or <code class="docutils literal notranslate"><span class="pre">TNS_USER_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_USER_NAME</span></code> (user);
-without it the step is skipped with a warning, like Astro-Colibri</p></li>
+<code class="docutils literal notranslate"><span class="pre">tns_public_objects.csv.zip</span></code>, fetched from
+<code class="docutils literal notranslate"><span class="pre">https://www.wis-tns.org/sites/default/files/tns_public_objects/</span></code> with a
+plain <code class="docutils literal notranslate"><span class="pre">GET</span></code>: the file is public and needs no API key, only the
+<code class="docutils literal notranslate"><span class="pre">tns_marker</span></code> user agent (a guest marker, named with
+<code class="docutils literal notranslate"><span class="pre">RPP_TNS_MARKER_NAME</span></code>); the older <code class="docutils literal notranslate"><span class="pre">/system/files/</span></code> path is tried next</p></li>
+<li><p>One copy is shared by every user of the deployment: the first run of the
+day downloads it, the other runs read it, and a copy older than 24 hours
+is downloaded again and overwritten in place; a lock file serialises
+concurrent downloads, and a failed refresh keeps the previous copy with a
+warning (<code class="docutils literal notranslate"><span class="pre">RPP_TNS_CACHE_DIR</span></code> sets the cache location,
+<code class="docutils literal notranslate"><span class="pre">RPP_TNS_CATALOG_PATH</span></code> reads a local CSV/ZIP instead)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">TNS_API_KEY</span></code> plus <code class="docutils literal notranslate"><span class="pre">TNS_BOT_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_BOT_NAME</span></code> (bot) or
+<code class="docutils literal notranslate"><span class="pre">TNS_USER_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_USER_NAME</span></code> (user) are optional and only used by the
+Search API fallback</p></li>
 <li><p>Optional shared mirror: <code class="docutils literal notranslate"><span class="pre">RPP_TNS_MIRROR_URL</span></code> points at a <code class="docutils literal notranslate"><span class="pre">tns-mirror</span></code>
 HTTP API queried once per detected source (<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/nearest</span></code>), which
 removes the download for multi-user deployments; the mirror is
@@ -588,7 +563,6 @@ candidates sorted by best signal-to-noise ratio</p></li>
 </dd>
 <dt><strong>Interactive Sky Viewer</strong>:</dt><dd><ul class="simple">
 <li><p>Aladin Lite integration for source exploration</p></li>
-<li><p>Automatic jsDelivr fallback for the viewer script if the CDS download fails</p></li>
 <li><p>Automatic jsDelivr fallback for the viewer script if the CDS download fails</p></li>
 <li><p>Overlay of detected sources with catalog information</p></li>
 <li><p>Clickable source markers with detailed information</p></li>
@@ -708,6 +682,17 @@ photometry; sky coordinates are included when the WCS is usable</p></li>
 <li><p>Automatic file categorization by type</p></li>
 <li><p>Metadata preservation in output files</p></li>
 <li><p>Cross-referenced file relationships</p></li>
+<li><p>Shared TNS catalogue cache outside the project data: one
+<code class="docutils literal notranslate"><span class="pre">tns_public_objects.csv</span></code> per deployment, in the system temp directory by
+default (<code class="docutils literal notranslate"><span class="pre">RPP_TNS_CACHE_DIR</span></code> moves it, for example to a shared cache
+drive), overwritten in place once older than 24 hours and read by every
+user from then on</p></li>
+<li><p>The download lock <code class="docutils literal notranslate"><span class="pre">tns_public_objects.download.lock</span></code> and any half-written
+<code class="docutils literal notranslate"><span class="pre">tns_public_objects.csv.&lt;pid&gt;.tmp</span></code> left by an interrupted download are
+deleted by the next catalogue load once they are older than 10 minutes; the
+cleanup is reported with a single <code class="docutils literal notranslate"><span class="pre">INFO:</span> <span class="pre">TNS:</span> <span class="pre">removed</span> <span class="pre">stale</span> <span class="pre">cache</span> <span class="pre">file(s)</span>
+<span class="pre">...</span></code> line in the processing log, and a live download’s own files are never
+touched</p></li>
 </ul>
 </dd>
 <dt><strong>Archive Management</strong>:</dt><dd><ul class="simple">

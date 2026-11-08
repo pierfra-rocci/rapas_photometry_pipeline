@@ -7,6 +7,7 @@ the daily cache (or a local catalogue file) and never touch the network.
 import io
 import json
 import os
+import time
 import zipfile
 from contextlib import nullcontext
 
@@ -22,6 +23,7 @@ from src.tns_catalog import (
     parse_tns_mirror_objects,
     parse_tns_public_objects,
     query_tns_mirror,
+    tns_cache_is_fresh,
     tns_cache_path,
     tns_field_mask,
     tns_match_radius,
@@ -112,6 +114,43 @@ def _run_cross_match(tmp_path, table, objects, field_width_arcmin=30.0):
     )
 
 
+def _age_cache(path, hours):
+    """Backdate a cached catalogue so it is older than the refresh delay."""
+    stamp = time.time() - hours * 3600.0
+    os.utime(path, (stamp, stamp))
+
+
+def _clear_tns_env(monkeypatch):
+    """Remove every TNS environment variable so a test never uses the network."""
+    for name in (
+        "TNS_API_KEY",
+        "TNS_BOT_ID",
+        "TNS_BOT_NAME",
+        "TNS_USER_ID",
+        "TNS_USER_NAME",
+        "RPP_TNS_MARKER_NAME",
+        "RPP_TNS_CATALOG_PATH",
+        "RPP_TNS_MIRROR_URL",
+        "RPP_TNS_CACHE_DIR",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+def _no_post_request(*_args, **_kwargs):
+    raise AssertionError("the public TNS catalogue is downloaded with GET only")
+
+
+def _no_request(*_args, **_kwargs):
+    raise AssertionError("no TNS request is expected here")
+
+
+class _OfflineResponse:
+    """Staging server unreachable stand-in."""
+
+    status_code = 503
+    content = b""
+
+
 # ─── Progressive radii ───────────────────────────────────────────────────────
 
 
@@ -163,7 +202,7 @@ def test_load_tns_public_objects_uses_daily_cache(monkeypatch, tmp_path):
     def _fail(*_args, **_kwargs):
         raise AssertionError("the cached catalogue must not be downloaded again")
 
-    monkeypatch.setattr("src.tns_catalog.requests.post", _fail)
+    monkeypatch.setattr("src.tns_catalog.requests.get", _fail)
 
     frame, messages = load_tns_public_objects(cache_dir=str(tmp_path))
 
@@ -171,27 +210,8 @@ def test_load_tns_public_objects_uses_daily_cache(monkeypatch, tmp_path):
     assert any("cached public catalogue" in message for message in messages)
 
 
-def test_load_tns_public_objects_without_api_key_warns(monkeypatch, tmp_path):
-    for name in (
-        "TNS_API_KEY",
-        "TNS_BOT_ID",
-        "TNS_BOT_NAME",
-        "TNS_USER_ID",
-        "TNS_USER_NAME",
-        "RPP_TNS_CATALOG_PATH",
-    ):
-        monkeypatch.delenv(name, raising=False)
-
-    frame, messages = load_tns_public_objects(cache_dir=str(tmp_path))
-
-    assert frame is None
-    assert any(m.startswith("WARNING: TNS: no API key available") for m in messages)
-
-
-def test_load_tns_public_objects_downloads_once_and_caches(monkeypatch, tmp_path):
-    monkeypatch.setenv("TNS_API_KEY", "secret")
-    monkeypatch.setenv("TNS_BOT_ID", "42")
-    monkeypatch.setenv("TNS_BOT_NAME", "rpp")
+def test_load_tns_public_objects_downloads_without_credentials(monkeypatch, tmp_path):
+    _clear_tns_env(monkeypatch)
     calls = []
     payload = _tns_zip(_tns_text([(1, "SN", "2026abc", 150.0, 2.0)]))
 
@@ -199,18 +219,69 @@ def test_load_tns_public_objects_downloads_once_and_caches(monkeypatch, tmp_path
         status_code = 200
         content = payload
 
-    def _post(url, headers=None, data=None, timeout=None):
-        calls.append({"url": url, "headers": headers, "data": data})
+    def _get(url, headers=None, timeout=None):
+        calls.append({"url": url, "headers": headers})
         return Response()
 
-    monkeypatch.setattr("src.tns_catalog.requests.post", _post)
+    monkeypatch.setattr("src.tns_catalog.requests.get", _get)
+    monkeypatch.setattr("src.tns_catalog.requests.post", _no_post_request)
 
     frame, messages = load_tns_public_objects(cache_dir=str(tmp_path))
 
     assert frame is not None and len(frame) == 1
     assert len(calls) == 1
-    assert calls[0]["data"] == {"api_key": "secret"}
-    assert "tns_marker" in calls[0]["headers"]["user-agent"]
+    assert calls[0]["url"] == (
+        "https://www.wis-tns.org/sites/default/files/tns_public_objects/"
+        "tns_public_objects.csv.zip"
+    )
+    assert "api_key" not in calls[0]["headers"]
+    marker = calls[0]["headers"]["User-Agent"]
+    assert marker.startswith("tns_marker{")
+    assert '"tns_id":0' in marker and '"type":"guest"' in marker
+
+
+def test_load_tns_public_objects_sends_the_configured_marker_name(monkeypatch, tmp_path):
+    _clear_tns_env(monkeypatch)
+    monkeypatch.setenv("RPP_TNS_MARKER_NAME", "My observatory")
+
+    class Response:
+        status_code = 200
+        content = _tns_zip(_tns_text([(1, "SN", "2026abc", 150.0, 2.0)]))
+
+    captured = []
+
+    def _get(url, headers=None, timeout=None):
+        captured.append(headers)
+        return Response()
+
+    monkeypatch.setattr("src.tns_catalog.requests.get", _get)
+
+    frame, _messages = load_tns_public_objects(cache_dir=str(tmp_path))
+
+    assert frame is not None
+    assert '"name":"My observatory"' in captured[0]["User-Agent"]
+
+
+def test_load_tns_public_objects_downloads_once_and_caches(monkeypatch, tmp_path):
+    _clear_tns_env(monkeypatch)
+    calls = []
+    payload = _tns_zip(_tns_text([(1, "SN", "2026abc", 150.0, 2.0)]))
+
+    class Response:
+        status_code = 200
+        content = payload
+
+    def _get(url, headers=None, timeout=None):
+        calls.append({"url": url, "headers": headers})
+        return Response()
+
+    monkeypatch.setattr("src.tns_catalog.requests.get", _get)
+
+    frame, messages = load_tns_public_objects(cache_dir=str(tmp_path))
+
+    assert frame is not None and len(frame) == 1
+    assert len(calls) == 1
+    assert "tns_marker" in calls[0]["headers"]["User-Agent"]
     assert os.path.exists(tns_cache_path(cache_dir=str(tmp_path)))
     assert any("downloaded the public catalogue" in m for m in messages)
 
@@ -221,16 +292,111 @@ def test_load_tns_public_objects_downloads_once_and_caches(monkeypatch, tmp_path
     assert any("cached public catalogue" in m for m in messages_again)
 
 
-def test_load_tns_public_objects_reports_http_errors(monkeypatch, tmp_path):
-    monkeypatch.setenv("TNS_API_KEY", "secret")
-    monkeypatch.setenv("TNS_BOT_ID", "42")
-    monkeypatch.setenv("TNS_BOT_NAME", "rpp")
+def test_load_tns_public_objects_refreshes_a_cache_older_than_24_hours(
+    monkeypatch, tmp_path
+):
+    _clear_tns_env(monkeypatch)
+    path = _seed_cache(tmp_path, _tns_text([(1, "SN", "2026old", 150.0, 2.0)]))
+    _age_cache(path, 24.5)
+    assert not tns_cache_is_fresh(path)
+
+    payload = _tns_zip(
+        _tns_text(
+            [
+                (1, "SN", "2026abc", 150.0, 2.0),
+                (2, "AT", "2026def", 10.0, -30.0),
+            ]
+        )
+    )
+    calls = []
 
     class Response:
-        status_code = 503
-        content = b""
+        status_code = 200
+        content = payload
 
-    monkeypatch.setattr("src.tns_catalog.requests.post", lambda *_a, **_k: Response())
+    monkeypatch.setattr(
+        "src.tns_catalog.requests.get",
+        lambda url, headers=None, timeout=None: calls.append(url) or Response(),
+    )
+
+    frame, messages = load_tns_public_objects(cache_dir=str(tmp_path))
+
+    assert len(calls) == 1
+    assert len(frame) == 2
+    assert any("downloaded the public catalogue (2 objects)" in m for m in messages)
+    # The same file is overwritten, not added next to the old one.
+    refreshed, _ = load_tns_public_objects(cache_dir=str(tmp_path))
+    assert len(calls) == 1
+    assert len(refreshed) == 2
+    assert sorted(item.name for item in tmp_path.iterdir()) == [
+        "tns_public_objects.csv"
+    ]
+
+
+def test_load_tns_public_objects_keeps_the_old_copy_when_the_download_fails(
+    monkeypatch, tmp_path
+):
+    _clear_tns_env(monkeypatch)
+    path = _seed_cache(tmp_path, _tns_text([(1, "SN", "2026old", 150.0, 2.0)]))
+    _age_cache(path, 30.0)
+    monkeypatch.setattr(
+        "src.tns_catalog.requests.get", lambda *_a, **_k: _OfflineResponse()
+    )
+
+    frame, messages = load_tns_public_objects(cache_dir=str(tmp_path))
+
+    assert frame is not None and len(frame) == 1
+    assert any("could not be refreshed" in m for m in messages)
+    assert any("30.0 h old" in m for m in messages)
+
+
+def test_load_tns_public_objects_reports_a_failed_download(monkeypatch, tmp_path):
+    _clear_tns_env(monkeypatch)
+    monkeypatch.setattr(
+        "src.tns_catalog.requests.get", lambda *_a, **_k: _OfflineResponse()
+    )
+
+    frame, messages = load_tns_public_objects(cache_dir=str(tmp_path))
+
+    assert frame is None
+    assert any("HTTP 503" in message for message in messages)
+    assert any("could not be downloaded" in message for message in messages)
+
+
+def test_load_tns_public_objects_falls_back_to_the_second_staging_url(
+    monkeypatch, tmp_path
+):
+    _clear_tns_env(monkeypatch)
+    urls = []
+
+    class Response:
+        status_code = 200
+        content = _tns_zip(_tns_text([(1, "SN", "2026abc", 150.0, 2.0)]))
+
+    def _get(url, headers=None, timeout=None):
+        urls.append(url)
+        if "/sites/default/files/" in url:
+            return _OfflineResponse()
+        return Response()
+
+    monkeypatch.setattr("src.tns_catalog.requests.get", _get)
+
+    frame, _messages = load_tns_public_objects(cache_dir=str(tmp_path))
+
+    assert frame is not None and len(frame) == 1
+    assert urls == [
+        "https://www.wis-tns.org/sites/default/files/tns_public_objects/"
+        "tns_public_objects.csv.zip",
+        "https://www.wis-tns.org/system/files/tns_public_objects/"
+        "tns_public_objects.csv.zip",
+    ]
+
+
+def test_load_tns_public_objects_reports_http_errors(monkeypatch, tmp_path):
+    _clear_tns_env(monkeypatch)
+    monkeypatch.setattr(
+        "src.tns_catalog.requests.get", lambda *_a, **_k: _OfflineResponse()
+    )
 
     frame, messages = load_tns_public_objects(cache_dir=str(tmp_path))
 
@@ -238,14 +404,67 @@ def test_load_tns_public_objects_reports_http_errors(monkeypatch, tmp_path):
     assert any("HTTP 503" in message for message in messages)
 
 
+def test_load_tns_public_objects_cleans_a_stale_lock_and_temp_file(
+    monkeypatch, tmp_path
+):
+    import os
+
+    _clear_tns_env(monkeypatch)
+    cache = tns_cache_path(cache_dir=str(tmp_path))
+    with open(cache, "w", encoding="utf-8") as handle:
+        handle.write(_tns_text([(1, "SN", "2026abc", 150.0, 2.0)]))
+
+    lock = tmp_path / "tns_public_objects.download.lock"
+    temp = tmp_path / f"tns_public_objects.csv.{os.getpid() + 1}.tmp"
+    lock.write_text("", encoding="utf-8")
+    temp.write_text("half a catalogue", encoding="utf-8")
+    old = time.time() - 2 * 3600
+    os.utime(lock, (old, old))
+    os.utime(temp, (old, old))
+
+    monkeypatch.setattr("src.tns_catalog.requests.get", _no_request)
+    frame, messages = load_tns_public_objects(cache_dir=str(tmp_path))
+
+    assert len(frame) == 1
+    assert any("using the shared cached public catalogue" in m for m in messages)
+    assert not lock.exists()
+    assert not temp.exists()
+
+    cleanup_lines = [m for m in messages if "interrupted download" in m]
+    assert len(cleanup_lines) == 1
+    assert "tns_public_objects.download.lock" in cleanup_lines[0]
+    assert temp.name in cleanup_lines[0]
+    assert cleanup_lines[0].startswith("INFO")
+
+
+def test_load_tns_public_objects_keeps_a_fresh_temp_file(monkeypatch, tmp_path):
+    import os
+
+    _clear_tns_env(monkeypatch)
+    cache = tns_cache_path(cache_dir=str(tmp_path))
+    with open(cache, "w", encoding="utf-8") as handle:
+        handle.write(_tns_text([(1, "SN", "2026abc", 150.0, 2.0)]))
+
+    lock = tmp_path / "tns_public_objects.download.lock"
+    temp = tmp_path / f"tns_public_objects.csv.{os.getpid() + 1}.tmp"
+    lock.write_text("", encoding="utf-8")
+    temp.write_text("being written", encoding="utf-8")
+
+    monkeypatch.setattr("src.tns_catalog.requests.get", _no_request)
+    _frame, messages = load_tns_public_objects(cache_dir=str(tmp_path))
+
+    # A download may own them right now: never delete the live ones.
+    assert lock.exists()
+    assert temp.exists()
+    assert not any("interrupted download" in m for m in messages)
+
+
 def test_load_tns_public_objects_uses_local_catalogue(monkeypatch, tmp_path):
     path = tmp_path / "tns_local.csv"
     path.write_text(_tns_text([(1, "SN", "2026abc", 150.0, 2.0)]), encoding="utf-8")
     monkeypatch.setenv("RPP_TNS_CATALOG_PATH", str(path))
-    monkeypatch.setattr(
-        "src.tns_catalog.requests.post",
-        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("no download")),
-    )
+    monkeypatch.setattr("src.tns_catalog.requests.get", _no_request)
+    monkeypatch.setattr("src.tns_catalog.requests.post", _no_request)
 
     frame, messages = load_tns_public_objects(cache_dir=str(tmp_path / "cache"))
 
@@ -366,15 +585,10 @@ def test_cross_match_tns_discards_objects_outside_the_field(tmp_path):
 def test_cross_match_tns_without_catalogue_leaves_table_untouched(
     monkeypatch, tmp_path
 ):
-    for name in (
-        "TNS_API_KEY",
-        "TNS_BOT_ID",
-        "TNS_BOT_NAME",
-        "TNS_USER_ID",
-        "TNS_USER_NAME",
-        "RPP_TNS_CATALOG_PATH",
-    ):
-        monkeypatch.delenv(name, raising=False)
+    _clear_tns_env(monkeypatch)
+    monkeypatch.setattr(
+        "src.tns_catalog.requests.get", lambda *_a, **_k: _OfflineResponse()
+    )
     table = pd.DataFrame({"ra": [150.0], "dec": [2.0]})
 
     enhanced, log_messages = cross_match_tns(
@@ -386,7 +600,7 @@ def test_cross_match_tns_without_catalogue_leaves_table_untouched(
     )
 
     assert "tns_name" not in enhanced.columns
-    assert any("no API key" in m for m in log_messages)
+    assert any("could not be downloaded" in m for m in log_messages)
 
 
 # ─── Pipeline integration ────────────────────────────────────────────────────
@@ -595,23 +809,6 @@ class _MirrorResponse:
         return self.payload
 
 
-def _clear_tns_env(monkeypatch):
-    for name in (
-        "TNS_API_KEY",
-        "TNS_BOT_ID",
-        "TNS_BOT_NAME",
-        "TNS_USER_ID",
-        "TNS_USER_NAME",
-        "RPP_TNS_CATALOG_PATH",
-        "RPP_TNS_MIRROR_URL",
-    ):
-        monkeypatch.delenv(name, raising=False)
-
-
-def _no_download(*_args, **_kwargs):
-    raise AssertionError("the catalogue must not be downloaded when the mirror answers")
-
-
 def test_parse_tns_mirror_objects_accepts_common_payloads():
     single = {
         "name": "2026abc",
@@ -705,7 +902,7 @@ def test_cross_match_tns_uses_shared_mirror_without_download(monkeypatch, tmp_pa
         )
 
     monkeypatch.setattr("src.tns_catalog.requests.get", _get)
-    monkeypatch.setattr("src.tns_catalog.requests.post", _no_download)
+    monkeypatch.setattr("src.tns_catalog.requests.post", _no_post_request)
 
     table = pd.DataFrame({"ra": [150.0], "dec": [2.0]})
     enhanced, log_messages = cross_match_tns(
@@ -746,7 +943,7 @@ def test_cross_match_tns_mirror_keeps_the_closest_source(monkeypatch, tmp_path):
             {"name": "AT 2026xyz", "type": "AT", "ra": 150.0, "dec": 2.0}
         ),
     )
-    monkeypatch.setattr("src.tns_catalog.requests.post", _no_download)
+    monkeypatch.setattr("src.tns_catalog.requests.post", _no_post_request)
 
     table = pd.DataFrame(
         {"ra": [150.0 + 20.0 / 3600.0, 150.0 + 6.0 / 3600.0], "dec": [2.0, 2.0]}
@@ -773,7 +970,7 @@ def test_cross_match_tns_mirror_without_objects_skips_the_download(
     monkeypatch.setattr(
         "src.tns_catalog.requests.get", lambda *_a, **_k: _MirrorResponse(None)
     )
-    monkeypatch.setattr("src.tns_catalog.requests.post", _no_download)
+    monkeypatch.setattr("src.tns_catalog.requests.post", _no_post_request)
 
     table = pd.DataFrame({"ra": [150.0], "dec": [2.0]})
     enhanced, log_messages = cross_match_tns(
@@ -917,13 +1114,11 @@ def _set_tns_credentials(monkeypatch):
     monkeypatch.setenv("TNS_BOT_NAME", "rpp")
 
 
-def _fake_tns_post(calls, objects, download_status=403):
-    """``requests.post`` stand-in: staged download, Search API and Get API."""
+def _fake_tns_post(calls, objects):
+    """``requests.post`` stand-in: Search API and Get API."""
 
     def _post(url, headers=None, data=None, timeout=None):
         calls.append({"url": url, "headers": headers, "data": data})
-        if "/system/files/" in url:
-            return _ApiResponse(status_code=download_status)
         payload = json.loads(data["data"])
         if url.endswith("/api/get/search"):
             reply = [
@@ -959,6 +1154,9 @@ def test_cross_match_tns_falls_back_to_the_search_api(monkeypatch, tmp_path):
         {"objname": "2026far", "prefix": "AT", "ra": 150.0,
          "dec": 2.0 + 600.0 / 3600.0, "type": ""},
     ]
+    monkeypatch.setattr(
+        "src.tns_catalog.requests.get", lambda *_a, **_k: _OfflineResponse()
+    )
     monkeypatch.setattr("src.tns_catalog.requests.post", _fake_tns_post(calls, objects))
 
     table = pd.DataFrame({"ra": [150.0], "dec": [2.0]})
@@ -998,6 +1196,9 @@ def test_tns_api_uses_the_sandbox_when_requested(monkeypatch):
 def test_search_api_fallback_failure_leaves_table_untouched(monkeypatch, tmp_path):
     _set_tns_credentials(monkeypatch)
     monkeypatch.setattr(
+        "src.tns_catalog.requests.get", lambda *_a, **_k: _OfflineResponse()
+    )
+    monkeypatch.setattr(
         "src.tns_catalog.requests.post", lambda *_a, **_k: _ApiResponse(status_code=403)
     )
 
@@ -1018,10 +1219,8 @@ def test_search_api_is_not_used_with_an_explicit_catalogue_path(monkeypatch, tmp
     _set_tns_credentials(monkeypatch)
     monkeypatch.setenv("RPP_TNS_CATALOG_PATH", str(tmp_path / "missing.csv"))
 
-    def _post(*_args, **_kwargs):
-        raise AssertionError("the Search API must not be queried")
-
-    monkeypatch.setattr("src.tns_catalog.requests.post", _post)
+    monkeypatch.setattr("src.tns_catalog.requests.post", _no_request)
+    monkeypatch.setattr("src.tns_catalog.requests.get", _no_request)
 
     table = pd.DataFrame({"ra": [150.0], "dec": [2.0]})
     enhanced, log_messages = cross_match_tns(
@@ -1086,3 +1285,141 @@ def test_search_api_caps_the_number_of_objects(monkeypatch):
 
     assert len(names) == 50
     assert any("reached the limit of 50 objects" in m for m in messages)
+
+
+def test_startup_warm_up_downloads_the_catalogue_without_a_key(monkeypatch, tmp_path):
+    from src.tools_app import _load_shared_tns_catalogue
+
+    _clear_tns_env(monkeypatch)
+    monkeypatch.setenv("RPP_TNS_CACHE_DIR", str(tmp_path))
+
+    class Response:
+        status_code = 200
+        content = _tns_zip(_tns_text([(1, "SN", "2026abc", 150.0, 2.0)]))
+
+    monkeypatch.setattr("src.tns_catalog.requests.get", lambda *_a, **_k: Response())
+
+    assert _load_shared_tns_catalogue()[0] is True
+    assert (tmp_path / "tns_public_objects.csv").exists()
+
+    # The first analysis then finds the catalogue already parsed and cached.
+    monkeypatch.setattr("src.tns_catalog.requests.get", _no_request)
+    frame, messages = load_tns_public_objects(cache_dir=str(tmp_path))
+    assert len(frame) == 1
+    assert any("using the shared cached public catalogue" in m for m in messages)
+
+
+def test_startup_warm_up_is_skipped_when_a_mirror_is_configured(monkeypatch, tmp_path):
+    from src.tools_app import _load_shared_tns_catalogue
+
+    _clear_tns_env(monkeypatch)
+    monkeypatch.setenv("RPP_TNS_MIRROR_URL", "http://mirror.test")
+    monkeypatch.setenv("RPP_TNS_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr("src.tns_catalog.requests.get", _no_request)
+
+    assert _load_shared_tns_catalogue() == (True, [])
+    assert not list(tmp_path.iterdir())
+
+
+def test_startup_warm_up_reports_a_failed_download(monkeypatch, tmp_path):
+    from src.tools_app import _load_shared_tns_catalogue
+
+    _clear_tns_env(monkeypatch)
+    monkeypatch.setenv("RPP_TNS_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr("src.tns_catalog.requests.get", lambda *_a, **_k: _OfflineResponse())
+
+    ok, messages = _load_shared_tns_catalogue()
+
+    assert ok is False
+    assert any("could not be downloaded" in m for m in messages)
+
+
+def test_startup_warm_up_does_not_block_the_page(monkeypatch):
+    import threading
+
+    from src import tools_app
+
+    release = threading.Event()
+    running = threading.Event()
+    calls = []
+
+    def slow_load():
+        calls.append(1)
+        running.set()
+        release.wait(10)
+        return True, []
+
+    monkeypatch.setattr(tools_app, "_load_shared_tns_catalogue", slow_load)
+    monkeypatch.setattr(tools_app, "_TNS_WARM_UP_THREAD", None)
+
+    thread = tools_app._start_tns_warm_up()
+
+    assert running.wait(10), "the catalogue download never started"
+    assert thread.is_alive(), "the caller waited for the download"
+    assert calls == [1]
+    assert tools_app._start_tns_warm_up() is thread, "a second download was started"
+
+    release.set()
+    thread.join(10)
+    assert not thread.is_alive()
+
+
+def _status_line(monkeypatch, tmp_path, age_seconds=None, running=False):
+    """Return the TNS status line for a cache of the given age."""
+    import os
+
+    from src import tools_app
+
+    _clear_tns_env(monkeypatch)
+    monkeypatch.setenv("RPP_TNS_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(tools_app, "_TNS_WARM_UP_THREAD", None)
+    if age_seconds is not None:
+        cache = tns_cache_path(cache_dir=str(tmp_path))
+        with open(cache, "w", encoding="utf-8") as handle:
+            handle.write("objid\n1\n")
+        old = time.time() - age_seconds
+        os.utime(cache, (old, old))
+    if running:
+
+        class Running:
+            def is_alive(self):
+                return True
+
+        monkeypatch.setattr(tools_app, "_TNS_WARM_UP_THREAD", Running())
+    return tools_app.tns_catalogue_status_line()
+
+
+def test_tns_status_line_reports_a_missing_catalogue(monkeypatch, tmp_path):
+    assert "not downloaded yet" in _status_line(monkeypatch, tmp_path)
+
+
+def test_tns_status_line_reports_a_background_download(monkeypatch, tmp_path):
+    line = _status_line(monkeypatch, tmp_path, running=True)
+    assert "download in progress" in line
+
+
+def test_tns_status_line_reports_the_age_and_next_refresh(monkeypatch, tmp_path):
+    line = _status_line(monkeypatch, tmp_path, age_seconds=3.5 * 3600)
+
+    assert "3.5 h ago" in line
+    assert "refresh in 20.5 h" in line
+
+
+def test_tns_status_line_reports_a_fresh_download(monkeypatch, tmp_path):
+    line = _status_line(monkeypatch, tmp_path, age_seconds=30)
+
+    assert "downloaded just now" in line
+    assert "refresh in 24.0 h" in line
+
+
+def test_tns_status_line_asks_for_a_refresh_when_stale(monkeypatch, tmp_path):
+    line = _status_line(monkeypatch, tmp_path, age_seconds=25 * 3600)
+
+    assert "refresh on the next load" in line
+
+
+def test_tns_status_line_reports_a_background_refresh(monkeypatch, tmp_path):
+    line = _status_line(monkeypatch, tmp_path, age_seconds=3 * 3600, running=True)
+
+    assert "3.0 h ago" in line
+    assert "refreshing in the background" in line

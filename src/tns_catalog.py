@@ -1,25 +1,22 @@
 """Cross-match detected sources with the public TNS (Transient Name Server).
 
-The TNS stages the full list of public transients as a daily CSV archive
+The TNS stages the whole list of public transients as a CSV archive
 (``tns_public_objects.csv.zip``) under
-``https://www.wis-tns.org/system/files/tns_public_objects/``. The TNS asks
-users to cross-match against that staged file locally instead of running cone
-searches through the Search API, so this module downloads the archive at most
-once per UTC day, caches it on disk and matches the objects in the field to the
-detected sources.
+``https://www.wis-tns.org/sites/default/files/tns_public_objects/``. That file
+is public: it is fetched with a plain ``GET`` carrying only the ``tns_marker``
+user agent the TNS asks for, so no API key is needed. The TNS asks users to
+cross-match against that staged file locally instead of running cone searches
+through the Search API, and so does this module.
 
-Access to the staged files requires a TNS API key plus a bot or user marker,
-provided through the environment:
-
-- ``TNS_API_KEY``
-- ``TNS_BOT_ID`` and ``TNS_BOT_NAME`` (bot marker), or
-- ``TNS_USER_ID`` and ``TNS_USER_NAME`` (user marker)
-
-Without them the cross-match is skipped with a warning, exactly like
-Astro-Colibri is skipped without its API key, and the rest of the pipeline is
-unaffected. A catalogue already downloaded from another source can be pointed
-to with ``RPP_TNS_CATALOG_PATH`` (CSV or ZIP), and the cache directory can be
-changed with ``RPP_TNS_CACHE_DIR``.
+One copy of the catalogue is cached on disk and shared by every user of the
+deployment: the first run of the day downloads it, the later ones read it, and
+a copy older than 24 hours is downloaded again and overwritten in place. A lock
+file serialises concurrent downloads, so only one session fetches the archive
+while the others wait for it and reuse the result. A catalogue already
+downloaded from another source can be pointed to with
+``RPP_TNS_CATALOG_PATH`` (CSV or ZIP), and the cache directory (the shared
+cache drive) can be changed with ``RPP_TNS_CACHE_DIR``. The name sent in the
+guest marker can be set with ``RPP_TNS_MARKER_NAME``.
 
 When a shared mirror of the TNS catalogue is available (the optional HTTP API
 shipped with ``tns-mirror``, ``GET /v1/nearest``), setting
@@ -46,7 +43,6 @@ import tempfile
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
 
 import astropy.units as u
 import numpy as np
@@ -59,13 +55,38 @@ try:
 except ImportError:  # pragma: no cover - scipy ships with the pipeline deps
     cKDTree = None
 
-# Staged archive holding the entire catalogue of public TNS objects.
+# Staged archive holding the entire catalogue of public TNS objects. The file
+# is public: no API key is needed, only the ``tns_marker`` user agent.
 TNS_PUBLIC_OBJECTS_URL = (
+    "https://www.wis-tns.org/sites/default/files/tns_public_objects/"
+    "tns_public_objects.csv.zip"
+)
+# Older staging path, still announced by part of the TNS documentation.
+TNS_PUBLIC_OBJECTS_FALLBACK_URL = (
     "https://www.wis-tns.org/system/files/tns_public_objects/"
     "tns_public_objects.csv.zip"
 )
+TNS_PUBLIC_OBJECTS_URLS = (
+    TNS_PUBLIC_OBJECTS_URL,
+    TNS_PUBLIC_OBJECTS_FALLBACK_URL,
+)
 # The archive is a few MB; a slow TNS day must not hang a run.
 TNS_TIMEOUT_SECONDS = 120
+
+# The staged files need no account, only a marker; this name is the contact
+# sent in the guest marker.
+TNS_MARKER_NAME_ENV = "RPP_TNS_MARKER_NAME"
+TNS_GUEST_MARKER_NAME = "RPP pipeline"
+
+# The TNS stages the catalogue once a day: one file is shared by every user and
+# is downloaded again (and overwritten) once it is older than this.
+TNS_CACHE_MAX_AGE_SECONDS = 24 * 3600
+TNS_CACHE_FILENAME = "tns_public_objects.csv"
+TNS_LOCK_FILENAME = "tns_public_objects.download.lock"
+# Longest wait for another session's download, and the age after which a lock
+# left behind by a crashed run is considered stale and stolen.
+TNS_LOCK_WAIT_SECONDS = 300
+TNS_LOCK_STALE_SECONDS = 600
 
 # Progressive cross-match radii (arcsec) between a TNS object and a detected
 # source: the tightest radius is tried first, then the next ones. TNS positions
@@ -130,16 +151,48 @@ def tns_cache_dir(cache_dir=None):
     return str(cache_dir)
 
 
+def tns_cache_dir_and_path(cache_dir=None):
+    """Return the ``(directory, catalogue path)`` of the shared TNS cache."""
+    directory = tns_cache_dir(cache_dir)
+    return directory, os.path.join(directory, TNS_CACHE_FILENAME)
+
+
 def tns_cache_path(day=None, cache_dir=None):
-    """Return the cache file for ``day`` (UTC today by default)."""
-    day = day or datetime.now(timezone.utc).date()
-    return os.path.join(
-        tns_cache_dir(cache_dir), f"tns_public_objects_{day:%Y%m%d}.csv"
-    )
+    """Return the shared cache file of the public TNS catalogue.
+
+    A single file is kept and overwritten in place once it is more than 24
+    hours old, so every user of the deployment reads the same catalogue.
+    ``day`` is accepted for backward compatibility and ignored.
+    """
+    del day
+    return tns_cache_dir_and_path(cache_dir)[1]
+
+
+def tns_cache_age_seconds(path):
+    """Return the age of a cached catalogue in seconds, or ``None`` if missing."""
+    try:
+        return max(0.0, time.time() - os.path.getmtime(path))
+    except OSError:
+        return None
+
+
+def tns_cache_is_fresh(path, max_age_seconds=TNS_CACHE_MAX_AGE_SECONDS):
+    """Return True when ``path`` was downloaded less than ``max_age_seconds`` ago."""
+    age = tns_cache_age_seconds(path)
+    if age is None or age >= max_age_seconds:
+        return False
+    try:
+        return os.path.getsize(path) > 0
+    except OSError:
+        return False
 
 
 def tns_credentials():
-    """Return the TNS credentials from the environment, or ``None``."""
+    """Return the TNS credentials from the environment, or ``None``.
+
+    The public catalogue is downloaded without them; they are only used by the
+    Search API fallback (and to sign the download when a marker is configured).
+    """
     api_key = (os.environ.get("TNS_API_KEY") or "").strip()
     if not api_key:
         return None
@@ -168,6 +221,22 @@ def tns_user_agent(credentials):
     )
 
 
+def tns_download_marker(credentials=None):
+    """Return the ``tns_marker`` user agent used to fetch the public catalogue.
+
+    The staged files are public, so no API key is sent: a configured bot/user
+    marker is reused when available, otherwise a guest marker names the
+    deployment (``RPP_TNS_MARKER_NAME``).
+    """
+    credentials = credentials or tns_credentials()
+    if credentials is not None:
+        return tns_user_agent(credentials)
+    name = (os.environ.get(TNS_MARKER_NAME_ENV) or "").strip()
+    return 'tns_marker{"tns_id":0,"type":"guest","name":"%s"}' % (
+        name or TNS_GUEST_MARKER_NAME
+    )
+
+
 def _tns_csv_text(content):
     """Return the CSV text stored in a TNS download (ZIP archive or plain CSV)."""
     if content[:2] == b"PK":
@@ -183,7 +252,7 @@ def _tns_csv_text(content):
     if "<html" in text[:500].lower():
         raise ValueError(
             "the server returned an HTML page instead of the catalogue "
-            "(check the TNS API key and marker)"
+            "(check the staging URL and the tns_marker user agent)"
         )
     return text
 
@@ -294,46 +363,56 @@ def tns_field_mask(catalog, center, radius_deg):
 
 
 def download_tns_public_objects(
-    credentials=None, url=TNS_PUBLIC_OBJECTS_URL, timeout=TNS_TIMEOUT_SECONDS
+    credentials=None, url=None, timeout=TNS_TIMEOUT_SECONDS, urls=None
 ):
-    """Download the staged TNS catalogue.
+    """Download the staged TNS catalogue with a plain ``GET`` (no API key).
+
+    Parameters
+    ----------
+    credentials : dict, optional
+        Configured bot/user marker, used only to sign the request; the public
+        catalogue downloads without it.
+    url, urls : str or sequence of str, optional
+        Override the staging URL(s); the known ones are tried in order.
 
     Returns
     -------
     tuple (str | None, list[str])
         ``(csv_text, messages)`` on success, ``(None, messages)`` when the
-        download is not possible (no credentials, network or HTTP error).
+        download is not possible (network, HTML page or HTTP error).
     """
-    credentials = credentials or tns_credentials()
-    if credentials is None:
-        return None, [
-            "WARNING: TNS: no API key available (set TNS_API_KEY with "
-            "TNS_BOT_ID/TNS_BOT_NAME or TNS_USER_ID/TNS_USER_NAME); "
-            "skipping the TNS cross-match."
-        ]
+    candidates = [url] if url else list(urls or TNS_PUBLIC_OBJECTS_URLS)
+    headers = {"User-Agent": tns_download_marker(credentials)}
 
-    try:
-        response = requests.post(
-            url,
-            headers={"user-agent": tns_user_agent(credentials)},
-            data={"api_key": credentials["api_key"]},
-            timeout=timeout,
-        )
-    except Exception as error:
-        return None, [f"WARNING: TNS: download failed: {error}"]
+    messages = []
+    for candidate in candidates:
+        try:
+            response = requests.get(candidate, headers=headers, timeout=timeout)
+        except Exception as error:
+            messages.append(f"WARNING: TNS: download of {candidate} failed: {error}")
+            continue
 
-    status = getattr(response, "status_code", 200)
-    if status != 200:
-        return None, [f"WARNING: TNS: download failed with HTTP {status}."]
+        status = getattr(response, "status_code", 200)
+        if status != 200:
+            messages.append(
+                f"WARNING: TNS: download of {candidate} failed with HTTP {status}."
+            )
+            continue
 
-    try:
-        text = _tns_csv_text(getattr(response, "content", b"") or b"")
-    except Exception as error:
-        return None, [f"WARNING: TNS: unreadable catalogue archive: {error}"]
+        try:
+            text = _tns_csv_text(getattr(response, "content", b"") or b"")
+        except Exception as error:
+            messages.append(
+                f"WARNING: TNS: unreadable catalogue archive from {candidate}: {error}"
+            )
+            continue
 
-    if not text.strip():
-        return None, ["WARNING: TNS: the downloaded catalogue is empty."]
-    return text, []
+        if not text.strip():
+            messages.append(f"WARNING: TNS: {candidate} returned an empty catalogue.")
+            continue
+
+        return text, messages
+    return None, messages
 
 
 def tns_mirror_url():
@@ -765,10 +844,94 @@ def _load_tns_frame(path):
     return frame, []
 
 
+def _acquire_tns_download_lock(lock_path, wait_seconds=TNS_LOCK_WAIT_SECONDS):
+    """Create ``lock_path`` exclusively, waiting for another session to finish.
+
+    Returns True when the lock is held, False when it could not be obtained in
+    time (the caller then downloads anyway rather than failing the run).
+    """
+    deadline = time.time() + wait_seconds
+    while True:
+        try:
+            handle = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            pass
+        except OSError:
+            # Unwritable directory: proceed without serialising the download.
+            return False
+        else:
+            os.close(handle)
+            return True
+
+        # A crashed download can leave the lock behind: ignore it once stale.
+        try:
+            if time.time() - os.path.getmtime(lock_path) > TNS_LOCK_STALE_SECONDS:
+                os.unlink(lock_path)
+                continue
+        except OSError:
+            continue
+        if time.time() >= deadline:
+            return False
+        time.sleep(0.5)
+
+
+def _release_tns_download_lock(lock_path):
+    """Remove a download lock, ignoring a lock already gone."""
+    try:
+        os.unlink(lock_path)
+    except OSError:
+        pass
+
+
+def _clean_stale_tns_cache_files(directory, path):
+    """Remove the lock and temp files a killed download left in the cache.
+
+    A download abandoned mid-way (for instance a warm-up thread killed with the
+    process) leaves ``tns_public_objects.csv.<pid>.tmp`` behind, and, if it died
+    while holding it, the download lock too. Both are only removed once they are
+    older than :data:`TNS_LOCK_STALE_SECONDS`, so a live download is never
+    disturbed, and the catalogue itself is left untouched. Best-effort: a
+    failure here must not cost the caller the cached catalogue.
+
+    Returns
+    -------
+    list[str]
+        The names of the files that were removed, so the caller can report them.
+    """
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return []
+    temp_prefix = TNS_CACHE_FILENAME + "."
+    now = time.time()
+    removed = []
+    for name in names:
+        if name == TNS_LOCK_FILENAME:
+            candidate = os.path.join(directory, name)
+        elif name.startswith(temp_prefix) and name.endswith(".tmp"):
+            candidate = os.path.join(directory, name)
+        else:
+            continue
+        try:
+            if now - os.path.getmtime(candidate) < TNS_LOCK_STALE_SECONDS:
+                continue
+            os.unlink(candidate)
+        except OSError:
+            continue
+        removed.append(name)
+    return removed
+
+
 def load_tns_public_objects(
     cache_dir=None, catalog_path=None, credentials=None, download=True
 ):
-    """Load the public TNS catalogue, using the daily cache when available.
+    """Load the public TNS catalogue, refreshing the shared cache once a day.
+
+    A single file is shared by every user of the deployment: the first run of
+    the day downloads it, the later ones read it, and a copy older than 24
+    hours is downloaded again and overwritten. The download is serialised by a
+    lock file, so concurrent sessions wait for it instead of all fetching the
+    archive.
 
     Returns
     -------
@@ -789,48 +952,119 @@ def load_tns_public_objects(
             )
         return frame, log_messages + messages
 
-    path = tns_cache_path(cache_dir=cache_dir)
-    if os.path.exists(path) and os.path.getsize(path) > 0:
+    directory, path = tns_cache_dir_and_path(cache_dir)
+    # Clear what a killed download left behind, even when the cached catalogue
+    # is still fresh and no download happens in this run.
+    removed = _clean_stale_tns_cache_files(directory, path)
+    if removed:
+        log_messages.append(
+            f"INFO: TNS: removed stale cache file(s) from an interrupted "
+            f"download: {', '.join(sorted(removed))}."
+        )
+
+    def _use_cached_catalogue(reason):
+        """Load the shared copy and log it, or return ``(None, [])``."""
         frame, messages = _load_tns_frame(path)
+        if frame is None:
+            return None, messages
+        return frame, [
+            f"INFO: TNS: {reason} ({len(frame)} objects)."
+        ]
+
+    if tns_cache_is_fresh(path):
+        frame, messages = _use_cached_catalogue("using the shared cached public catalogue")
         if frame is not None:
-            log_messages.append(
-                f"INFO: TNS: using the cached public catalogue "
-                f"({len(frame)} objects)."
-            )
-            return frame, log_messages
+            return frame, log_messages + messages
         log_messages += messages
 
     if not download:
+        if os.path.exists(path):
+            frame, messages = _use_cached_catalogue("using the cached public catalogue")
+            if frame is not None:
+                return frame, log_messages + messages
+            log_messages += messages
         return None, log_messages + [
             "WARNING: TNS: no cached catalogue available; skipping the TNS "
             "cross-match."
         ]
 
-    text, messages = download_tns_public_objects(credentials=credentials)
-    log_messages += messages
-    if text is None:
-        return None, log_messages
-
     try:
-        frame = parse_tns_public_objects(text)
-    except Exception as error:
-        return None, log_messages + [
-            f"WARNING: TNS: could not parse the public catalogue: {error}"
-        ]
-
-    try:
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        temp_path = f"{path}.{os.getpid()}.tmp"
-        with open(temp_path, "w", encoding="utf-8", newline="") as handle:
-            handle.write(text)
-        os.replace(temp_path, path)
+        os.makedirs(directory, exist_ok=True)
     except OSError as error:
-        log_messages.append(f"WARNING: TNS: could not cache the catalogue: {error}")
+        log_messages.append(
+            f"WARNING: TNS: could not create the catalogue cache directory: {error}"
+        )
 
-    log_messages.append(
-        f"INFO: TNS: downloaded the public catalogue ({len(frame)} objects)."
-    )
-    return frame, log_messages
+    lock_path = os.path.join(directory, TNS_LOCK_FILENAME)
+    locked = _acquire_tns_download_lock(lock_path)
+    if not locked:
+        log_messages.append(
+            "WARNING: TNS: could not lock the catalogue cache; downloading "
+            "without waiting for the other sessions."
+        )
+    try:
+        # Another session may have refreshed the file while we waited.
+        if tns_cache_is_fresh(path):
+            frame, messages = _use_cached_catalogue(
+                "another session downloaded the public catalogue; using it"
+            )
+            if frame is not None:
+                return frame, log_messages + messages
+            log_messages += messages
+
+        text, messages = download_tns_public_objects(credentials=credentials)
+        log_messages += messages
+        if text is None:
+            # Rather than losing the cross-match for the rest of the day, keep
+            # using the previous copy until the TNS can be reached again.
+            if os.path.exists(path):
+                frame, messages = _use_cached_catalogue(
+                    "the catalogue could not be refreshed; using the cached "
+                    "public catalogue"
+                )
+                if frame is not None:
+                    age = tns_cache_age_seconds(path) or 0.0
+                    log_messages += messages
+                    log_messages.append(
+                        f"WARNING: TNS: the cached catalogue is "
+                        f"{age / 3600.0:.1f} h old; it will be refreshed on the "
+                        "next run."
+                    )
+                    return frame, log_messages
+                log_messages += messages
+            return None, log_messages + [
+                "WARNING: TNS: the public catalogue could not be downloaded; "
+                "skipping the TNS cross-match."
+            ]
+
+        try:
+            frame = parse_tns_public_objects(text)
+        except Exception as error:
+            return None, log_messages + [
+                f"WARNING: TNS: could not parse the public catalogue: {error}"
+            ]
+
+        try:
+            # Write next to the cache file, then replace it: readers never see a
+            # half-written catalogue and yesterday's copy is overwritten.
+            temp_path = f"{path}.{os.getpid()}.tmp"
+            with open(temp_path, "w", encoding="utf-8", newline="") as handle:
+                handle.write(text)
+            os.replace(temp_path, path)
+            # Reuse the frame just parsed instead of re-reading the new file.
+            _TNS_FRAME_CACHE[path] = (os.path.getmtime(path), frame)
+        except OSError as error:
+            log_messages.append(
+                f"WARNING: TNS: could not cache the catalogue: {error}"
+            )
+
+        log_messages.append(
+            f"INFO: TNS: downloaded the public catalogue ({len(frame)} objects)."
+        )
+        return frame, log_messages
+    finally:
+        if locked:
+            _release_tns_download_lock(lock_path)
 
 
 def tns_match_radius(separation_arcsec, radii=TNS_MATCH_RADII_ARCSEC):
@@ -900,7 +1134,8 @@ def cross_match_tns(
     catalog_path : str, optional
         Use an already downloaded CSV/ZIP catalogue instead of the daily cache.
     credentials : dict, optional
-        TNS credentials; read from the environment when omitted.
+        TNS credentials for the Search API fallback; read from the environment
+        when omitted. The public catalogue needs none.
 
     A shared mirror configured through ``RPP_TNS_MIRROR_URL`` is queried first
     and replaces the catalogue whenever it answers; otherwise the daily cached

@@ -325,12 +325,20 @@ Multi-Catalog Cross-Matching
 
 **TNS (Transient Name Server)**:
    - Public transients (AT/SN/FRB) from the daily staged catalogue
-     ``tns_public_objects.csv.zip``, downloaded at most once per UTC day and
-     cached locally (``RPP_TNS_CACHE_DIR``), or read from a local file
-     (``RPP_TNS_CATALOG_PATH``)
-   - API key authentication: ``TNS_API_KEY`` plus ``TNS_BOT_ID``/
-     ``TNS_BOT_NAME`` (bot) or ``TNS_USER_ID``/``TNS_USER_NAME`` (user);
-     without it the step is skipped with a warning, like Astro-Colibri
+     ``tns_public_objects.csv.zip``, fetched from
+     ``https://www.wis-tns.org/sites/default/files/tns_public_objects/`` with a
+     plain ``GET``: the file is public and needs no API key, only the
+     ``tns_marker`` user agent (a guest marker, named with
+     ``RPP_TNS_MARKER_NAME``); the older ``/system/files/`` path is tried next
+   - One copy is shared by every user of the deployment: the first run of the
+     day downloads it, the other runs read it, and a copy older than 24 hours
+     is downloaded again and overwritten in place; a lock file serialises
+     concurrent downloads, and a failed refresh keeps the previous copy with a
+     warning (``RPP_TNS_CACHE_DIR`` sets the cache location,
+     ``RPP_TNS_CATALOG_PATH`` reads a local CSV/ZIP instead)
+   - ``TNS_API_KEY`` plus ``TNS_BOT_ID``/``TNS_BOT_NAME`` (bot) or
+     ``TNS_USER_ID``/``TNS_USER_NAME`` (user) are optional and only used by the
+     Search API fallback
    - Optional shared mirror: ``RPP_TNS_MIRROR_URL`` points at a ``tns-mirror``
      HTTP API queried once per detected source (``GET /v1/nearest``), which
      removes the download for multi-user deployments; the mirror is
@@ -514,6 +522,17 @@ Output Generation & Export
    - Automatic file categorization by type
    - Metadata preservation in output files
    - Cross-referenced file relationships
+   - Shared TNS catalogue cache outside the project data: one
+     ``tns_public_objects.csv`` per deployment, in the system temp directory by
+     default (``RPP_TNS_CACHE_DIR`` moves it, for example to a shared cache
+     drive), overwritten in place once older than 24 hours and read by every
+     user from then on
+   - The download lock ``tns_public_objects.download.lock`` and any half-written
+     ``tns_public_objects.csv.<pid>.tmp`` left by an interrupted download are
+     deleted by the next catalogue load once they are older than 10 minutes; the
+     cleanup is reported with a single ``INFO: TNS: removed stale cache file(s)
+     ...`` line in the processing log, and a live download's own files are never
+     touched
 
 **Archive Management**:
    - Automatic result archiving with compression
