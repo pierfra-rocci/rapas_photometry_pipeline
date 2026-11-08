@@ -98,7 +98,8 @@ Login & Registration Issues
     ``[2026-10-18 18:46:22] RPP v1.9.0 - User 'intern1' logged in successfully (FastAPI backend).``
     The FastAPI backend, the legacy backend and the frontend each emit their
     own line, so a login appears in both the backend and frontend logs.
-    Administrators can also open the in-app *Pipeline Logs* page
+    Operators whose account IDs are explicitly listed in the Streamlit
+    ``RPP_LOG_ADMIN_USER_IDS`` environment variable can open the in-app *Pipeline Logs* page
     (``pages/showlogs.py``) to read the last 200 lines of
     ``fastapi_backend.log`` and ``streamlit_frontend.log``.
 
@@ -146,7 +147,8 @@ Image Loading & Processing Issues
     *   Ensure the file has a standard extension such as ``.fits`` or
         ``.fits.gz``.
     *   If it is a multi-extension FITS, ensure image data exists in at least
-        one HDU.
+        one nonempty numeric image HDU with at least two axes. Tables and
+        one-dimensional arrays are not selected as images.
 
 **A wrong image or header appears, or a previous file seems to persist**
 
@@ -182,6 +184,11 @@ Image Loading & Processing Issues
     *   Enable plate solving using Astrometry.net.
     *   Alternatively, use external software to add WCS information to the FITS
         header before uploading.
+    *   With a usable pixel scale, a failed solve can still produce an
+        instrumental catalog in pixel coordinates. It will not contain
+        calibrated magnitudes or sky positions; sky-dependent operations are
+        skipped. If the scale is unavailable, supply the pixel scale override.
+        A structurally valid WCS should still be checked against reference stars.
 
 **Astrometry Check / WCS Refinement Fails**
 
@@ -203,6 +210,13 @@ Image Loading & Processing Issues
     *   If **Astrometry Check** was enabled on an image that already had valid
         WCS, the app may fall back to the original WCS when the forced solve
         fails.
+
+Local solver attempts share a wall-clock budget of 180 seconds. To change it,
+set ``RPP_LOCAL_ASTROMETRY_TIMEOUT_SECONDS`` to a positive number in the
+Streamlit process environment. A timeout stops the local solver processes and
+skips further local retries before the online fallback. Source detection,
+process cleanup, online requests, and SCAMP refinement are not hard-bounded by
+this budget.
 
 When the local Astrometry.net solve fails, RPP can optionally try the online
 Astrometry.net service using the detected source list (not the FITS image). Set
@@ -297,6 +311,10 @@ Catalog Query Issues (SIMBAD, SkyBoT, etc.)
         (``vizier.cfa.harvard.edu``), and SIMBAD region queries retry through
         ``simbad.cfa.harvard.edu``. The log records when either fallback is
         used.
+    *   VizieR queries automatically retry through the Harvard mirror
+        (``vizier.cfa.harvard.edu``), and SIMBAD region queries retry through
+        ``simbad.cfa.harvard.edu``. The log records when either fallback is
+        used.
     *   Wait and try processing the image again later.
     *   Check your internet connection.
     *   Review the generated log file to see which catalog step timed out or was
@@ -338,6 +356,7 @@ Catalog Query Issues (SIMBAD, SkyBoT, etc.)
     *   Check the Astro-Colibri service status.
     *   HTTP 429 means the daily quota (100 requests/day) is exhausted; the
         log message states the reason returned by the API.
+    *   A warning about the 15, 20 or 30 arcsec tier means the association is
     *   A warning about the 15, 20 or 30 arcsec tier means the association is
         loose: check it visually in Aladin.
 
@@ -386,6 +405,10 @@ Catalog Query Issues (SIMBAD, SkyBoT, etc.)
         without the cross-match columns. Download it from the results.
     *   The transient finder runs independently; its failure does not prevent
         the catalogue export.
+    *   If the calibration cross-match or zero point fails, the ZIP contains
+        ``*_instrumental_catalog.csv`` and ``.vot`` instead. These measurements
+        are not calibrated; valid WCS coordinates are retained when available.
+        Transient finding is skipped without calibrated magnitudes.
 
 Database and Migration Issues
 -----------------------------
@@ -430,7 +453,7 @@ Aladin Lite Viewer Issues
 
 *   **Problem**: The widget appears (layer and zoom controls) but the sky image
     is never drawn, and the application log reports nothing.
-*   **Solution**: The widget now prints the reason on a red line just below the
+*   **Solution**: The widget now prints the reason on a red line just above the
     viewer. Read that line first:
 
     *   ``This browser provides no WebGL2 context ...``: Aladin Lite v3 paints
@@ -438,36 +461,40 @@ Aladin Lite Viewer Issues
         ``webgl.force-enabled`` to ``true`` in ``about:config`` and restart the
         browser; or use Chrome/Edge. A blocklisted or outdated GPU driver has
         the same effect.
-    *   If the CDS ``aladin.js`` download fails, the widget retries from
-        jsDelivr using
+    *   If the CDS ``aladin.js`` download or initialization fails or times
+        out, the widget imports the ES module from jsDelivr using
         ``https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js``.
-        If both downloads fail, the red line reports that neither source could
-        be reached; check the proxy, firewall, HTTPS-Only mode, or connection.
+        If both sources fail, the red line reports the failure; check the
+        proxy, firewall, HTTPS-Only mode, or connection.
         The fallback covers the JavaScript library only; the sky imagery still
         requires access to the HiPS tile server.
+    *   Expand ``Source coordinates (available without Aladin)`` above the
+        viewer to inspect positions without the library or sky imagery. The
+        science-image preview also remains available.
     *   No red line and still a black view: open the browser console (F12) and
         look for failed requests to ``alasky.cds.unistra.fr``, which serves the
         HiPS tiles. The analysis itself and the exported files are unaffected.
     *   The console also logs ``[RPP Aladin] version ...`` with the Aladin Lite
         release actually loaded. The widget tries the CDS latest script first
         (``.../api/v3/latest/aladin.js``), then the pinned jsDelivr v3.8.2
-        script if the CDS download fails.
+        module if the CDS download or initialization fails or times out.
 
 **Aladin falls back to a second survey, or shows none at all**
 
 *   **Problem**: The requested HiPS (``CDS/P/DSS2/color`` by default) cannot be
     fetched or is too slow, so the view stays empty.
-*   **Solution**: The widget probes the HiPS ``properties`` document
-    (``https://alasky.cds.unistra.fr/<survey>/properties``) with a 12 second
-    timeout and, when it cannot be read, switches the base layer to
+*   **Solution**: The widget probes the HiPS ``properties`` document with a
+    12 second timeout and, when it cannot be read, switches the base layer to
     ``CDS/P/DSS2/red``:
 
-    *   A warning is shown under the viewer
-        (``Survey <survey> could not be loaded; showing <fallback> instead.``)
+    *   A warning is shown above the viewer
+        (``Survey <survey> could not be loaded; trying <fallback> instead.``)
         and mirrored in the console.
     *   When the fallback is unreachable too, the message says so instead of
-        leaving a blank canvas.
+        leaving a blank canvas. Both defaults use CDS and may fail together.
     *   Change the second survey with the ``fallback_survey`` argument of
-        ``display_catalog_in_aladin``, for example
-        ``fallback_survey="CDS/P/PanSTARRS/DR1/color-i-r-g"``. An empty string
-        disables the fallback, and a survey passed as a full URL is not probed.
+        ``display_catalog_in_aladin``. An empty string disables the fallback.
+        The two default identifiers and full HiPS URLs can be checked; other
+        identifiers are not guessed as paths, and an uncheckable survey is
+        reported. A primary survey passed as a full URL is not probed.
+        A third-party HiPS URL must allow cross-origin browser requests.

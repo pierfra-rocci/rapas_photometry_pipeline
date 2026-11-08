@@ -17,9 +17,10 @@ class Message(BaseModel):
 
 
 class LoginResponse(Message):
-    """Login response carrying the canonical account username."""
+    """Login response carrying the canonical account identity."""
 
     username: Optional[str] = None
+    user_id: int
 
 
 class RegisterRequest(BaseModel):

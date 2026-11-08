@@ -1,8 +1,12 @@
+import warnings
+from typing import Any
+
 # Third-Party Imports
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from astropy.wcs import WCS
+from astropy.io.fits import Header
+from astropy.wcs import FITSFixedWarning, WCS
 from astropy.coordinates import SkyCoord
 from astropy import units as u
 
@@ -516,14 +520,14 @@ FILTER_DICT = {
 }
 
 
-def safe_wcs_create(header):
+def safe_wcs_create(
+    header: Header | dict[str, Any] | None,
+) -> tuple[WCS | None, str | None, list[str]]:
     """
     Safely create an Astropy WCS object from a FITS header.
 
-    Validates the presence of required WCS keywords, handles potential errors
-    during WCS object creation, and attempts to simplify higher-dimensional WCS
-    objects to celestial coordinates. Also attempts to remove potentially
-    problematic non-standard keywords before WCS creation.
+    Require an explicit, usable celestial transformation without inventing
+    a position or pixel scale. The input header is not modified.
 
     Parameters
     ----------
@@ -541,14 +545,9 @@ def safe_wcs_create(header):
 
     Notes
     -----
-    - Required WCS keywords checked: CTYPE1, CTYPE2, CRVAL1, CRVAL2,
-      CRPIX1, CRPIX2.
-    - Attempts to remove 'XPIXELSZ', 'YPIXELSZ', 'CDELTM1', 'CDELTM2' if
-      present.
-    - If the initial WCS object has more than 2 pixel dimensions, it attempts
-      to extract the celestial WCS using `wcs_obj.celestial`.
-    - Validates that the final WCS object has transformation attributes
-      (`.wcs`).
+    - Validate explicit scale, celestial axes, and finite reversible transforms
+      at the reference pixel and, when dimensions are available, image corners.
+    - A valid transform does not establish astrometric accuracy.
     """
     log_messages = []
     if not header:
@@ -582,9 +581,6 @@ def safe_wcs_create(header):
             except KeyError:
                 pass
 
-    if removed_keywords:
-        log_messages.append("INFO: Removed problematic WCS keywords")
-
     required_keys = ["CTYPE1", "CTYPE2", "CRVAL1", "CRVAL2", "CRPIX1", "CRPIX2"]
     missing_keys = [key for key in required_keys if key not in working_header]
 
@@ -595,301 +591,97 @@ def safe_wcs_create(header):
             log_messages,
         )
 
+    cd_keys = [f"CD{i}_{j}" for i in (1, 2) for j in (1, 2)]
+    pc_keys = [f"PC{i}_{j}" for i in (1, 2) for j in (1, 2)]
+    has_cd = any(key in working_header for key in cd_keys)
+    if has_cd and any(key in working_header for key in pc_keys):
+        return None, "Conflicting CD and PC WCS matrices", log_messages
+    if not has_cd and not all(key in working_header for key in ("CDELT1", "CDELT2")):
+        return None, "Missing explicit WCS pixel scale", log_messages
+
     try:
-        wcs_obj = WCS(working_header)
-
-        if wcs_obj is None:
-            return None, "WCS creation returned None", log_messages
-
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", FITSFixedWarning)
+            try:
+                wcs_obj = WCS(header.copy())
+            except Exception:
+                if not removed_keywords:
+                    raise
+                caught.clear()
+                wcs_obj = WCS(working_header)
+                log_messages.append(
+                    "WARNING: WCS parsing ignored conflicting metadata in a copy: "
+                    + ", ".join(removed_keywords)
+                )
+        for warning in caught:
+            if issubclass(warning.category, FITSFixedWarning):
+                message = str(warning.message)
+                if "cdfix" in message.lower():
+                    return None, f"Invalid WCS linear transformation: {message}", log_messages
+                log_messages.append(f"WARNING: Astropy WCS correction: {message}")
+            else:
+                log_messages.append(f"WARNING: WCS creation: {warning.message}")
         if wcs_obj.pixel_n_dim > 2:
             wcs_obj = wcs_obj.celestial
 
-        if not hasattr(wcs_obj, "wcs"):
-            return (
-                None,
-                "Created WCS object has no transformation attributes",
-                log_messages,
-            )
-
+        if not wcs_obj.is_celestial or wcs_obj.pixel_n_dim != 2:
+            return None, "WCS is not a two-dimensional celestial transformation", log_messages
+        matrix = np.asarray(wcs_obj.pixel_scale_matrix, dtype=float)
+        if (
+            matrix.shape != (2, 2)
+            or not np.all(np.isfinite(matrix))
+            or np.linalg.matrix_rank(matrix) < 2
+        ):
+            return None, "WCS linear transformation is singular or non-finite", log_messages
+        reference = np.asarray(wcs_obj.wcs.crpix, dtype=float) - 1
+        if not np.all(np.isfinite(reference)):
+            return None, "WCS reference pixel is non-finite", log_messages
+        pixels: list[list[float]] = [reference.tolist()]
+        width = working_header.get("NAXIS1")
+        height = working_header.get("NAXIS2")
+        if isinstance(width, (int, float, str)) and isinstance(height, (int, float, str)):
+            width, height = int(width), int(height)
+            if width > 0 and height > 0:
+                pixels.extend(
+                    ([0, 0], [width - 1, 0], [0, height - 1], [width - 1, height - 1])
+                )
+        pixel_array = np.asarray(pixels, dtype=float)
+        world = np.asarray(wcs_obj.all_pix2world(pixel_array, 0), dtype=float)
+        if not np.all(np.isfinite(world)):
+            return None, "WCS produces non-finite sky coordinates", log_messages
+        round_trip = np.asarray(wcs_obj.all_world2pix(world, 0), dtype=float)
+        if not np.all(np.isfinite(round_trip)) or not np.allclose(
+            round_trip, pixel_array, rtol=0, atol=1e-3
+        ):
+            return None, "WCS pixel-to-sky transform is not reversible", log_messages
         return wcs_obj, None, log_messages
     except Exception as e:
         return None, f"WCS creation error: {str(e)}", log_messages
 
 
-def fix_header(header):
+def fix_header(
+    header: Header | dict[str, Any],
+) -> tuple[Header | dict[str, Any], list[str]]:
+    """Preserve header metadata and repair only an unambiguous SIP suffix.
+
+    The returned header is a copy. Invalid or missing celestial WCS is reported
+    rather than replaced with invented coordinates or scale.
     """
-    Fix common issues in FITS headers based on stdweb processing approach.
-
-    Parameters
-    ----------
-    header : astropy.io.fits.Header
-        FITS header object to fix
-
-    Returns
-    -------
-    tuple (astropy.io.fits.Header, list[str])
-        - (fixed_header, log_messages): Returns the fixed header object and a list of log messages.
-    """
-    log_messages = []
-    try:
-        # Create a copy to avoid modifying the original
-        fixed_header = header.copy()
-
-        # Define problematic keywords to remove
-        problematic_keywords = [
-            "XPIXELSZ",
-            "YPIXELSZ",  # Pixel size keywords that can conflict with WCS
-            "CDELTM1",
-            "CDELTM2",  # Alternative delta keywords
-            "PIXSCALE",  # Non-standard pixel scale
-            "SCALE",  # Generic scale keyword
-            "XORGSUBF",
-            "YORGSUBF",  # Origin subframe keywords
-        ]
-
-        # Remove problematic keywords
-        removed_keywords = []
-        for keyword in problematic_keywords:
-            if keyword in fixed_header:
-                try:
-                    del fixed_header[keyword]
-                    removed_keywords.append(keyword)
-                except KeyError:
-                    pass
-
-        if removed_keywords:
-            log_messages.append(
-                f"INFO: Removed problematic keywords: {', '.join(removed_keywords)}"
-            )
-
-        # Define WCS keywords to check for problems
-        wcs_keywords = {
-            "CD": ["CD1_1", "CD1_2", "CD2_1", "CD2_2"],
-            "PC": ["PC1_1", "PC1_2", "PC2_1", "PC2_2"],
-            "CDELT": ["CDELT1", "CDELT2"],
-            "CRPIX": ["CRPIX1", "CRPIX2"],
-            "CRVAL": ["CRVAL1", "CRVAL2"],
-            "CTYPE": ["CTYPE1", "CTYPE2"],
-        }
-
-        # Check for problematic values and remove entire WCS if found
-        remove_all_wcs = False
-
-        # Check CD matrix for singularity
-        cd_keys = wcs_keywords["CD"]
-        if all(key in fixed_header for key in cd_keys):
-            try:
-                cd11 = float(fixed_header["CD1_1"])
-                cd12 = float(fixed_header["CD1_2"])
-                cd21 = float(fixed_header["CD2_1"])
-                cd22 = float(fixed_header["CD2_2"])
-
-                # Calculate determinant to check for singularity
-                determinant = cd11 * cd22 - cd12 * cd21
-
-                # Check for singular matrix or invalid values
-                if (
-                    abs(determinant) < 1e-15
-                    or any(not np.isfinite(val) for val in [cd11, cd12, cd21, cd22])
-                ):
-                    log_messages.append(
-                        "WARNING: Detected problematic CD matrix - removing all WCS keywords"
-                    )
-                    remove_all_wcs = True
-
-            except (ValueError, TypeError):
-                log_messages.append(
-                    "WARNING: Invalid CD matrix values - removing all WCS keywords"
-                )
-                remove_all_wcs = True
-
-        # Check for obviously fake coordinate values
-        if "CRVAL1" in fixed_header and "CRVAL2" in fixed_header:
-            try:
-                ra = float(fixed_header["CRVAL1"])
-                dec = float(fixed_header["CRVAL2"])
-
-                # Check for clearly fake values (exactly 0,0 or out of range)
-                if (
-                    (ra == 0.0 and dec == 0.0)
-                    or not (0 <= ra < 360)
-                    or not (-90 <= dec <= 90)
-                    or not np.isfinite(ra)
-                    or not np.isfinite(dec)
-                ):
-                    log_messages.append(
-                        f"WARNING: Detected fake coordinates (RA={ra}, DEC={dec}) - removing all WCS keywords"
-                    )
-                    remove_all_wcs = True
-
-            except (ValueError, TypeError):
-                log_messages.append(
-                    "WARNING: Invalid coordinate values - removing all WCS keywords"
-                )
-                remove_all_wcs = True
-
-        # Check for invalid pixel reference points
-        if "CRPIX1" in fixed_header and "CRPIX2" in fixed_header:
-            try:
-                crpix1 = float(fixed_header["CRPIX1"])
-                crpix2 = float(fixed_header["CRPIX2"])
-
-                # Check for obviously wrong values
-                if (
-                    not np.isfinite(crpix1)
-                    or not np.isfinite(crpix2)
-                    or crpix1 <= 0
-                    or crpix2 <= 0
-                ):
-                    log_messages.append(
-                        "WARNING: Detected invalid CRPIX values - removing all WCS keywords"
-                    )
-                    remove_all_wcs = True
-
-            except (ValueError, TypeError):
-                remove_all_wcs = True
-
-        # Check for invalid CTYPE values
-        for ctype_key in ["CTYPE1", "CTYPE2"]:
-            if ctype_key in fixed_header:
-                ctype_val = str(fixed_header[ctype_key]).strip()
-                # If CTYPE is empty or contains obvious placeholder text
-                if (
-                    not ctype_val
-                    or ctype_val.lower() in ["", "none", "null", "undefined"]
-                    or len(ctype_val) < 3
-                ):
-                    log_messages.append(
-                        f"WARNING: Detected invalid {ctype_key} value - removing all WCS keywords"
-                    )
-                    remove_all_wcs = True
-
-        # Remove all WCS keywords if problems detected
-        if remove_all_wcs:
-            log_messages.append(
-                "INFO: Removing all WCS keywords due to detected problems"
-            )
-
-            # Remove all WCS-related keywords
-            keys_to_remove = []
-            for key in list(fixed_header.keys()):
-                if (
-                    key.startswith("CD")
-                    or key.startswith("PC")
-                    or key.startswith("CDELT")
-                    or key.startswith("CRPIX")
-                    or key.startswith("CRVAL")
-                    or key.startswith("CTYPE")
-                    or key.startswith("CROTA")
-                    or key.startswith("PV")
-                    or key.startswith("PROJP")
-                    or key in ["EQUINOX", "EPOCH", "RADESYS", "LONPOLE", "LATPOLE"]
-                ):
-                    keys_to_remove.append(key)
-
-            for key in keys_to_remove:
-                try:
-                    del fixed_header[key]
-                except KeyError:
-                    pass
-
-            log_messages.append(
-                f"INFO: Removed {len(keys_to_remove)} WCS keywords: {', '.join(keys_to_remove[:10])}{'...' if len(keys_to_remove) > 10 else ''}"
-            )
-
-            # Add minimal default WCS if image dimensions are available
-            if "NAXIS1" in fixed_header and "NAXIS2" in fixed_header:
-                try:
-                    naxis1 = int(fixed_header["NAXIS1"])
-                    naxis2 = int(fixed_header["NAXIS2"])
-
-                    fixed_header["CTYPE1"] = "RA---TAN"
-                    fixed_header["CTYPE2"] = "DEC--TAN"
-                    fixed_header["CRPIX1"] = naxis1 / 2.0
-                    fixed_header["CRPIX2"] = naxis2 / 2.0
-                    fixed_header["CRVAL1"] = 0.0  # Will need manual input
-                    fixed_header["CRVAL2"] = 0.0  # Will need manual input
-                    fixed_header["EQUINOX"] = 2000.0
-                    fixed_header["RADESYS"] = "ICRS"
-
-                    log_messages.append(
-                        "INFO: Added minimal default WCS (1 arcsec/pixel) - coordinates will need manual input"
-                    )
-
-                except (ValueError, TypeError):
-                    log_messages.append(
-                        "WARNING: Could not add default WCS due to invalid NAXIS values"
-                    )
-
-        else:
-            # If WCS seems valid, apply minor fixes
-            has_sip_distortion = all(
-                key in fixed_header for key in ("A_ORDER", "B_ORDER")
-            )
-
-            # Fix CTYPE formatting
-            if "CTYPE1" in fixed_header:
-                ctype1 = str(fixed_header["CTYPE1"]).strip()
-                if (
-                    ctype1
-                    and not ctype1.endswith("---")
-                    and not ctype1.upper().endswith("-SIP")
-                ):
-                    if "RA" in ctype1.upper():
-                        ctype1 = "RA---TAN"
-                    elif "GLON" in ctype1.upper():
-                        ctype1 = "GLON-TAN"
-                if has_sip_distortion and ctype1.upper() == "RA---TAN":
-                    ctype1 += "-SIP"
-                fixed_header["CTYPE1"] = ctype1
-
-            if "CTYPE2" in fixed_header:
-                ctype2 = str(fixed_header["CTYPE2"]).strip()
-                if (
-                    ctype2
-                    and not ctype2.endswith("---")
-                    and not ctype2.upper().endswith("-SIP")
-                ):
-                    if "DEC" in ctype2.upper():
-                        ctype2 = "DEC--TAN"
-                    elif "GLAT" in ctype2.upper():
-                        ctype2 = "GLAT-TAN"
-                if has_sip_distortion and ctype2.upper() == "DEC--TAN":
-                    ctype2 += "-SIP"
-                fixed_header["CTYPE2"] = ctype2
-
-            # Fix missing EQUINOX/EPOCH
-            if "EQUINOX" not in fixed_header and "EPOCH" in fixed_header:
-                fixed_header["EQUINOX"] = fixed_header["EPOCH"]
-            elif "EQUINOX" not in fixed_header:
-                fixed_header["EQUINOX"] = 2000.0
-
-            # Fix RADESYS if missing
-            if "RADESYS" not in fixed_header:
-                if fixed_header.get("EQUINOX", 2000.0) == 2000.0:
-                    fixed_header["RADESYS"] = "ICRS"
-                else:
-                    fixed_header["RADESYS"] = "FK5"
-
-            # Remove PC matrix if CD matrix is present (they conflict)
-            if all(key in fixed_header for key in ["CD1_1", "CD2_2"]):
-                pc_keys = ["PC1_1", "PC1_2", "PC2_1", "PC2_2"]
-                removed_pc = []
-                for key in pc_keys:
-                    if key in fixed_header:
-                        del fixed_header[key]
-                        removed_pc.append(key)
-                if removed_pc:
-                    log_messages.append(
-                        f"INFO: Removed conflicting PC matrix keywords: {', '.join(removed_pc)}"
-                    )
-
-        return fixed_header, log_messages
-
-    except Exception as e:
-        # If fixing fails completely, return original header
-        log_messages.append(f"ERROR: Header fixing failed: {str(e)}")
-        return header, log_messages
+    fixed_header = header.copy()
+    log_messages: list[str] = []
+    if all(key in fixed_header for key in ("A_ORDER", "B_ORDER")):
+        if (
+            str(fixed_header.get("CTYPE1", "")).strip().upper() == "RA---TAN"
+            and str(fixed_header.get("CTYPE2", "")).strip().upper() == "DEC--TAN"
+        ):
+            fixed_header["CTYPE1"] = "RA---TAN-SIP"
+            fixed_header["CTYPE2"] = "DEC--TAN-SIP"
+            log_messages.append("INFO: Added SIP suffix to match distortion coefficients")
+    _, error, wcs_messages = safe_wcs_create(fixed_header)
+    log_messages.extend(wcs_messages)
+    if error:
+        log_messages.append(f"WARNING: No valid celestial WCS: {error}")
+    return fixed_header, log_messages
 
 
 def extract_coordinates(header):

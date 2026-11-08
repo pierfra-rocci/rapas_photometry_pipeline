@@ -2,6 +2,8 @@ import os
 import time
 import zipfile
 from io import BytesIO
+from pathlib import Path
+from typing import ClassVar
 
 import numpy as np
 import pytest
@@ -44,14 +46,14 @@ class TestSessionPaths:
         assert os.path.dirname(os.path.abspath(path)) == str(tmp_path)
 
     def test_tmp_directory_is_per_session(self, isolated_dirs):
-        a = session_tmp_directory("alice", "s1")
-        b = session_tmp_directory("alice", "s2")
+        a = session_tmp_directory(1, "s1")
+        b = session_tmp_directory(1, "s2")
         assert a != b and os.path.basename(a) == "work_s1"
 
 
 class TestStaleCleanup:
     def test_removes_old_work_dirs_but_keeps_current_and_archive(self, isolated_dirs):
-        user_dir = utils.ensure_output_directory(directory="alice_results")
+        user_dir = utils.ensure_user_output_directory(1)
         old = session_results_path(user_dir, "old")
         cur = session_results_path(user_dir, "cur")
         fresh = session_results_path(user_dir, "fresh")
@@ -62,7 +64,7 @@ class TestStaleCleanup:
         for path in (old, cur, os.path.join(old, "x.csv"), zip_path):
             os.utime(path, (long_ago, long_ago))
 
-        removed = cleanup_stale_session_files("alice", current_session_id="cur")
+        removed = cleanup_stale_session_files(1, current_session_id="cur")
 
         assert removed >= 1
         assert not os.path.exists(old)
@@ -70,14 +72,14 @@ class TestStaleCleanup:
         assert os.path.exists(zip_path)
 
     def test_removes_old_loose_temp_uploads(self, isolated_dirs):
-        tmp = session_tmp_directory("alice", None)
+        tmp = session_tmp_directory(1, None)
         old = os.path.join(tmp, "upload.fits")
         new = os.path.join(tmp, "new.fits")
         open(old, "w").close()
         open(new, "w").close()
         long_ago = time.time() - 3 * 86400
         os.utime(old, (long_ago, long_ago))
-        cleanup_stale_session_files("alice")
+        cleanup_stale_session_files(1)
         assert not os.path.exists(old) and os.path.exists(new)
 
 
@@ -150,18 +152,20 @@ class TestResetIsSessionLocal:
         return ta, cache_cleared
 
     def test_reset_clears_only_this_session(self, isolated_dirs, monkeypatch):
-        tmp_dir = session_tmp_directory("alice", "mine")
-        other_dir = session_tmp_directory("alice", "theirs")
+        tmp_dir = session_tmp_directory(1, "mine")
+        other_dir = session_tmp_directory(1, "theirs")
         upload = os.path.join(tmp_dir, "up.fits")
         open(upload, "w").close()
         state = {
             "username": "alice",
+            "user_id": 1,
             "session_id": "mine",
             "uploaded_temp_path": upload,
             "science_uploader_0": object(),
             "upload_generation": 0,
             "files_loaded": {"science_file": object()},
             "final_phot_table": object(),
+            "last_result_zip_path": "/old/result.zip",
             "run_analysis_pipeline": True,
             "base_filename": "img",
         }
@@ -175,6 +179,7 @@ class TestResetIsSessionLocal:
         assert state["upload_generation"] == 1
         assert "science_uploader_0" not in state
         assert "final_phot_table" not in state and "uploaded_temp_path" not in state
+        assert "last_result_zip_path" not in state
         assert state["run_analysis_pipeline"] is False
         assert state["files_loaded"] == {"science_file": None}
         assert state["session_id"] == "mine"
@@ -209,6 +214,37 @@ class TestDownloadButtonPrefix:
         monkeypatch.setattr(ta, "st", FakeSt)
         ta.provide_download_buttons(str(tmp_path))
         assert captured["names"] == ["img.log", "img_catalog.csv"]
+
+    def test_existing_archive_is_available_after_work_files_are_removed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import src.tools_app as ta
+
+        work = tmp_path / "work"
+        work.mkdir()
+        archive = tmp_path / "img.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("img_catalog.csv", "id\n1\n")
+        captured = {}
+
+        class FakeSt:
+            session_state: ClassVar[dict[str, str]] = {"base_filename": "img"}
+            caption = staticmethod(lambda _message: None)
+
+            @staticmethod
+            def warning(message: str) -> None:
+                raise AssertionError(message)
+
+            @staticmethod
+            def download_button(*_args: object, data: bytes | None = None, **kwargs: object) -> None:
+                captured["filename"] = kwargs["file_name"]
+                assert data is not None
+                with zipfile.ZipFile(BytesIO(data)) as zf:
+                    captured["contents"] = zf.read("img_catalog.csv")
+
+        monkeypatch.setattr(ta, "st", FakeSt)
+        ta.provide_download_buttons(str(work), archive_path=str(archive))
+        assert captured == {"filename": "img.zip", "contents": b"id\n1\n"}
 
 
 class TestLoadFitsReplaysMessages:

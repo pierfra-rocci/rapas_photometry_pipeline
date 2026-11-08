@@ -2,6 +2,7 @@ import os
 import json
 import threading
 from datetime import datetime, timedelta, timezone
+from typing import Any
 import requests
 
 import numpy as np
@@ -20,7 +21,7 @@ from astroquery.imcce import Skybot
 
 from src.catalog_mirrors import query_vizier_with_fallback
 from src.tns_catalog import cross_match_tns
-from src.tools_pipeline import URL
+from src.tools_pipeline import URL, safe_wcs_create
 from src.utils import safe_catalog_query, skybot_cone_search
 
 # Timeout (seconds) for outbound HTTP requests so a slow service cannot hang a run
@@ -92,14 +93,14 @@ def query_simbad_region_with_fallback(
 
 
 def cross_match_with_gaia(
-    _phot_table,
-    science_header,
-    pixel_size_arcsec,
-    mean_fwhm_pixel,
-    filter_band,
-    filter_max_mag,
-    refined_wcs=None,
-):
+    _phot_table: Any,
+    science_header: Any,
+    pixel_size_arcsec: float,
+    mean_fwhm_pixel: float,
+    filter_band: str,
+    filter_max_mag: float,
+    refined_wcs: WCS | None = None,
+) -> tuple[pd.DataFrame | None, list[str]]:
     """
     Cross-match detected sources with the GAIA DR3 star catalog or PANSTARRS DR1/SkyMapper.
     This function queries the appropriate catalog for a region matching the image field of view:
@@ -143,10 +144,21 @@ def cross_match_with_gaia(
 
     try:
         if refined_wcs is not None:
-            w = refined_wcs
+            refined_header = refined_wcs.to_header(relax=True)
+            for key in ("NAXIS1", "NAXIS2"):
+                if key in science_header:
+                    refined_header[key] = science_header[key]
+            _, wcs_error, wcs_messages = safe_wcs_create(refined_header)
+            if wcs_error:
+                return None, [f"ERROR: Invalid refined WCS: {wcs_error}"]
+            log_messages.extend(wcs_messages)
+            w = refined_wcs.celestial if refined_wcs.pixel_n_dim > 2 else refined_wcs
             log_messages.append("INFO: Using refined WCS for cross-matching.")
         else:
-            w = WCS(science_header)
+            w, wcs_error, wcs_messages = safe_wcs_create(science_header)
+            log_messages.extend(wcs_messages)
+            if w is None:
+                return None, log_messages + [f"ERROR: Invalid celestial WCS: {wcs_error}"]
             log_messages.append("INFO: Using header WCS for cross-matching.")
     except Exception as e:
         return None, [f"ERROR: Error creating WCS: {e}"]
@@ -158,27 +170,25 @@ def cross_match_with_gaia(
         source_positions_sky = w.pixel_to_world(
             source_positions_pixel[:, 0], source_positions_pixel[:, 1]
         )
+        if not isinstance(source_positions_sky, SkyCoord):
+            raise ValueError("Celestial WCS did not return sky coordinates")
+        source_positions_sky = source_positions_sky.icrs
     except Exception as e:
         return None, [
             f"ERROR: Error converting pixel positions to sky coordinates: {e}"
         ]
 
     try:
-        # Validate RA/DEC coordinates before using them
-        if "RA" not in science_header or "DEC" not in science_header:
-            return None, [
-                "ERROR: Missing RA/DEC coordinates in header. Header must contain RA and DEC keywords for field center determination."
-            ]
-
-        image_center_ra_dec = [science_header["RA"], science_header["DEC"]]
-
-        # Validate coordinate values
-        if not (0 <= image_center_ra_dec[0] <= 360) or not (
-            -90 <= image_center_ra_dec[1] <= 90
-        ):
-            return None, [
-                f"ERROR: Invalid coordinates: RA={image_center_ra_dec[0]}, DEC={image_center_ra_dec[1]}"
-            ]
+        center = w.pixel_to_world(
+            (science_header["NAXIS1"] - 1) / 2,
+            (science_header["NAXIS2"] - 1) / 2,
+        )
+        if not isinstance(center, SkyCoord):
+            raise ValueError("Celestial WCS did not return sky coordinates")
+        center = center.icrs
+        image_center_ra_dec = [float(center.ra.degree), float(center.dec.degree)]
+        if not np.all(np.isfinite(image_center_ra_dec)):
+            return None, ["ERROR: WCS image center is not finite"]
 
         # Calculate search radius (divided by 1.5 to avoid field edge effects)
         catalog_search_radius_arcsec = (
@@ -1990,6 +2000,9 @@ def enhance_catalog(
         # Add catalog cross-match columns
         catalog_cols = [
             "astrocolibri_name", "astrocolibri_type", "astrocolibri_classification",
+            "astrocolibri_ra", "astrocolibri_dec",
+            "tns_name", "tns_type", "tns_ra", "tns_dec",
+            "tns_separation_arcsec",
             "astrocolibri_ra", "astrocolibri_dec",
             "tns_name", "tns_type", "tns_ra", "tns_dec",
             "tns_separation_arcsec",

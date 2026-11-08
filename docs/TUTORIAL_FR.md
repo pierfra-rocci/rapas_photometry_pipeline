@@ -101,12 +101,16 @@ Après le traitement, téléchargez l'archive ZIP contenant le catalogue, les
 en-têtes texte, le journal et les graphiques PNG générés. Les fichiers FITS ne
 sont pas inclus dans l'archive.
 
-- `*_catalog.csv` / `.vot` : Catalogue des sources limité à un jeu de colonnes choisi, dans cet ordre : `id`, `ra`, `dec`, `astrocolibri_name`, `astrocolibri_type`, `astrocolibri_classification`, `astrocolibri_ra`, `astrocolibri_dec`, `tns_name`, `tns_type`, `tns_ra`, `tns_dec`, `simbad_main_id`, `simbad_otype`, `simbad_B`, `simbad_V`, `skybot_NAME`, `skybot_OBJECT_TYPE`, `skybot_MAGV`, `aavso_Name`, `aavso_Type`, `aavso_Period`, `catalog_matches`, `x_center`, `y_center`, puis `snr_X_X`, les magnitudes d'ouverture `aperture_mag_X_X` (chacune suivie de son `quality_flag_X_X`), la magnitude PSF `psf_mag`, les erreurs `aperture_mag_err_X_X` et `psf_mag_err`, et les écarts `psf_minus_aperture_mag_X_X`. Les ouvertures sont les ouvertures fixes `_1_1` et `_1_3` plus celle de l'utilisateur (par exemple `_1_5` pour un facteur 1,5) : le dernier suffixe dépend donc de votre choix. Les colonnes inexistantes pour une exécution (par exemple sans clé Astro-Colibri) sont omises.
+- `<nom-de-base>.csv` / `<nom-de-base>.vot` : Catalogue des sources limité à un jeu de colonnes choisi, dans cet ordre : `id`, `ra`, `dec`, `astrocolibri_name`, `astrocolibri_type`, `astrocolibri_classification`, `astrocolibri_ra`, `astrocolibri_dec`, `tns_name`, `tns_type`, `tns_ra`, `tns_dec`, `simbad_main_id`, `simbad_otype`, `simbad_B`, `simbad_V`, `skybot_NAME`, `skybot_OBJECT_TYPE`, `skybot_MAGV`, `aavso_Name`, `aavso_Type`, `aavso_Period`, `catalog_matches`, `x_center`, `y_center`, puis `snr_X_X`, les magnitudes d'ouverture `aperture_mag_X_X` (chacune suivie de son `quality_flag_X_X`), la magnitude PSF `psf_mag`, les erreurs `aperture_mag_err_X_X` et `psf_mag_err`, et les écarts `psf_minus_aperture_mag_X_X`. Les ouvertures sont les ouvertures fixes `_1_1` et `_1_3` plus celle de l'utilisateur (par exemple `_1_5` pour un facteur 1,5) : le dernier suffixe dépend donc de votre choix. Les colonnes inexistantes pour une exécution (par exemple sans clé Astro-Colibri) sont omises.
 
   `id` est un numéro de source entier unique ; c'est le même identifiant que celui affiché dans les fenêtres d'Aladin Lite, ce qui permet de retrouver dans les fichiers n'importe quelle source du visualiseur. Si des sources Astro-Colibri sont détectées, leurs lignes sont triées par `astrocolibri_name` et apparaissent tout au début des fichiers CSV et VOT.
 
   Lorsqu'un préfixe de filtre s'applique, les magnitudes et erreurs utilisent des noms préfixés, par exemple `rapasg_psf_mag` et `rapasg_aperture_mag_err_1_5` (les noms historiques sans préfixe sinon). Les erreurs de magnitude combinent la part aléatoire propre à la source et la part corrélée commune au champ (incertitude du point zéro et plancher systématique). Les magnitudes corrigées de la couleur (`*_colorcorr`), les facteurs de correction d'ouverture, le bruit de fond et les autres diagnostics internes servent pendant l'exécution mais ne sont pas écrits dans ces fichiers.
 - `*_transients.csv` : Candidats transitoires (si le détecteur de transitoires est activé), avec les mêmes colonnes que le catalogue, dont `id`, ce qui permet de relier chaque candidat à sa ligne du catalogue. Les candidats sans correspondance dans le catalogue conservent leurs propres coordonnées, leur position en pixels et leur magnitude PSF calibrée.
+- `*_instrumental_catalog.csv` / `.vot` : Mesures non calibrées si le WCS ou
+  la calibration photométrique est indisponible. Les coordonnées célestes sont
+  incluses si le WCS est utilisable ; sans calibration, la recherche de
+  transitoires est ignorée.
 - `*_header.txt` : En-tête FITS d'origine
 - `*_wcs_header.txt` : En-tête de la solution astrométrique, si un WCS est disponible
 - `*.log` : Journal de traitement détaillé
@@ -119,7 +123,7 @@ WCS mis à jour est enregistrée sous `*_wcs.fits` dans le répertoire de résul
 et également dans `rpp_data/fits/` :
 
 1. **Répertoire de résultats** : Le dossier de résultats de l'utilisateur ; le fichier est exclu de l'archive téléchargeable.
-2. **`rpp_data/fits/`** : Copie persistante, écrasée si le même fichier est traité à nouveau.
+2. **`rpp_data/fits/private_v2/user_<id>/YYYY/MM/`** : Copie persistante, écrasée si le même fichier est traité à nouveau durant le même mois. Les anciens fichiers fondés sur le nom d'utilisateur ne sont pas migrés automatiquement.
 
 **Suivi des analyses** : La base de données suit certains artefacts et leurs liens ; elle ne stocke pas les lignes de photométrie elles-mêmes :
 
@@ -173,7 +177,7 @@ mesurées par une seule méthode), et la vue des résultats le trace en fonction
 la magnitude PSF calibrée (avec les lignes de médiane et de zéro par ouverture)
 ainsi que son histogramme.
 
-**Analyse interactive** : Utilisez le visualiseur Aladin Lite intégré pour l'exploration en temps réel, ou exportez les coordonnées vers ESA SkyView. Si le script Aladin hébergé par le CDS est inaccessible, le visualiseur réessaie avec la version 3.8.2 épinglée sur jsDelivr. Ce repli charge la bibliothèque du visualiseur ; l'affichage du ciel nécessite toujours l'accès au serveur de tuiles HiPS.
+**Analyse interactive** : Utilisez le visualiseur Aladin Lite intégré pour l'exploration en temps réel, ou exportez les coordonnées vers ESA SkyView. Si le script Aladin hébergé par le CDS échoue ou dépasse le délai, le visualiseur importe le module 3.8.2 épinglé sur jsDelivr. Ce repli charge la bibliothèque ; l'affichage du ciel nécessite toujours l'accès à un serveur HiPS, et les deux relevés par défaut utilisent le CDS. Développez **Source coordinates (available without Aladin)** au-dessus du visualiseur pour consulter les positions même si Aladin ou les images sont indisponibles.
 
 ### Services Externes et Résultats Partiels
 

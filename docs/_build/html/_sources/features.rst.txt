@@ -49,11 +49,14 @@ Advanced Image Processing
    - Upload staging in the UI before the scientific processing phase starts
 
 **Header Processing**:
-   - Automatic WCS keyword validation and correction
-   - Removal of problematic or conflicting keywords
+   - Celestial WCS validation without inventing coordinates or pixel scales
+   - Preserve input metadata; retry WCS parsing without conflicting nonstandard
+     metadata only in a temporary copy when necessary
+   - Reject conflicting CD and PC matrices, singular or non-finite transforms,
+     and transforms that fail reference-pixel or available image-corner checks
    - Observatory information extraction from headers
-   - Coordinate system standardization and validation
-   - Missing keyword interpolation and defaults
+   - Preserve valid projections and SIP distortions; convert output celestial
+     coordinates to ICRS
 
 **Cosmic Ray Removal**:
    - L.A.Cosmic algorithm implementation via `astroscrappy` package
@@ -91,10 +94,15 @@ Astrometric Solutions
    - Automatic source detection using photutils
    - Scale estimation from focal length and pixel size
    - Solution validation and coordinate range checking
+   - Structural WCS checks do not prove astrometric accuracy; verify the
+     solution against reference stars
    - Forced re-solve option when the user enables Astrometry Check
    - Target of at least 20 detected stars; the detection threshold is lowered
      3 -> 2 -> 1 sigma on small or sparse fields (best effort down to 5 stars)
    - Automatic retry of the solve with a deeper detection when it fails
+   - Shared 180-second wall-clock budget for local solver attempts, configurable
+     through ``RPP_LOCAL_ASTROMETRY_TIMEOUT_SECONDS``; source detection, cleanup,
+     online requests, and refinement are outside this hard limit
 
 **WCS Refinement**:
    - SCAMP integration for high-precision astrometry
@@ -310,10 +318,42 @@ Multi-Catalog Cross-Matching
      event per source, radius reached reported in the log); matches found only
      at the 15, 20 or 30 arcsec tier raise a warning; the match outcome is
      displayed in the app
+   - Search API fallback: if the staged catalogue cannot be obtained, one
+     ``/api/get/search`` cone search over the field followed by
+     ``/api/get/object`` for each object (up to 100) is used instead;
+     ``RPP_TNS_SANDBOX=1`` selects ``sandbox.wis-tns.org``
+   - Progressive cross-match radius 5 -> 10 -> 15 -> 20 -> 30 arcsec (nearest
+     event per source, radius reached reported in the log); matches found only
+     at the 15, 20 or 30 arcsec tier raise a warning; the match outcome is
+     displayed in the app
    - Every source returned by Astro-Colibri for the field is listed (name,
      RA/Dec, type, classification, observatory, trigger ID, position error,
      date, redshift, matched flag, separation); the event
      RA/Dec are exported as ``astrocolibri_ra`` / ``astrocolibri_dec``
+
+**TNS (Transient Name Server)**:
+   - Public transients (AT/SN/FRB) from the daily staged catalogue
+     ``tns_public_objects.csv.zip``, downloaded at most once per UTC day and
+     cached locally (``RPP_TNS_CACHE_DIR``), or read from a local file
+     (``RPP_TNS_CATALOG_PATH``)
+   - API key authentication: ``TNS_API_KEY`` plus ``TNS_BOT_ID``/
+     ``TNS_BOT_NAME`` (bot) or ``TNS_USER_ID``/``TNS_USER_NAME`` (user);
+     without it the step is skipped with a warning, like Astro-Colibri
+   - Optional shared mirror: ``RPP_TNS_MIRROR_URL`` points at a ``tns-mirror``
+     HTTP API queried once per detected source (``GET /v1/nearest``), which
+     removes the download for multi-user deployments; the mirror is
+     authoritative when it answers, any failure falls back to the daily
+     catalogue, and fields with more than 500 sources use the catalogue directly
+   - Progressive cross-match radius 5 -> 10 -> 15 -> 20 -> 30 arcsec keeping the
+     closest object per source; matches found only at the 20 or 30 arcsec tier
+     raise a warning
+   - Spatial index: the parsed catalogue carries a ``scipy`` KD-tree over the
+     object positions, so the objects of a field are selected by walking the
+     tree instead of comparing every catalogue row with the field centre
+   - ``tns_name`` (full designation, e.g. ``SN 2026abc``), ``tns_type``,
+     ``tns_ra`` and ``tns_dec`` are exported; ``TNS; `` is added to
+     ``catalog_matches``, and every TNS object in the field is listed in the
+     app with its match status and separation
 
 **TNS (Transient Name Server)**:
    - Public transients (AT/SN/FRB) from the daily staged catalogue
@@ -406,6 +446,7 @@ Data Visualization & Analysis
 **Interactive Sky Viewer**:
    - Aladin Lite integration for source exploration
    - Automatic jsDelivr fallback for the viewer script if the CDS download fails
+   - Automatic jsDelivr fallback for the viewer script if the CDS download fails
    - Overlay of detected sources with catalog information
    - Clickable source markers with detailed information
    - Astro-Colibri cross-matches drawn as larger red squares in their own
@@ -464,7 +505,8 @@ User Interface & Workflow
    - Per-session ``work_<id>`` folders for temporary uploads and intermediate results
    - Archive browser for previous results
    - Batch download options for result sets
-   - User-scoped storage paths under ``rpp_data/fits/`` and ``rpp_results/``
+   - User-ID-scoped ``private_v2/user_<id>/`` storage under ``rpp_data/fits/``
+     and ``rpp_results/``; older username-based files require operator review
 
 **Error Handling**:
    - Comprehensive error messages with recovery suggestions
@@ -488,6 +530,9 @@ Output Generation & Export
 --------------------------
 
 **Comprehensive Result Files**:    - CSV and VOTable catalogs with a curated, fixed column order (unique ``id`` first, matching the Aladin Lite popup ID; Astro-Colibri, TNS, SIMBAD, SkyBoT and AAVSO matches; Astro-Colibri detections sorted first)
+   - CSV and VOTable instrumental catalogs when calibration is unavailable or
+     no valid celestial WCS is available but a usable pixel scale permits
+     photometry; sky coordinates are included when the WCS is usable
    - Transient candidate CSV sharing the same columns as the catalog
    - FITS files for background and PSF models
    - WCS-solved FITS files with refined astrometric headers

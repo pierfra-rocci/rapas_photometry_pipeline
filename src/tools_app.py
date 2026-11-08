@@ -1,9 +1,11 @@
 import os
 import shutil
 import zipfile
+import gzip
 import base64
 import json
 import warnings
+from contextlib import ExitStack
 from datetime import datetime
 from io import BytesIO
 
@@ -22,11 +24,10 @@ from src.tools_pipeline import (
 )
 from src.utils import (
     write_to_log,
-    ensure_output_directory,
     ensure_session_output_directory,
-    session_results_path,
     session_tmp_directory,
     ensure_source_ids,
+    select_fits_image_hdu,
 )
 
 warnings.filterwarnings("ignore")
@@ -78,10 +79,12 @@ def _remove_session_dirs() -> None:
     session_id = st.session_state.get("session_id")
     if not session_id:
         return
-    username = st.session_state.get("username") or "anonymous"
+    user_id = st.session_state.get("user_id")
+    if not isinstance(user_id, int) or isinstance(user_id, bool):
+        return
     for getter in (session_tmp_directory, ensure_session_output_directory):
         try:
-            path = getter(username, session_id)
+            path = getter(user_id, session_id)
             if os.path.basename(path).startswith("work_"):
                 shutil.rmtree(path, ignore_errors=True)
         except Exception:
@@ -122,6 +125,7 @@ def clear_all_caches():
             "log_buffer",
             "log_summary_written",
             "last_saved_log_content",
+            "last_result_zip_path",
             "stored_fits_filename",
             "has_wcs",
             "wcs_obj",
@@ -169,8 +173,8 @@ def load_fits_data(_file):
 
     Notes
     -----
-    - For multi-extension FITS files, uses the primary HDU if it contains data,
-    otherwise uses the first HDU with valid data.
+    - For multi-extension FITS files, uses the first nonempty numeric image HDU,
+    preferring the primary HDU. Tables and one-dimensional arrays are skipped.
     - For 3D data (RGB or data cube), extracts the first 2D plane with appropriate warnings.
     - For higher dimensional data, takes the first slice along all extra dimensions.
     """
@@ -213,43 +217,55 @@ def load_fits_data(_file):
 
 
 @st.cache_data(show_spinner=False)
-def _parse_fits_bytes(file_content: bytes):
+def _parse_fits_bytes(
+    file_content: bytes,
+) -> tuple[np.ndarray | None, fits.Header | None, list[tuple[str | None, str | None, str]]]:
     """Parse FITS bytes into ``(image_data, header, messages)``; cached by content.
 
     Pure function: ``messages`` is a list of ``(ui, log_level, text)`` for the
     caller to display (ui: error/warning/info/None) and log (log_level or None).
     """
-    messages = []
+    messages: list[tuple[str | None, str | None, str]] = []
     if not file_content:
         return None, None, messages
 
+    streams = ExitStack()
     try:
-        hdul = fits.open(BytesIO(file_content), mode="readonly")
+        buffer = streams.enter_context(BytesIO(file_content))
+        input_stream = (
+            streams.enter_context(gzip.GzipFile(fileobj=buffer, mode="rb"))
+            if file_content.startswith(b"\x1f\x8b")
+            else buffer
+        )
+        hdul = fits.open(input_stream, mode="readonly", memmap=False)
     except OSError as e:
+        streams.close()
         messages.append(("error", None, f"Invalid or corrupt FITS file: {e}"))
         return None, None, messages
     except Exception as e:
+        streams.close()
         messages.append(("error", None, f"Error opening FITS file: {e}"))
         return None, None, messages
 
     try:
-        data = hdul[0].data
         hdul.verify("fix")
-        header = hdul[0].header
-
-        if data is None:
-            for i, hdu in enumerate(hdul[1:], 1):
-                if hasattr(hdu, "data") and hdu.data is not None:
-                    data = hdu.data
-                    header = hdu.header
-                    messages.append(
-                        (None, "INFO", f"Primary HDU has no data. Using data from HDU #{i}.")
-                    )
-                    break
-
-        if data is None:
-            messages.append(("warning", None, "No image data found in the FITS file."))
+        image_index = select_fits_image_hdu(hdul)
+        if image_index is None:
+            messages.append(
+                ("warning", "WARNING", "No supported numeric image data found in the FITS file.")
+            )
             return None, None, messages
+        image_hdu = hdul[image_index]
+        if not isinstance(image_hdu, (fits.PrimaryHDU, fits.ImageHDU, fits.CompImageHDU)):
+            raise TypeError("Selected FITS HDU is not an image")
+        data = image_hdu.data
+        if data is None:
+            raise ValueError("Selected FITS image contains no data")
+        header = image_hdu.header
+        if image_index:
+            messages.append(
+                ("info", "INFO", f"Using image data from HDU #{image_index}; earlier HDUs contain no supported image.")
+            )
 
         if len(data.shape) == 3:
             if data.shape[0] == 3 or data.shape[0] == 4:
@@ -275,6 +291,8 @@ def _parse_fits_bytes(file_content: bytes):
 
         try:
             fixed_header, log_messages = fix_header(header)
+            if not isinstance(fixed_header, fits.Header):
+                raise TypeError("Header repair did not return a FITS header")
             header = fixed_header
             for msg in log_messages:
                 level, _, message = msg.partition(":")
@@ -298,8 +316,10 @@ def _parse_fits_bytes(file_content: bytes):
     finally:
         try:
             hdul.close()
-        except Exception:
-            pass
+        except Exception as close_error:
+            messages.append(("warning", "WARNING", f"Could not close FITS file: {close_error}"))
+        finally:
+            streams.close()
 
 
 def build_transient_aladin_sources(
@@ -409,9 +429,9 @@ def display_catalog_in_aladin(
     survey : str, optional
         The initial sky survey to display in Aladin Lite, default="CDS/P/DSS2/color"
     fallback_survey : str, optional
-        Second HiPS switched to when the base survey cannot be loaded (its
-        ``properties`` document is unreachable, e.g. a blocked or overloaded
-        HiPS server), default="CDS/P/DSS2/red"
+        Second HiPS switched to when the base survey cannot be loaded,
+        default="CDS/P/DSS2/red". The default surveys and full HiPS URLs can
+        be checked via their ``properties`` documents.
     transient_table : pandas.DataFrame, optional
         Transient candidates (``ra``/``dec`` and optionally ``id``/PSF
         magnitude); drawn as yellow stars in a dedicated overlay so they can be
@@ -422,6 +442,7 @@ def display_catalog_in_aladin(
     The function creates an interactive HTML component embedded in Streamlit that
     shows a DSS image of the field with catalog sources overlaid as interactive markers.
     Each marker shows a popup with detailed source information when clicked.
+    A source-coordinate table remains available if the viewer or imagery fails.
 
     Handles errors gracefully and provides feedback in the Streamlit interface
     if any issues occur.
@@ -627,6 +648,11 @@ def display_catalog_in_aladin(
             transients_json_b64 = base64.b64encode(
                 json.dumps(transient_sources).encode("utf-8")
             ).decode("utf-8")
+            coordinates_html = pd.DataFrame(catalog_sources)[
+                ["name", "ra", "dec"]
+            ].to_html(index=False, escape=True)
+            survey_json = json.dumps(survey).replace("<", "\\u003c")
+            fallback_survey_json = json.dumps(fallback_survey).replace("<", "\\u003c")
 
             html_content = f"""
 <!DOCTYPE html>
@@ -637,55 +663,74 @@ def display_catalog_in_aladin(
     <title>Aladin Lite v3</title>
 </head>
 <body>
-    <div id="aladin-lite-div" style="width:100%;height:550px;"></div>
     <div id="aladin-lite-status" style="padding:6px 8px; font:13px Arial,sans-serif; color:#8a1c1c;"></div>
+    <details>
+        <summary>Source coordinates (available without Aladin)</summary>
+        <div style="max-height:200px;overflow:auto;">{coordinates_html}</div>
+    </details>
+    <div id="aladin-lite-div" style="width:100%;height:550px;"></div>
     <script type="text/javascript">
-        // Aladin Lite v3 fails silently in two frequent situations: the browser
-        // provides no WebGL2 context (WebGL disabled or GPU blocklisted, e.g. in
-        // Firefox) and aladin.js cannot be downloaded from CDS. Both leave an
-        // empty viewer with no visible error, so report them explicitly.
         function aladinShowProblem(message) {{
             let box = document.getElementById('aladin-lite-status');
             if (box) {{ box.textContent = message; }}
             console.error('[RPP Aladin] ' + message);
         }}
-        if (!document.createElement('canvas').getContext('webgl2')) {{
-            aladinShowProblem('This browser provides no WebGL2 context, which Aladin Lite v3 needs to draw the sky image. Enable hardware acceleration / WebGL (Firefox: about:config -> webgl.force-enabled = true) or open the page in Chrome/Edge.');
+        function aladinWithTimeout(promise, message) {{
+            let timer;
+            const timeout = new Promise((_, reject) => {{
+                timer = setTimeout(() => reject(new Error(message)), 8000);
+            }});
+            return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
         }}
-    </script>
-    <script type="text/javascript" src="https://code.jquery.com/jquery-1.12.1.min.js" charset="utf-8"></script>
-    <script type="text/javascript">
-        let resolveAladinScript;
-        let rejectAladinScript;
-        const aladinScriptPromise = new Promise((resolve, reject) => {{
-            resolveAladinScript = resolve;
-            rejectAladinScript = reject;
-        }});
-        function aladinScriptLoaded() {{
-            resolveAladinScript();
+        async function aladinInitialize(api) {{
+            if (!api || !api.init || typeof api.aladin !== 'function') {{
+                throw new Error('The downloaded Aladin library has no usable API.');
+            }}
+            await aladinWithTimeout(api.init, 'Aladin initialization timed out.');
+            return api;
         }}
-        function aladinLoadFallback(script) {{
-            script.onerror = null;
-            const fallbackScript = document.createElement('script');
-            fallbackScript.src = 'https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js';
-            fallbackScript.charset = 'utf-8';
-            fallbackScript.onload = aladinScriptLoaded;
-            fallbackScript.onerror = () => {{
-                rejectAladinScript(new Error('Aladin Lite could not be downloaded from either the CDS server or jsDelivr. Check network access, proxy, or firewall settings.'));
-            }};
-            document.head.appendChild(fallbackScript);
+        async function aladinLoadLibrary() {{
+            try {{
+                const primary = new Promise((resolve, reject) => {{
+                    const script = document.createElement('script');
+                    script.src = 'https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js';
+                    script.onload = () => resolve(window.A);
+                    script.onerror = () => reject(new Error('CDS Aladin script failed to load.'));
+                    document.head.appendChild(script);
+                }});
+                const api = await aladinWithTimeout(primary, 'CDS Aladin script timed out.');
+                return await aladinInitialize(api);
+            }} catch (error) {{
+                console.warn('[RPP Aladin] CDS library unavailable:', error);
+            }}
+            try {{
+                const module = await aladinWithTimeout(
+                    import('https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js'),
+                    'jsDelivr Aladin module timed out.'
+                );
+                return await aladinInitialize(module.default);
+            }} catch (error) {{
+                console.error('[RPP Aladin] jsDelivr library unavailable:', error);
+                throw new Error('Aladin Lite could not be initialized from either CDS or jsDelivr. Source coordinates remain available above.');
+            }}
         }}
-    </script>
-    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8" onload="aladinScriptLoaded()" onerror="aladinLoadFallback(this)"></script>
-    <script type="text/javascript">
+        let webgl2Available = false;
+        try {{
+            webgl2Available = !!document.createElement('canvas').getContext('webgl2');
+        }} catch (error) {{
+            console.error('[RPP Aladin] WebGL2 check failed:', error);
+        }}
         let aladin;
-        aladinScriptPromise.then(() => A.init).then(() => {{
+        if (!webgl2Available) {{
+            aladinShowProblem('This browser provides no WebGL2 context, which Aladin Lite v3 needs to draw the sky image. Enable hardware acceleration / WebGL (Firefox: about:config -> webgl.force-enabled = true) or open the page in Chrome/Edge. Source coordinates remain available above.');
+        }} else {{
+        aladinLoadLibrary().then((A) => {{
             try {{
                 // Initialize Aladin v3
                 aladin = A.aladin('#aladin-lite-div', {{
                     target: '{ra_center} {dec_center}',
                     fov: {fov},
-                    survey: '{survey}',
+                    survey: {survey_json},
                     reticleSize: 0,
                     showZoomControl: true,
                     showFullscreenControl: true,
@@ -697,7 +742,7 @@ def display_catalog_in_aladin(
                 console.info(
                     '[RPP Aladin] version ' +
                     (typeof A.version !== 'undefined' ? A.version : 'unknown') +
-                    ', survey {survey}'
+                    ', survey ' + {survey_json}
                 );
 
                 // Fall back to a second HiPS when the base survey cannot be
@@ -705,15 +750,20 @@ def display_catalog_in_aladin(
                 // the HiPS `properties` document (the first thing Aladin needs)
                 // and swap the base layer if it is unreachable or too slow.
                 (function () {{
-                    const primary = '{survey}';
-                    const fallback = '{fallback_survey}';
+                    const primary = {survey_json};
+                    const fallback = {fallback_survey_json};
                     if (!fallback || fallback === primary || primary.indexOf('http') === 0) {{
                         return;
                     }}
                     const propertiesUrl = function (id) {{
-                        return 'https://alasky.cds.unistra.fr/' +
-                            id.split('/').map(encodeURIComponent).join('/') +
-                            '/properties';
+                        if (/^https?:\\/\\//i.test(id)) {{
+                            return id.replace(/\\/+$/, '') + '/properties';
+                        }}
+                        const roots = {{
+                            'CDS/P/DSS2/color': 'https://alasky.cds.unistra.fr/DSS/DSSColor',
+                            'CDS/P/DSS2/red': 'https://alasky.cds.unistra.fr/DSS/DSS2Merged'
+                        }};
+                        return roots[id] ? roots[id] + '/properties' : null;
                     }};
                     const switchToFallback = function (broken) {{
                         if (typeof aladin.setBaseImageLayer !== 'function') {{
@@ -724,7 +774,7 @@ def display_catalog_in_aladin(
                             ' could not be loaded, switching to ' + fallback
                         );
                         aladinShowProblem(
-                            'Survey ' + broken + ' could not be loaded; showing ' +
+                            'Survey ' + broken + ' could not be loaded; trying ' +
                             fallback + ' instead.'
                         );
                         try {{
@@ -737,9 +787,18 @@ def display_catalog_in_aladin(
                         }}
                     }};
                     const probe = function (id, onFail) {{
+                        const url = propertiesUrl(id);
+                        if (!url) {{
+                            aladinShowProblem(
+                                'Cannot automatically check survey ' + id +
+                                '; use a HiPS URL for an availability check. ' +
+                                'Source coordinates remain available above.'
+                            );
+                            return;
+                        }}
                         const controller = new AbortController();
                         const timer = setTimeout(function () {{ controller.abort(); }}, 12000);
-                        fetch(propertiesUrl(id), {{ cache: 'no-store', signal: controller.signal }})
+                        fetch(url, {{ cache: 'no-store', signal: controller.signal }})
                             .then(function (response) {{
                                 clearTimeout(timer);
                                 if (!response.ok) {{ onFail(); }}
@@ -754,8 +813,8 @@ def display_catalog_in_aladin(
                         probe(fallback, function () {{
                             aladinShowProblem(
                                 'Neither ' + primary + ' nor ' + fallback +
-                                ' could be reached from this network ' +
-                                '(alasky.cds.unistra.fr blocked or offline).'
+                                ' could be reached from this network. ' +
+                                'Source coordinates remain available above.'
                             );
                         }});
                     }});
@@ -947,13 +1006,17 @@ def display_catalog_in_aladin(
                 }}
             }} catch (error) {{
                 console.error("Error initializing Aladin Lite v3 or adding sources:", error);
+                aladinShowProblem('Error loading Aladin viewer: ' + String(error) + '. Source coordinates remain available above.');
                 document.getElementById('aladin-lite-div').innerHTML = '<p style="color:red;">Error loading Aladin v3 viewer. Try refreshing the page or use a modern browser.</p>';
             }}
         }}).catch((error) => {{
             console.error("Aladin Lite initialization failed:", error);
             aladinShowProblem(error.message || "Error initializing Aladin Lite.");
+            console.error("Aladin Lite initialization failed:", error);
+            aladinShowProblem(error.message || "Error initializing Aladin Lite.");
             document.getElementById('aladin-lite-div').innerHTML = '<p style="color:red;">Error initializing Aladin v3. Please check your browser console for details.</p>';
         }});
+        }}
     </script>
 </body>
 </html>
@@ -971,7 +1034,7 @@ def display_catalog_in_aladin(
                 st.dataframe(display_df, use_container_width=True)
 
 
-def provide_download_buttons(folder_path):
+def provide_download_buttons(folder_path: str, archive_path: str | None = None) -> None:
     """
     Creates a single download button for a zip file containing all files in the specified folder.
     This function compresses all files in the given folder into a single zip archive
@@ -979,6 +1042,8 @@ def provide_download_buttons(folder_path):
 
     Args:
         folder_path (str): The path to the folder containing files to be zipped and made downloadable
+        archive_path (str, optional): Previously created archive to use when the
+            session working directory no longer contains result files.
 
     Returns:
         None: The function creates a Streamlit download button directly in the app interface
@@ -996,6 +1061,17 @@ def provide_download_buttons(folder_path):
             and not f.lower().endswith(".fits")
         ]
         if not files:
+            if archive_path and os.path.isfile(archive_path):
+                with open(archive_path, "rb") as archive:
+                    st.caption("Previously archived results")
+                    st.download_button(
+                        label="📦 Download Results (ZIP)",
+                        data=archive.read(),
+                        file_name=os.path.basename(archive_path),
+                        mime="application/zip",
+                        on_click="ignore",
+                    )
+                return
             st.warning("No files found in output directory")
             return
 
@@ -1027,7 +1103,7 @@ def provide_download_buttons(folder_path):
         st.error(f"Error creating zip archive: {str(e)}")
 
 
-def display_archived_files_browser(output_dir):
+def display_archived_files_browser(output_dir: str) -> None:
     """
     Display a file browser for archived ZIP files in the user's results directory.
     This function creates a secure file browser that only allows access to ZIP files
@@ -1048,37 +1124,50 @@ def display_archived_files_browser(output_dir):
         return
 
     try:
-        # Collect only ZIP files
         zip_files = []
-        for item in os.listdir(output_dir):
-            item_path = os.path.join(output_dir, item)
-            if os.path.isfile(item_path) and item.lower().endswith(".zip"):
-                # Get file stats
+        for root, dirs, files in os.walk(output_dir):
+            dirs[:] = [
+                name for name in dirs
+                if not name.startswith("work_")
+                and not os.path.islink(os.path.join(root, name))
+            ]
+            for item in files:
+                item_path = os.path.join(root, item)
+                if (
+                    not item.lower().endswith(".zip")
+                    or os.path.islink(item_path)
+                    or not os.path.isfile(item_path)
+                ):
+                    continue
                 try:
                     stat = os.stat(item_path)
-                    file_size = stat.st_size
-                    mod_time = datetime.fromtimestamp(stat.st_mtime)
-
                     zip_files.append(
                         {
                             "name": item,
-                            "size": file_size,
-                            "modified": mod_time,
+                            "relative_name": os.path.relpath(item_path, output_dir),
+                            "size": stat.st_size,
+                            "modified": datetime.fromtimestamp(stat.st_mtime),
                             "path": item_path,
                         }
                     )
-                except Exception:
-                    # Skip files that can't be accessed
+                except OSError as error:
+                    st.warning(f"Could not inspect archive {item}: {error}")
                     continue
+
+        selected = st.session_state.get("archived_selected_zip")
+        selected_archive = next(
+            (item for item in zip_files if selected and item["path"] == selected.get("path")),
+            None,
+        )
+        if selected and selected_archive is None:
+            st.session_state.pop("archived_selected_zip", None)
+            st.session_state.pop("archived_selected_zip_data", None)
 
         if not zip_files:
             return
 
         # Sort files by modification time (newest first)
         zip_files.sort(key=lambda x: x["modified"], reverse=True)
-
-        # Keep lightweight UI state for deferred archive loading
-        selected_archive = st.session_state.get("archived_selected_zip")
 
         # Compact display with per-file selection buttons
         for file_info in zip_files:
@@ -1109,7 +1198,7 @@ def display_archived_files_browser(output_dir):
             with col2:
                 if st.button(
                     "⬇️",
-                    key=f"select_zip_{file_info['name']}",
+                    key=f"select_zip_{file_info['relative_name']}",
                     help=f"Prepare download for {file_info['name']}",
                     use_container_width=True,
                 ):
@@ -1135,7 +1224,7 @@ def display_archived_files_browser(output_dir):
                 data=file_data,
                 file_name=selected_archive["name"],
                 mime="application/zip",
-                key=f"download_selected_zip_{selected_archive['name']}",
+                key=f"download_selected_zip_{selected_archive['relative_name']}",
                 use_container_width=True,
             )
             if downloaded:
@@ -1621,7 +1710,7 @@ def format_astrocolibri_events(events):
     return view.reset_index(drop=True)
 
 
-def initialize_session_state():
+def initialize_session_state() -> None:
     """
     Initialize all session state variables for the application.
     Ensures all required keys have default values.
@@ -1648,11 +1737,7 @@ def initialize_session_state():
 
     # Output directory
     if "output_dir" not in st.session_state:
-        username = st.session_state.get("username") or "anonymous"
-        st.session_state.output_dir = session_results_path(
-            ensure_output_directory(directory=f"{username}_results"),
-            st.session_state.get("session_id"),
-        )
+        st.session_state.output_dir = None
 
     # Analysis Parameters
     default_analysis_params = {

@@ -5,6 +5,8 @@ from __future__ import annotations
 import base64
 import json
 import re
+import shutil
+import subprocess
 from contextlib import nullcontext
 
 import numpy as np
@@ -19,6 +21,12 @@ from astropy.wcs import WCS
 from xml.parsers.expat import ExpatError
 
 import src.xmatch_catalogs as xmatch_catalogs
+from src.catalog_mirrors import (
+    VIZIER_FALLBACK_SERVER,
+    VIZIER_PRIMARY_SERVER,
+    get_vizier_catalog_with_fallback,
+    query_vizier_with_fallback,
+)
 from src.catalog_mirrors import (
     VIZIER_FALLBACK_SERVER,
     VIZIER_PRIMARY_SERVER,
@@ -61,6 +69,93 @@ def test_safe_catalog_query_reports_timeout_message():
 
     assert result is None
     assert error == "Failed to query SIMBAD: Query timed out"
+
+
+def test_vizier_query_retries_on_harvard_mirror():
+    """A VizieR failure should be retried through the Harvard mirror."""
+
+    class MirrorAwareVizier:
+        def __init__(self):
+            self.VIZIER_SERVER = VIZIER_PRIMARY_SERVER
+            self.servers = []
+
+        def query_region(self, *_args, **_kwargs):
+            self.servers.append(self.VIZIER_SERVER)
+            if self.VIZIER_SERVER == VIZIER_PRIMARY_SERVER:
+                raise requests.exceptions.ConnectTimeout("primary unavailable")
+            return ["fallback result"]
+
+    vizier = MirrorAwareVizier()
+    result, used_fallback = query_vizier_with_fallback(
+        vizier, "query_region", object()
+    )
+
+    assert result == ["fallback result"]
+    assert used_fallback is True
+    assert vizier.servers == [VIZIER_PRIMARY_SERVER, VIZIER_FALLBACK_SERVER]
+
+
+def test_stdpipe_vizier_query_retries_on_harvard_mirror():
+    """The stdpipe VizieR path should use the same mirror fallback."""
+
+    class MirrorAwareVizier:
+        def __init__(self, *, vizier_server=VIZIER_PRIMARY_SERVER):
+            self.server = vizier_server
+
+        def query_region(self):
+            if self.server == VIZIER_PRIMARY_SERVER:
+                raise requests.exceptions.ConnectTimeout("primary unavailable")
+            return "fallback result"
+
+    class FakeCatalogs:
+        Vizier = MirrorAwareVizier
+
+        def get_cat_vizier(self):
+            return self.Vizier().query_region()
+
+    catalogs = FakeCatalogs()
+    result, used_fallback = get_vizier_catalog_with_fallback(catalogs)
+
+    assert result == "fallback result"
+    assert used_fallback is True
+    assert catalogs.Vizier is MirrorAwareVizier
+
+
+def test_simbad_query_retries_on_harvard_cfa_mirror(monkeypatch):
+    """A SIMBAD failure should be retried through the Harvard CFA mirror."""
+    requested_servers = []
+
+    class FakeSimbad:
+        def __init__(self, server):
+            self.server = server
+            self.fields = []
+
+        def add_votable_fields(self, *fields):
+            self.fields.extend(fields)
+
+        def query_region(self, *_args, **_kwargs):
+            if self.server == xmatch_catalogs.SIMBAD_PRIMARY_SERVER:
+                raise requests.exceptions.ConnectTimeout("primary unavailable")
+            return ["fallback result"]
+
+    def _create_simbad_client(server):
+        requested_servers.append(server)
+        return FakeSimbad(server)
+
+    monkeypatch.setattr(xmatch_catalogs, "_create_simbad_client", _create_simbad_client)
+
+    result, used_fallback, error = xmatch_catalogs.query_simbad_region_with_fallback(
+        SkyCoord(ra=1.0, dec=2.0, unit="deg"),
+        1.0 * u.arcmin,
+    )
+
+    assert result == ["fallback result"]
+    assert used_fallback is True
+    assert error is None
+    assert requested_servers == [
+        xmatch_catalogs.SIMBAD_PRIMARY_SERVER,
+        xmatch_catalogs.SIMBAD_FALLBACK_SERVER,
+    ]
 
 
 def test_vizier_query_retries_on_harvard_mirror():
@@ -456,6 +551,12 @@ def test_enhance_catalog_matches_simbad_skybot_milliquas_and_10pc(monkeypatch):
 
         def query_region(self, *_args, **_kwargs):
             return simbad_result
+    class FakeSimbad:
+        def add_votable_fields(self, *_fields):
+            pass
+
+        def query_region(self, *_args, **_kwargs):
+            return simbad_result
 
     def _vizier_query(_self, *_args, catalog=None, **_kwargs):
         if catalog == ["B/vsx/vsx"]:
@@ -485,6 +586,9 @@ def test_enhance_catalog_matches_simbad_skybot_milliquas_and_10pc(monkeypatch):
         status_code = 503
         content = b""
 
+    monkeypatch.setattr(
+        xmatch_catalogs, "_create_simbad_client", lambda _server: FakeSimbad()
+    )
     monkeypatch.setattr(
         xmatch_catalogs, "_create_simbad_client", lambda _server: FakeSimbad()
     )
@@ -849,7 +953,7 @@ def _render_aladin_widget(monkeypatch, **kwargs):
     return rendered_html[0]
 
 
-def test_aladin_reports_missing_webgl2(monkeypatch):
+def test_aladin_reports_missing_webgl2(monkeypatch: pytest.MonkeyPatch) -> None:
     """A missing WebGL2 context must be reported instead of a blank viewer."""
     html = _render_aladin_widget(monkeypatch)
 
@@ -858,6 +962,7 @@ def test_aladin_reports_missing_webgl2(monkeypatch):
     assert "box.textContent = message" in html
     assert "provides no WebGL2 context" in html
     assert "webgl.force-enabled" in html
+    assert "Source coordinates (available without Aladin)" in html
 
     # The status box and the helper exist before the probe runs, and the probe
     # runs before Aladin is asked to draw anything.
@@ -865,26 +970,138 @@ def test_aladin_reports_missing_webgl2(monkeypatch):
     helper_index = html.index("function aladinShowProblem(message)")
     probe_index = html.index("document.createElement('canvas').getContext('webgl2')")
     assert status_index < probe_index
-    assert helper_index < html.index("aladinScriptPromise.then(() => A.init).then")
+    assert helper_index < html.index("aladinLoadLibrary().then")
 
 
-def test_aladin_falls_back_when_primary_script_download_fails(monkeypatch):
+def test_aladin_falls_back_when_primary_script_download_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     """A blocked CDS aladin.js download should load the jsDelivr fallback."""
     html = _render_aladin_widget(monkeypatch)
 
-    script_tag = re.search(r'<script[^>]*src="[^"]*aladin\.js"[^>]*>', html).group(0)
-    assert 'src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js"' in script_tag
-    assert 'onerror="aladinLoadFallback(this)"' in script_tag
-    assert "https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js" in html
-    assert "fallbackScript.onerror" in html
-    assert "Aladin Lite could not be downloaded from either the CDS server or jsDelivr" in html
-    assert "aladinScriptPromise.then(() => A.init).then(() => {" in html
+    assert "https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" in html
+    assert "import('https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js')" in html
+    assert "aladinInitialize(module.default)" in html
+    assert "CDS Aladin script timed out." in html
+    assert "Aladin Lite could not be initialized from either CDS or jsDelivr" in html
 
-    # The helper and the status box already exist when onerror can fire.
-    helper_index = html.index("function aladinShowProblem(message)")
-    status_index = html.index('id="aladin-lite-status"')
-    assert helper_index < html.index(script_tag)
-    assert status_index < html.index(script_tag)
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is required for JavaScript execution")
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "primary", "fallback", "timeout", "init_failure", "both_fail",
+        "no_webgl", "surveys_fail", "fallback_url", "unknown_survey",
+    ],
+)
+def test_aladin_javascript_failure_paths(monkeypatch: pytest.MonkeyPatch, scenario: str) -> None:
+    options = {}
+    if scenario == "fallback_url":
+        options["fallback_survey"] = "https://mirror.example/hips"
+    elif scenario == "unknown_survey":
+        options["fallback_survey"] = "CDS/P/other"
+    html = _render_aladin_widget(monkeypatch, **options)
+    script = re.search(r'<script type="text/javascript">([\s\S]*?)</script>', html).group(1)
+    harness = r"""
+const vm = require('node:vm');
+const input = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+const events = {primary: 0, fallback: 0, sources: 0, switches: 0, urls: []};
+const status = {textContent: ''};
+const viewer = {innerHTML: ''};
+function api(init) {
+    return {
+        init,
+        aladin: () => ({
+            addCatalog: () => {},
+            setBaseImageLayer: () => { events.switches++; }
+        }),
+        catalog: () => ({
+            addSources: sources => { events.sources += sources.length; },
+            updateShape: () => {}
+        }),
+        source: (ra, dec, data) => ({ra, dec, data})
+    };
+}
+const good = api(Promise.resolve());
+const context = {
+    console: {error: () => {}, warn: () => {}, info: () => {}},
+    window: {},
+    document: {
+        getElementById: id => id === 'aladin-lite-status' ? status : viewer,
+        createElement: tag => tag === 'canvas'
+            ? {getContext: () => input.scenario !== 'no_webgl'}
+            : {},
+        head: {appendChild: script => {
+            events.primary++;
+            if (input.scenario === 'timeout') return;
+            queueMicrotask(() => {
+                if (['primary', 'surveys_fail', 'fallback_url', 'unknown_survey'].includes(input.scenario)) {
+                    context.window.A = good;
+                    script.onload();
+                } else if (input.scenario === 'init_failure') {
+                    context.window.A = api(Promise.reject(new Error('initialization failed')));
+                    script.onload();
+                } else {
+                    script.onerror();
+                }
+            });
+        }}
+    },
+    __importAladin: () => {
+        events.fallback++;
+        return input.scenario === 'both_fail'
+            ? Promise.reject(new Error('offline'))
+            : Promise.resolve({default: good});
+    },
+    fetch: url => {
+        events.urls.push(url);
+        const fails = input.scenario === 'surveys_fail'
+            || (['fallback_url', 'unknown_survey'].includes(input.scenario) && events.urls.length === 1);
+        return Promise.resolve({ok: !fails});
+    },
+    AbortController,
+    setTimeout: (callback, ms) => setTimeout(callback, ms === 8000 ? 10 : ms),
+    clearTimeout,
+    atob: text => Buffer.from(text, 'base64').toString('binary')
+};
+const script = input.script.replace(
+    "import('https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js')",
+    "__importAladin()"
+);
+vm.runInNewContext(script, context);
+setTimeout(() => console.log(JSON.stringify({events, status: status.textContent})), 80);
+"""
+    result = subprocess.run(
+        [shutil.which("node"), "-e", harness],
+        input=json.dumps({"script": script, "scenario": scenario}),
+        text=True,
+        capture_output=True,
+        timeout=5,
+        check=True,
+    )
+    output = json.loads(result.stdout)
+    events = output["events"]
+    if scenario == "no_webgl":
+        assert events["primary"] == events["fallback"] == 0
+        assert "no WebGL2 context" in output["status"]
+    elif scenario == "both_fail":
+        assert events["primary"] == events["fallback"] == 1
+        assert "could not be initialized from either CDS or jsDelivr" in output["status"]
+    else:
+        assert events["sources"] == 1
+        assert events["fallback"] == (
+            0 if scenario in ("primary", "surveys_fail", "fallback_url", "unknown_survey") else 1
+        )
+        if scenario == "surveys_fail":
+            assert events["switches"] == 1
+            assert "Neither CDS/P/DSS2/color nor CDS/P/DSS2/red" in output["status"]
+            assert events["urls"] == [
+                "https://alasky.cds.unistra.fr/DSS/DSSColor/properties",
+                "https://alasky.cds.unistra.fr/DSS/DSS2Merged/properties",
+            ]
+        elif scenario == "fallback_url":
+            assert events["urls"][-1] == "https://mirror.example/hips/properties"
+        elif scenario == "unknown_survey":
+            assert len(events["urls"]) == 1
+            assert "Cannot automatically check survey CDS/P/other" in output["status"]
 
 
 def test_skybot_cone_search_retries_transient_failures(monkeypatch):

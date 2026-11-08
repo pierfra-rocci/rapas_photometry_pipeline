@@ -21,11 +21,14 @@ import os
 import sqlite3
 import sys
 import types
+from pathlib import Path
+from typing import Any, Iterator
+from urllib.parse import unquote
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 from api import main as api_main
 from api.database import Base, get_db
@@ -93,6 +96,7 @@ def legacy_backend(tmp_path, monkeypatch):
     # ``init_db()`` at import time. Redirect just that one path join so the
     # import cannot create or lock the developer's repo-root users.db.
     db_path = tmp_path / "legacy_users.db"
+    monkeypatch.setenv("RPP_DB_PATH", str(db_path))
     real_join = os.path.join
 
     def _redirected_join(*parts):
@@ -147,6 +151,8 @@ def test_api_login_accepts_username_or_email(api_client):
 
     by_email = client.post("/api/login", json={"username": EMAIL, "password": PASSWORD})
     assert by_email.status_code == 200
+    assert by_username.json()["user_id"] > 0
+    assert by_username.json()["user_id"] == by_email.json()["user_id"]
 
     bad_password = client.post(
         "/api/login", json={"username": EMAIL, "password": "WrongPass1"}
@@ -165,6 +171,186 @@ def test_api_login_matches_email_case_insensitively(api_client):
         json={"username": "intern1@example.com", "password": PASSWORD},
     )
     assert response.status_code == 200
+
+
+def test_api_colliding_usernames_have_distinct_storage_ids(api_client: Any) -> None:
+    client, _, _ = api_client
+    ids = []
+    for username, email in (
+        ("alice", "alice@example.com"),
+        ("attacker/alice", "other@example.com"),
+    ):
+        registered = client.post(
+            "/api/register",
+            json={"username": username, "password": PASSWORD, "email": email},
+        )
+        assert registered.status_code == 201
+        logged_in = client.post(
+            "/api/login", json={"username": username, "password": PASSWORD}
+        )
+        assert logged_in.status_code == 200
+        ids.append(logged_in.json()["user_id"])
+    assert len(set(ids)) == 2
+
+
+def test_deleted_account_id_is_not_reused_for_registration(api_client: Any) -> None:
+    from sqlalchemy import text
+
+    client, testing_session, _ = api_client
+    _register_api(client)
+    original = client.post(
+        "/api/login", json={"username": USERNAME, "password": PASSWORD}
+    ).json()["user_id"]
+    with testing_session() as session:
+        session.execute(text("DELETE FROM users WHERE id = :id"), {"id": original})
+        session.commit()
+
+    assert client.post(
+        "/api/register",
+        json={
+            "username": "replacement",
+            "password": PASSWORD,
+            "email": "replacement@example.com",
+        },
+    ).status_code == 201
+    replacement = client.post(
+        "/api/login", json={"username": "replacement", "password": PASSWORD}
+    ).json()["user_id"]
+    assert replacement != original
+
+
+def test_existing_accounts_keep_ids_and_credentials_on_upgrade(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, legacy_backend: Any
+) -> None:
+    from werkzeug.security import generate_password_hash
+
+    from api.models import User
+
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'existing.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    testing_session = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    password_hash = generate_password_hash(PASSWORD)
+    with testing_session() as session:
+        session.add_all(
+            [
+                User(id=-5, username="negative", email="negative@example.com", password=password_hash),
+                User(id=0, username="zero", email="zero@example.com", password=password_hash),
+                User(id=41, username=USERNAME, email=EMAIL, password=password_hash),
+            ]
+        )
+        session.commit()
+
+    monkeypatch.setattr(api_main, "engine", engine)
+
+    def override_get_db() -> Iterator[Session]:
+        with testing_session() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        with TestClient(app) as client:
+            accounts = (("negative", -5), ("zero", 0), (USERNAME, 41))
+            for username, expected_id in accounts:
+                response = client.post(
+                    "/api/login",
+                    json={"username": username, "password": PASSWORD},
+                )
+                assert response.status_code == 200
+                assert response.json()["user_id"] == expected_id
+            backend, _ = legacy_backend
+            monkeypatch.setattr(backend, "DB_PATH", str(tmp_path / "existing.db"))
+            backend.init_db()
+            with backend.app.test_client() as legacy:
+                for username, expected_id in accounts:
+                    response = legacy.post(
+                        "/login", data={"username": username, "password": PASSWORD}
+                    )
+                    assert response.status_code == 200
+                    assert int(response.headers["X-RPP-User-Id"]) == expected_id
+            with testing_session() as session:
+                existing_user = session.get(User, 41)
+                assert existing_user is not None
+                assert existing_user.username == USERNAME
+                assert existing_user.email == EMAIL
+                assert existing_user.password == password_hash
+                session.delete(existing_user)
+                session.commit()
+            assert client.post(
+                "/api/register",
+                json={
+                    "username": "replacement",
+                    "password": PASSWORD,
+                    "email": "replacement@example.com",
+                },
+            ).status_code == 201
+            response = client.post(
+                "/api/login",
+                json={"username": "replacement", "password": PASSWORD},
+            )
+            assert response.json()["user_id"] > 41
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
+def test_both_backends_share_id_reservations(
+    api_client: Any, legacy_backend: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sqlalchemy import text
+
+    client, testing_session, _ = api_client
+    backend, _ = legacy_backend
+    with testing_session() as session:
+        db_path = session.get_bind().url.database
+    monkeypatch.setattr(backend, "DB_PATH", db_path)
+    backend.init_db()
+    _register_api(client)
+    original = client.post(
+        "/api/login", json={"username": USERNAME, "password": PASSWORD}
+    ).json()["user_id"]
+    with backend.app.test_client() as legacy:
+        logged_in = legacy.post(
+            "/login", data={"username": USERNAME, "password": PASSWORD}
+        )
+        assert int(logged_in.headers["X-RPP-User-Id"]) == original
+        with testing_session() as session:
+            session.execute(text("DELETE FROM users WHERE id = :id"), {"id": original})
+            session.commit()
+        assert legacy.post(
+            "/register",
+            data={
+                "username": "replacement",
+                "password": PASSWORD,
+                "email": "replacement@example.com",
+            },
+        ).status_code == 201
+        logged_in = legacy.post(
+            "/login", data={"username": "replacement", "password": PASSWORD}
+        )
+        replacement = int(logged_in.headers["X-RPP-User-Id"])
+        assert replacement != original
+        assert client.post(
+            "/api/login", json={"username": "replacement", "password": PASSWORD}
+        ).json()["user_id"] == replacement
+        with testing_session() as session:
+            session.execute(text("DELETE FROM users WHERE id = :id"), {"id": replacement})
+            session.commit()
+        assert client.post(
+            "/api/register",
+            json={
+                "username": "third",
+                "password": PASSWORD,
+                "email": "third@example.com",
+            },
+        ).status_code == 201
+        third = legacy.post(
+            "/login", data={"username": "third", "password": PASSWORD}
+        )
+        assert third.status_code == 200
+        assert int(third.headers["X-RPP-User-Id"]) not in {original, replacement}
 
 
 def test_api_recovery_is_case_insensitive_and_updates_password(api_client):
@@ -283,6 +469,44 @@ def test_legacy_recovery_is_case_insensitive_and_updates_password(legacy_backend
             "/login", data={"username": EMAIL, "password": NEW_PASSWORD}
         )
         assert login.status_code == 200
+
+
+def test_legacy_login_returns_distinct_ids_and_unicode_username(legacy_backend: Any) -> None:
+    backend, _ = legacy_backend
+    identities = []
+    with backend.app.test_client() as client:
+        for username, email in (
+            ("alice", "alice@example.com"),
+            ("attacker/alice", "other@example.com"),
+            ("élise", "unicode@example.com"),
+        ):
+            registered = client.post(
+                "/register",
+                data={"username": username, "password": PASSWORD, "email": email},
+            )
+            assert registered.status_code == 201
+            logged_in = client.post(
+                "/login", data={"username": email, "password": PASSWORD}
+            )
+            assert logged_in.status_code == 200
+            assert unquote(logged_in.headers["X-RPP-Username-Encoded"]) == username
+            identities.append(int(logged_in.headers["X-RPP-User-Id"]))
+    assert len(set(identities)) == 3
+
+
+def test_legacy_backend_uses_database_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_path = tmp_path / "override.db"
+    monkeypatch.setenv("RPP_DB_PATH", str(db_path))
+    spec = importlib.util.spec_from_file_location(
+        "isolated_legacy_backend", Path(__file__).resolve().parents[1] / "backend.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.DB_PATH == str(db_path)
+    assert db_path.exists()
 
 
 def test_legacy_config_auth_stores_against_the_canonical_username(legacy_backend):

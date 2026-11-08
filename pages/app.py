@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from astropy.visualization import ZScaleInterval, ImageNormalize
+from astropy.coordinates import SkyCoord
 
 from src.tools_app import (
     initialize_session_state,
@@ -33,7 +34,7 @@ from src.tools_app import (
     cleanup_temp_files,
     try_gaia_server,
 )
-from src.header_utils import select_science_header, copy_header_or_none, recover_original_wcs
+from src.header_utils import copy_header_or_none
 
 # Local Application Imports
 from src.tools_pipeline import (
@@ -54,11 +55,11 @@ from src.utils import (
     FIGURE_SIZES,
     PIPELINE_PLOT_MIN_HEIGHT,
     get_base_filename,
-    ensure_output_directory,
-    session_results_path,
+    ensure_session_output_directory,
+    ensure_user_output_directory,
+    ensure_user_archive_directory,
     session_tmp_directory,
     cleanup_stale_session_files,
-    sanitize_username,
     initialize_log,
     get_pipeline_figure_size,
     write_to_log,
@@ -91,7 +92,7 @@ from src.transient import (
 
 from src.__version__ import version
 
-from pages.api_client import ApiClient, ApiError, detect_backend
+from pages.api_client import ApiClient, ApiError, can_view_pipeline_logs, detect_backend
 
 
 # Conditional Import (already present, just noting its location)
@@ -252,12 +253,20 @@ if not st.session_state.logged_in:
         )
     st.stop()
 
+user_id = st.session_state.get("user_id")
+if not isinstance(user_id, int) or isinstance(user_id, bool):
+    st.error("Your session has no authenticated account ID. Please log in again.")
+    if st.button("Log out and sign in again"):
+        st.session_state.clear()
+        st.switch_page("pages/login.py")
+    st.stop()
+
 # Remove abandoned work folders of closed sessions (once per session, after login)
 if not st.session_state.get("stale_files_cleaned", False):
     st.session_state["stale_files_cleaned"] = True
     try:
         cleanup_stale_session_files(
-            st.session_state.get("username", "anonymous"),
+            user_id,
             current_session_id=st.session_state["session_id"],
         )
     except Exception as cleanup_error:
@@ -608,8 +617,7 @@ with st.sidebar:
 
 # Add archived files browser to sidebar
 with st.sidebar.expander("📁 Archive", expanded=False):
-    username = sanitize_username(st.session_state.get("username", "anonymous"))
-    output_dir = ensure_output_directory(directory=f"{username}_results")
+    output_dir = ensure_user_output_directory(user_id)
     display_archived_files_browser(output_dir)
 
 # Add logout button at the top right if user is logged in
@@ -617,14 +625,11 @@ if st.session_state.logged_in:
     st.sidebar.markdown("")
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"**Logged in as:** _{st.session_state.username}_")
-    if st.session_state.username in ("admin", "rsavalle"):
+    if can_view_pipeline_logs(user_id):
         if st.sidebar.button("📋 Pipeline Logs"):
             st.switch_page("pages/showlogs.py")
     if st.sidebar.button("Logout"):
-        st.session_state.logged_in = False
-        st.session_state.username = None
-        st.session_state.api_credentials = None
-        st.session_state.legacy_credentials = None
+        st.session_state.clear()
         st.success("Logged out successfully.")
         try:
             st.switch_page("pages/login.py")
@@ -652,17 +657,14 @@ st.sidebar.markdown(
 if "uploaded_temp_path" not in st.session_state:
     uploaded = st.file_uploader(
         "Before uploading the image, check all the parameters on the sidebar. ",
-        type=["fits", "fit", "fts", "fits.gz"],
+        type=["fits", "fit", "fts", "fits.gz", "fts.gz"],
         key=f"science_uploader_{st.session_state.get('upload_generation', 0)}",
     )
     if uploaded:
         try:
             suffix = os.path.splitext(uploaded.name)[1]
-            username = sanitize_username(
-                st.session_state.get("username", "anonymous")
-            )
             user_tmp_dir = session_tmp_directory(
-                username, st.session_state.get("session_id")
+                user_id, st.session_state.get("session_id")
             )
 
             with tempfile.NamedTemporaryFile(
@@ -736,22 +738,29 @@ if science_file is not None:
 
 
 catalog_name = f"{st.session_state['base_filename']}_catalog.csv"
-username = sanitize_username(st.session_state.get("username", "anonymous"))
-archive_dir = ensure_output_directory(directory=f"{username}_results")
-output_dir = session_results_path(archive_dir, st.session_state.get("session_id"))
+archive_dir = ensure_user_archive_directory(user_id)
+output_dir = ensure_session_output_directory(user_id, st.session_state.get("session_id"))
 st.session_state["output_dir"] = output_dir
 
 if st.session_state.get("final_phot_table") is not None:
-    provide_download_buttons(output_dir)
+    last_zip_path = st.session_state.get("last_result_zip_path")
+    if not (
+        isinstance(last_zip_path, str)
+        and os.path.dirname(os.path.realpath(last_zip_path)) == os.path.realpath(archive_dir)
+    ):
+        last_zip_path = None
+    provide_download_buttons(output_dir, archive_path=last_zip_path)
     zip_filename, zip_path = zip_results_on_exit(
         science_file, output_dir, archive_dir=archive_dir
     )
+    if zip_filename and zip_path:
+        st.session_state["last_result_zip_path"] = zip_path
 
     # Record in database if ZIP was created and we have a stored FITS file
-    if zip_filename and st.session_state.get("stored_fits_filename"):
+    if zip_filename and zip_path and science_file is not None and st.session_state.get("stored_fits_filename"):
         try:
             record_analysis_result(
-                username=username,
+                username=st.session_state.username,
                 original_filename=science_file.name,
                 stored_fits_filename=st.session_state["stored_fits_filename"],
                 zip_archive_filename=zip_filename,
@@ -770,17 +779,20 @@ _run_analysis_now = bool(
 )
 st.session_state.run_analysis_pipeline = False
 if _run_analysis_now:
+    for key in (
+        "calibrated_header", "wcs_obj", "has_wcs", "stored_fits_filename",
+        "proceed_without_wcs", "pixel_size_arcsec", "mean_fwhm_pixel",
+        "valid_ra", "valid_dec", "final_phot_table", "last_result_zip_path",
+    ):
+        st.session_state.pop(key, None)
     persisted_upload_path = st.session_state.get("uploaded_temp_path")
     if persisted_upload_path and os.path.exists(persisted_upload_path):
         science_file_path = persisted_upload_path
     else:
         suffix = os.path.splitext(science_file.name)[1]
 
-        username = sanitize_username(
-            st.session_state.get("username", "anonymous")
-        )
         user_tmp_dir = session_tmp_directory(
-            username, st.session_state.get("session_id")
+            user_id, st.session_state.get("session_id")
         )
 
         # Now use this directory for the temp file
@@ -800,9 +812,17 @@ if _run_analysis_now:
     st.session_state["last_saved_log_content"] = None
 
 if _run_analysis_now:
+    if science_file_path is None:
+        st.error("The staged FITS file path is unavailable. Analysis stopped.")
+        st.stop()
     with st.spinner("Loading FITS data..."):
         raw_data, science_header = load_fits_data(science_file)
         science_data = raw_data
+
+    if science_data is None or science_header is None:
+        st.error("The FITS image or its header could not be loaded. Analysis stopped.")
+        write_to_log(st.session_state.log_buffer, "FITS loading failed", level="ERROR")
+        st.stop()
 
     if science_data is not None and science_header is not None:
         write_to_log(
@@ -864,16 +884,9 @@ if _run_analysis_now:
     # Initialize use_astrometry to track if we ran plate solving
     use_astrometry = False
 
-    # If WCS creation fails due to singular matrix, try to proceed without WCS for detection
     proceed_without_wcs = False
-    if wcs_obj is None and "singular" in str(wcs_error).lower():
-        st.warning(
-            "WCS header has issues: "
-            f"{wcs_error}. Will attempt source detection without WCS "
-            "and then try plate solving."
-        )
-        proceed_without_wcs = True
-    elif wcs_obj is None:
+    original_wcs = wcs_obj
+    if wcs_obj is None:
         st.warning(f"No valid WCS found : {wcs_error}")
         st.write("Attempt plate solving...")
         use_astrometry = True
@@ -894,7 +907,7 @@ if _run_analysis_now:
             use_astrometry = False
 
     # Handle plate solving
-    if (wcs_obj is None and not proceed_without_wcs) or force_plate_solve:
+    if use_astrometry:
         use_astrometry = True
         if use_astrometry:
             plate_solve_reason = (
@@ -902,43 +915,38 @@ if _run_analysis_now:
             )
             with st.spinner("Running astrometry check and plate solving..."):
                 original_science_header = science_header
-                wcs_obj, solved_header, log_messages, error = solve_with_astrometrynet(
+                solved_wcs, solved_header, log_messages, error = solve_with_astrometrynet(
                     science_file_path
-                )
-                science_header = select_science_header(
-                    original_science_header,
-                    solved_header,
                 )
                 handle_log_messages(log_messages)
                 if error:
                     st.error(error)
 
-                if wcs_obj is None:
-                    if force_plate_solve:
-                        st.error(
-                            "Plate solving failed. Will use original WCS if available."
-                        )
-                        # Try to restore original WCS by reloading header
-                        wcs_obj, original_header = recover_original_wcs(
-                            science_file,
-                            load_fits_data,
-                            safe_wcs_create,
-                        )
-                        if original_header is not None and wcs_obj is not None:
-                            science_header = original_header
-                            st.success("Restored original WCS solution")
-                        else:
-                            proceed_without_wcs = True
+                wcs_obj = None
+                if solved_wcs is not None and solved_header is not None and not error:
+                    wcs_obj, solved_error, solved_messages = safe_wcs_create(solved_header)
+                    handle_log_messages(solved_messages)
+                    if wcs_obj is None:
+                        st.error(f"Plate solving returned an invalid WCS: {solved_error}")
+
+                solution_accepted = wcs_obj is not None
+                if not solution_accepted:
+                    if force_plate_solve and original_wcs is not None:
+                        science_header = original_science_header
+                        wcs_obj = original_wcs
+                        use_astrometry = False
+                        st.warning("Plate solving failed; using the original valid WCS.")
                     else:
                         st.error("Plate solving failed. No WCS solution was returned.")
                         proceed_without_wcs = True
                 else:
+                    science_header = solved_header
                     st.session_state["calibrated_header"] = science_header
                     st.session_state["wcs_obj"] = wcs_obj
 
                 log_buffer = st.session_state["log_buffer"]
 
-                if wcs_obj is not None:
+                if solution_accepted:
                     solve_type = "Plate-solve" if force_plate_solve else "Initial solve"
                     st.success(f"{solve_type} successful")
                     write_to_log(
@@ -963,6 +971,7 @@ if _run_analysis_now:
                         also_save_to_data_dir=True,
                         original_filename=science_file.name,
                         username=st.session_state.get("username", "anonymous"),
+                        user_id=user_id,
                     )
                     if wcs_fits_path:
                         st.success("WCS-solved FITS saved "
@@ -970,6 +979,11 @@ if _run_analysis_now:
                         write_to_log(log_buffer, f"WCS-solved FITS saved to {wcs_fits_path}")
                         st.session_state["stored_fits_filename"] = stored_fits_filename
                         st.session_state["has_wcs"] = True
+                        if stored_fits_filename is None:
+                            st.warning(
+                                "The private WCS FITS copy could not be saved; "
+                                "see the server log for details."
+                            )
                     elif wcs_fits_error:
                         st.warning(f"Could not save WCS FITS: {wcs_fits_error}")
                         write_to_log(log_buffer, f"Warning: {wcs_fits_error}", level="WARNING")
@@ -1023,7 +1037,7 @@ if _run_analysis_now:
                         log_buffer,
                         f"Updated seeing FWHM: {seeing:.2f} arcsec ({mean_fwhm_pixel:.2f} pixels)",
                     )
-                else:
+                elif wcs_obj is None:
                     st.error("Plate solving failed")
                     write_to_log(
                         log_buffer,
@@ -1034,6 +1048,9 @@ if _run_analysis_now:
 
     # Store whether we're proceeding without WCS
     st.session_state["proceed_without_wcs"] = proceed_without_wcs
+    if not proceed_without_wcs and wcs_obj is not None:
+        st.session_state["calibrated_header"] = science_header
+        st.session_state["wcs_obj"] = wcs_obj
     if proceed_without_wcs:
         st.warning(
             "Proceeding without valid WCS - photometry will be limited to instrumental magnitudes"
@@ -1200,9 +1217,18 @@ if _run_analysis_now:
             f"Final Estimated FWHM: {seeing:.2f} arcsec ({mean_fwhm_pixel:.2f} pixels)",
         )
 
-        ra_val, dec_val, coord_source = extract_coordinates(science_header)
+        if wcs_obj is not None:
+            center = wcs_obj.pixel_to_world(
+                (science_data.shape[1] - 1) / 2, (science_data.shape[0] - 1) / 2
+            )
+            if not isinstance(center, SkyCoord):
+                raise ValueError("Celestial WCS did not return sky coordinates")
+            center = center.icrs
+            ra_val, dec_val = float(center.ra.degree), float(center.dec.degree)
+            coord_source = "WCS image center"
+        else:
+            ra_val, dec_val, coord_source = extract_coordinates(science_header)
         if ra_val is not None and dec_val is not None:
-            from astropy.coordinates import SkyCoord
             import astropy.units as u
             coord = SkyCoord(ra=ra_val, dec=dec_val, unit="deg")
             ra_sex = coord.ra.to_string(unit=u.hour, sep=":", precision=2, pad=True)
@@ -1216,7 +1242,6 @@ if _run_analysis_now:
                 f"Target coordinates: RA={ra_val}° ({ra_sex}), DEC={dec_val}° ({dec_sex}) ({coord_source})",
             )
             ra_missing = dec_missing = False
-            ra_val = dec_val = None  # Add this line
         else:
             st.warning(f"Coordinate issue: {coord_source}")
             write_to_log(
@@ -1299,16 +1324,8 @@ if _run_analysis_now:
             else:
                 st.warning("Please enter both RA and DEC coordinates")
         else:
-            if science_header is not None:
-                for ra_key in ["RA", "OBJRA", "RA---", "CRVAL1"]:
-                    if ra_key in science_header:
-                        st.session_state["valid_ra"] = science_header[ra_key]
-                        break
-
-                for dec_key in ["DEC", "OBJDEC", "DEC---", "CRVAL2"]:
-                    if dec_key in science_header:
-                        st.session_state["valid_dec"] = science_header[dec_key]
-                        break
+            st.session_state["valid_ra"] = ra_val
+            st.session_state["valid_dec"] = dec_val
 
         if (
             "valid_ra" in st.session_state
@@ -1381,6 +1398,13 @@ if _run_analysis_now:
             seeing = st.session_state.analysis_parameters["seeing"]
             mean_fwhm_pixel = seeing / pixel_size_arcsec
 
+        w = None
+        fwhm_estimate = None
+        mask = None
+        phot_table_df = None
+        epsf_table = None
+        catalog_exported = False
+        instrumental_only = False
         if image_to_process is not None:
             try:
                 with st.spinner(
@@ -1444,12 +1468,15 @@ if _run_analysis_now:
                             )
                             if w is not None:
                                 try:
-                                    ra, dec = w.pixel_to_world_values(
-                                        phot_table_df["xcenter"],
-                                        phot_table_df["ycenter"],
+                                    sky = w.pixel_to_world(
+                                        phot_table_df["xcenter"].to_numpy(),
+                                        phot_table_df["ycenter"].to_numpy(),
                                     )
-                                    phot_table_df["ra"] = ra
-                                    phot_table_df["dec"] = dec
+                                    if not isinstance(sky, SkyCoord):
+                                        raise ValueError("Celestial WCS did not return sky coordinates")
+                                    sky = sky.icrs
+                                    phot_table_df["ra"] = sky.ra.degree
+                                    phot_table_df["dec"] = sky.dec.degree
                                     st.success("Added RA/Dec coordinates from WCS")
                                 except Exception as e:
                                     st.error(f"Could not add RA/Dec coordinates: {e}")
@@ -1458,17 +1485,43 @@ if _run_analysis_now:
                         phot_table_df = None
 
                 if phot_table_df is not None:
-                    with st.spinner("Cross-matching with Catalogs for Zero Point..."):
-                        matched_table, log_messages = cross_match_with_gaia(
-                            phot_table_qtable,
-                            header_to_process,
-                            pixel_size_arcsec,
-                            mean_fwhm_pixel,
-                            filter_band,
-                            filter_max_mag,
-                            refined_wcs=w,
+                    if w is None:
+                        matched_table = None
+                        st.warning(
+                            "No valid WCS: catalog matching and calibration are skipped. "
+                            "Saving pixel positions and uncalibrated instrumental photometry."
                         )
-                        handle_log_messages(log_messages)
+                        instrumental_table = ensure_source_ids(phot_table_df)
+                        if instrumental_table is None:
+                            st.error("Could not prepare instrumental photometry.")
+                            st.stop()
+                        st.session_state["final_phot_table"] = instrumental_table
+                        instrumental_only = True
+                        st.subheader("Instrumental Photometry (no sky coordinates)")
+                        st.dataframe(instrumental_table.head(10))
+                        success_messages, error_messages = save_catalog_files(
+                            instrumental_table,
+                            f"{base_filename}_instrumental_catalog",
+                            output_dir,
+                            instrumental_only=True,
+                        )
+                        for message in success_messages:
+                            st.success(message)
+                        for message in error_messages:
+                            st.error(message)
+                        catalog_exported = bool(success_messages)
+                    else:
+                        with st.spinner("Cross-matching with Catalogs for Zero Point..."):
+                            matched_table, log_messages = cross_match_with_gaia(
+                                phot_table_qtable,
+                                header_to_process,
+                                pixel_size_arcsec,
+                                mean_fwhm_pixel,
+                                filter_band,
+                                filter_max_mag,
+                                refined_wcs=w,
+                            )
+                            handle_log_messages(log_messages)
 
                     if matched_table is not None:
                         if not validate_cross_match_results(
@@ -1659,17 +1712,6 @@ if _run_analysis_now:
                                     base_filename = st.session_state.get(
                                         "base_filename", "photometry"
                                     )
-                                    username = sanitize_username(
-                                        st.session_state.get(
-                                            "username", "anonymous"
-                                        )
-                                    )
-                                    output_dir = session_results_path(
-                                        ensure_output_directory(
-                                            directory=f"{username}_results"
-                                        ),
-                                        st.session_state.get("session_id"),
-                                    )
                                     hist_filename = f"{base_filename}_histogram_mag.png"
                                     hist_filepath = os.path.join(
                                         output_dir, hist_filename
@@ -1712,17 +1754,7 @@ if _run_analysis_now:
                                             _offset_base = st.session_state.get(
                                                 "base_filename", "photometry"
                                             )
-                                            _offset_user = sanitize_username(
-                                                st.session_state.get(
-                                                    "username", "anonymous"
-                                                )
-                                            )
-                                            _offset_dir = session_results_path(
-                                                ensure_output_directory(
-                                                    directory=f"{_offset_user}_results"
-                                                ),
-                                                st.session_state.get("session_id"),
-                                            )
+                                            _offset_dir = output_dir
                                             offset_filename = (
                                                 f"{_offset_base}_psf_aperture_offset.png"
                                             )
@@ -1857,10 +1889,48 @@ if _run_analysis_now:
                                     st.success(msg)
                                 for msg in error_messages:
                                     st.error(msg)
+                                catalog_exported = bool(success_messages)
 
             except Exception as e:
                 st.error(f"Error during zero point calibration: {str(e)}")
                 st.exception(e)
+
+            if phot_table_df is not None and not phot_table_df.empty and not catalog_exported:
+                message = (
+                    "Photometric calibration or catalog export failed. "
+                    "Saving uncalibrated instrumental photometry; "
+                    "transient finding requires calibrated magnitudes and will be skipped."
+                )
+                st.warning(message)
+                write_to_log(log_buffer, message, level="WARNING")
+                instrumental_table = phot_table_df.copy()
+                if epsf_table is not None:
+                    try:
+                        instrumental_table, log_messages = merge_photometry_catalogs(
+                            instrumental_table, epsf_table, tolerance_pixels=2.0
+                        )
+                        handle_log_messages(log_messages)
+                    except Exception as e:  # noqa: BLE001
+                        st.warning(f"Could not merge PSF photometry into the instrumental catalog: {e}")
+                        write_to_log(log_buffer, f"Instrumental PSF merge failed: {e}", level="WARNING")
+                instrumental_table = ensure_source_ids(instrumental_table)
+                success_messages, error_messages = save_catalog_files(
+                    instrumental_table,
+                    f"{base_filename}_instrumental_catalog",
+                    output_dir,
+                    instrumental_only=True,
+                )
+                for message in success_messages:
+                    st.success(message)
+                for message in error_messages:
+                    st.error(message)
+                if success_messages:
+                    st.session_state["final_phot_table"] = instrumental_table
+                    instrumental_only = True
+                    st.subheader("Instrumental Photometry (uncalibrated)")
+                    st.dataframe(instrumental_table.head(10))
+                else:
+                    st.session_state["final_phot_table"] = None
 
             # Calculate search radius for catalog enhancement and transient finding
             # This needs to be outside the try-except block so it's available for transient finder
@@ -1882,33 +1952,21 @@ if _run_analysis_now:
             ra_center = None
             dec_center = None
 
-            # Use the correct header - prioritize calibrated header if available
-            header_for_coords = st.session_state.get(
-                "calibrated_header", science_header
-            )
-            if header_for_coords is None:
-                header_for_coords = science_header
-
-            coord_keys = [("CRVAL1", "CRVAL2"), ("RA", "DEC"), ("OBJRA", "OBJDEC")]
-
-            for ra_key, dec_key in coord_keys:
-                if (
-                    header_for_coords is not None
-                    and ra_key in header_for_coords
-                    and dec_key in header_for_coords
-                ):
-                    try:
-                        ra_center = float(header_for_coords[ra_key])
-                        dec_center = float(header_for_coords[dec_key])
-                        if ra_center is not None and dec_center is not None:
-                            break
-                    except (ValueError, TypeError):
-                        continue
-
-            # Fallback to session state coordinates if header failed
-            if ra_center is None or dec_center is None:
-                ra_center = st.session_state.get("valid_ra")
-                dec_center = st.session_state.get("valid_dec")
+            if w is not None:
+                try:
+                    center = w.pixel_to_world(
+                        (science_data.shape[1] - 1) / 2,
+                        (science_data.shape[0] - 1) / 2,
+                    )
+                    if not isinstance(center, SkyCoord):
+                        raise ValueError("Celestial WCS did not return sky coordinates")
+                    center = center.icrs
+                    ra_center, dec_center = float(center.ra.degree), float(center.dec.degree)
+                    if not np.isfinite(ra_center) or not np.isfinite(dec_center):
+                        ra_center = dec_center = None
+                        st.warning("The WCS image center is not finite.")
+                except Exception as e:
+                    st.warning(f"Could not determine the WCS image center: {e}")
 
             if ra_center is not None and dec_center is not None:
                 # Check if we have a valid final photometry table
@@ -1941,7 +1999,14 @@ if _run_analysis_now:
                 transient_candidates_df = None
 
                 # Run Transient Finder if enabled
-                if st.session_state.analysis_parameters.get("run_transient_finder"):
+                run_transient_finder = st.session_state.analysis_parameters.get("run_transient_finder")
+                if run_transient_finder and instrumental_only:
+                    st.warning("Transient search skipped: calibrated photometry is unavailable.")
+                elif run_transient_finder and (
+                    final_phot_table is None or fwhm_estimate is None
+                ):
+                    st.warning("Transient search skipped: photometry or FWHM is unavailable.")
+                elif run_transient_finder and final_phot_table is not None and fwhm_estimate is not None:
                     if (
                         "science_file_path" in st.session_state
                         and st.session_state["science_file_path"]
@@ -2058,31 +2123,10 @@ if _run_analysis_now:
                     help="Open CDS XMatch service for these coordinates",
                 )
 
-                # Only provide download buttons if processing was completed
-                if final_phot_table is not None:
-                    provide_download_buttons(output_dir)
-                    cleanup_temp_files()
-                    zip_filename, zip_path = zip_results_on_exit(
-                        science_file, output_dir, archive_dir=archive_dir
-                    )
-                    
-                    # Record in database if ZIP was created and we have a stored FITS file
-                    if zip_filename and st.session_state.get("stored_fits_filename"):
-                        try:
-                            record_analysis_result(
-                                username=st.session_state.get("username", "anonymous"),
-                                original_filename=science_file.name,
-                                stored_fits_filename=st.session_state["stored_fits_filename"],
-                                zip_archive_filename=zip_filename,
-                                zip_stored_relpath=zip_path,
-                                has_wcs=st.session_state.get("has_wcs", True)
-                            )
-                        except Exception as db_error:
-                            # Don't fail the app if database tracking fails
-                            print(f"Warning: Could not record analysis in database: {db_error}")
             else:
                 st.warning(
-                    "Could not determine coordinates from image header. Cannot display ESASky or Aladin Viewer."
+                    "A valid celestial WCS and field center are required for "
+                    "transient searches and sky viewers."
                 )
 
 else:
@@ -2120,4 +2164,25 @@ if "log_buffer" in st.session_state and st.session_state["log_buffer"] is not No
         with open(log_filepath, "w", encoding="utf-8") as f:
             f.write(log_content)
         st.session_state["last_saved_log_content"] = log_content
-        write_to_log(log_buffer, f"Log saved to {log_filepath}")
+
+if _run_analysis_now and st.session_state.get("final_phot_table") is not None:
+    provide_download_buttons(output_dir)
+    cleanup_temp_files()
+    zip_filename, zip_path = zip_results_on_exit(
+        science_file, output_dir, archive_dir=archive_dir
+    )
+    if zip_filename and zip_path:
+        st.session_state["last_result_zip_path"] = zip_path
+
+    if zip_filename and zip_path and science_file is not None and st.session_state.get("stored_fits_filename"):
+        try:
+            record_analysis_result(
+                username=st.session_state.get("username", "anonymous"),
+                original_filename=science_file.name,
+                stored_fits_filename=st.session_state["stored_fits_filename"],
+                zip_archive_filename=zip_filename,
+                zip_stored_relpath=zip_path,
+                has_wcs=st.session_state.get("has_wcs", True)
+            )
+        except Exception as db_error:
+            print(f"Warning: Could not record analysis in database: {db_error}")

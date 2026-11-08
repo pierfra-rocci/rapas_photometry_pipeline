@@ -8,10 +8,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 import astroscrappy
-from astropy.wcs import WCS
 from astropy.stats import sigma_clipped_stats, sigma_clip, SigmaClip
 from astropy.coordinates import SkyCoord, EarthLocation, AltAz, get_sun
+from astropy.io.fits import Header
+from astropy.table import Table
 from astropy.time import Time
+from astropy.wcs import WCS
+from matplotlib.figure import Figure
 from photutils.psf import fit_fwhm
 from astropy.visualization import ZScaleInterval
 import astropy.units as u
@@ -26,9 +29,7 @@ from src.tools_pipeline import (
     estimate_background,
     extract_photometric_color_series,
 )
-from src.utils import ensure_output_directory, session_results_path
-
-from typing import Union, Optional, Dict, Tuple
+from typing import Any, Union, Optional, Dict, Tuple
 from src.psf import perform_psf_photometry, compute_encircled_energy
 MAG_ERR_COEFFICIENT = 2.5 / np.log(10.0)  # 1.0857...
 GAUSSIAN_FWHM_TO_SIGMA = 2.0 * np.sqrt(2.0 * np.log(2.0))  # 2.3548...
@@ -1615,9 +1616,16 @@ def check_psf_aperture_consistency(
 
 
 def detection_and_photometry(
-    image_data, science_header, mean_fwhm_pixel, threshold_sigma, detection_mask,
+    image_data: np.ndarray,
+    science_header: Header | dict[str, Any] | None,
+    mean_fwhm_pixel: float,
+    threshold_sigma: float,
+    detection_mask: int,
     fwhm_radius_factor: float = 1.5,
-):
+) -> tuple[
+    Table | None, Table | None, DAOStarFinder | None, Any, WCS | None,
+    Figure | None, float | None, np.ndarray | None,
+]:
     """
     Perform a complete photometry workflow on an astronomical image.
 
@@ -1698,11 +1706,6 @@ def detection_and_photometry(
     except Exception as e:
         st.error(f"Exception while creating WCS in detection_and_photometry: {e}")
         w = None
-
-    pixel_scale = science_header.get(
-        "PIXSCALE",
-        science_header.get("PIXSIZE", science_header.get("PIXELSCAL", 1.0)),
-    )
 
     bkg, bkg_fig, bkg_error = estimate_background(image_data)
 
@@ -1821,25 +1824,7 @@ def detection_and_photometry(
         annulus_apertures.append(CircularAnnulus(positions, r_in=r_in, r_out=r_out))
 
     try:
-        wcs_obj = None
-        if w is not None:
-            try:
-                # Use the refined WCS object instead of recreating from header
-                wcs_obj = w
-                if wcs_obj.pixel_n_dim > 2:
-                    wcs_obj = wcs_obj.celestial
-            except Exception as e:
-                st.warning(f"Error creating WCS object: {e}")
-                wcs_obj = None
-        elif "CTYPE1" in science_header:
-            try:
-                # Fallback to header WCS if no refined WCS available
-                wcs_obj = WCS(science_header)
-                if wcs_obj.pixel_n_dim > 2:
-                    wcs_obj = wcs_obj.celestial
-            except Exception as e:
-                st.warning(f"Error creating WCS object: {e}")
-                wcs_obj = None
+        wcs_obj = w
 
         # Perform photometry for all apertures
         phot_tables = []
@@ -1851,9 +1836,21 @@ def detection_and_photometry(
             # (border + cosmic rays + satellite trails + NaNs) is applied so that
             # contaminated pixels are ignored by both the sum and its error.
             # Reference: https://photutils.readthedocs.io/en/3.0.0/user_guide/aperture.html
-            phot_result = aperture_photometry(
-                image_sub, aperture, error=total_error, mask=mask, wcs=wcs_obj
-            )
+            try:
+                phot_result = aperture_photometry(
+                    image_sub, aperture, error=total_error, mask=mask, wcs=wcs_obj
+                )
+            except Exception as error:
+                if wcs_obj is None:
+                    raise
+                st.warning(
+                    f"Aperture photometry with WCS failed: {error}. "
+                    "Retrying without sky coordinates."
+                )
+                wcs_obj = None
+                phot_result = aperture_photometry(
+                    image_sub, aperture, error=total_error, mask=mask
+                )
             if "aperture_sum" in phot_result.colnames:
                 phot_result.rename_column(
                     "aperture_sum", f"aperture_sum{radius_suffix}"
@@ -2008,6 +2005,10 @@ def detection_and_photometry(
             phot_tables.append(phot_result)
 
         # Combine all photometry results
+        if wcs_obj is None:
+            for table in phot_tables:
+                if "sky_center" in table.colnames:
+                    table.remove_column("sky_center")
         phot_table = phot_tables[0]
         for i in range(1, len(phot_tables)):
             # Add columns from additional apertures
@@ -2213,20 +2214,26 @@ def detection_and_photometry(
 
         try:
             if wcs_obj is not None:
-                ra, dec = wcs_obj.pixel_to_world_values(
+                sky = wcs_obj.pixel_to_world(
                     phot_table["xcenter"], phot_table["ycenter"]
                 )
-                phot_table["ra"] = ra * u.deg
-                phot_table["dec"] = dec * u.deg
+                if not isinstance(sky, SkyCoord):
+                    raise ValueError("Celestial WCS did not return sky coordinates")
+                sky = sky.icrs
+                phot_table["ra"] = sky.ra
+                phot_table["dec"] = sky.dec
                 st.success(f"Added RA/Dec coordinates to {len(phot_table)} sources")
 
                 if epsf_table is not None:
                     try:
-                        epsf_ra, epsf_dec = wcs_obj.pixel_to_world_values(
+                        epsf_sky = wcs_obj.pixel_to_world(
                             epsf_table["x_fit"], epsf_table["y_fit"]
                         )
-                        epsf_table["ra"] = epsf_ra * u.deg
-                        epsf_table["dec"] = epsf_dec * u.deg
+                        if not isinstance(epsf_sky, SkyCoord):
+                            raise ValueError("Celestial WCS did not return sky coordinates")
+                        epsf_sky = epsf_sky.icrs
+                        epsf_table["ra"] = epsf_sky.ra
+                        epsf_table["dec"] = epsf_sky.dec
                         st.success(
                             f"Added RA/Dec coordinates to {len(epsf_table)} PSF sources"
                         )
@@ -2234,32 +2241,14 @@ def detection_and_photometry(
                         st.warning(f"Could not add coordinates to EPSF table: {e}")
             else:
                 st.warning("No WCS object available - coordinates will not be added")
-                if all(
-                    key in science_header for key in ["RA", "DEC", "NAXIS1", "NAXIS2"]
-                ):
-                    center_ra = science_header["RA"]
-                    center_dec = science_header["DEC"]
-                    width = science_header["NAXIS1"]
-                    height = science_header["NAXIS2"]
-
-                    pix_scale = pixel_scale or 1.0
-
-                    center_x = width / 2
-                    center_y = height / 2
-
-                    for i, row in enumerate(phot_table):
-                        x = row["xcenter"]
-                        y = row["ycenter"]
-                        dx = (x - center_x) * pix_scale / 3600.0
-                        dy = (y - center_y) * pix_scale / 3600.0
-                        phot_table[i]["ra"] = center_ra + dx / np.cos(
-                            np.radians(center_dec)
-                        )
-                        phot_table[i]["dec"] = center_dec + dy
         except Exception as e:
             st.warning(
                 f"WCS transformation failed: {e}. RA and Dec not added to tables."
             )
+            wcs_obj = None
+            for column in ("sky_center", "ra", "dec"):
+                if column in phot_table.colnames:
+                    phot_table.remove_column(column)
 
         st.write(f"Found {len(phot_table)} sources and performed photometry.")
         return (
@@ -2324,7 +2313,13 @@ def select_residual_error_column(matched_table, residuals, radius_suffix="1_3"):
     return np.zeros_like(residuals)
 
 
-def calculate_zero_point(_phot_table, _matched_table, filter_band, air, fwhm_radius_factor: float = 1.5):
+def calculate_zero_point(
+    _phot_table: Table | pd.DataFrame | None,
+    _matched_table: pd.DataFrame | None,
+    filter_band: str,
+    air: float | tuple[float, dict[str, object]],
+    fwhm_radius_factor: float = 1.5,
+) -> tuple[float | None, float | None, Figure | None]:
     """
     Calculate photometric zero point from matched sources with GAIA.
 
@@ -2357,6 +2352,9 @@ def calculate_zero_point(_phot_table, _matched_table, filter_band, air, fwhm_rad
     - Stores the calibrated photometry table in session state as 'final_phot_table'
     - Creates and saves a plot showing the relation between GAIA and calibrated magnitudes
     """
+    if _phot_table is None:
+        st.warning("No photometry table available to calculate zero point.")
+        return None, None, None
     if _matched_table is None or len(_matched_table) == 0:
         st.warning("No matched sources to calculate zero point.")
         return None, None, None
@@ -2692,11 +2690,7 @@ def calculate_zero_point(_phot_table, _matched_table, filter_band, air, fwhm_rad
 
         try:
             base_name = st.session_state.get("base_filename", "photometry")
-            username = st.session_state.get("username", "anonymous")
-            output_dir = session_results_path(
-                ensure_output_directory(directory=f"{username}_results"),
-                st.session_state.get("session_id"),
-            )
+            output_dir = st.session_state["output_dir"]
             zero_point_plot_path = os.path.join(
                 output_dir, f"{base_name}_zero_point_plot.png"
             )

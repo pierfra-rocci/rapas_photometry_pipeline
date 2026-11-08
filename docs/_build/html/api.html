@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Backend API &mdash; RAPAS Photometry Pipeline (RPP) v1.9.2 Documentation</title>
+  <title>Backend API &mdash; RAPAS Photometry Pipeline (RPP) v1.9.3 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=574b2d58"></script>
+      <script src="_static/documentation_options.js?v=f333a941"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -110,6 +110,10 @@ service is the primary documented interface.</p>
 <li><p>Registration and login are initiated through JSON requests.</p></li>
 <li><p>Authenticated routes use the current backend security layer from <code class="docutils literal notranslate"><span class="pre">api/security.py</span></code>.</p></li>
 <li><p>The Streamlit frontend handles credential storage and request formatting through <code class="docutils literal notranslate"><span class="pre">pages/api_client.py</span></code>.</p></li>
+<li><p>Successful login returns the canonical username and numeric account ID.
+The legacy login returns the ID in <code class="docutils literal notranslate"><span class="pre">X-RPP-User-Id</span></code> and the UTF-8 username
+in <code class="docutils literal notranslate"><span class="pre">X-RPP-Username-Encoded</span></code>. The frontend requires these identities for
+isolated storage; older backends must be updated before use.</p></li>
 </ul>
 </section>
 <section id="core-endpoints">

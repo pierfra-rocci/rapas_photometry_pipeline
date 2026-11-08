@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>User Guide &mdash; RAPAS Photometry Pipeline (RPP) v1.9.2 Documentation</title>
+  <title>User Guide &mdash; RAPAS Photometry Pipeline (RPP) v1.9.3 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=574b2d58"></script>
+      <script src="_static/documentation_options.js?v=f333a941"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -239,7 +239,28 @@ as:</p>
 <li><p>Milliquas</p></li>
 <li><p>Astro-Colibri, when an API key is provided</p></li>
 <li><p>TNS (Transient Name Server), when an API key and marker are configured</p></li>
+<li><p>TNS (Transient Name Server), when an API key and marker are configured</p></li>
 </ul>
+<p>Astro-Colibri and TNS are the two transient services. Both use a progressive
+match radius - 5, 10, 15, 20 and 30 arcsec - that pairs a transient with its
+closest detected source, keep the closest object when several claim the same
+source, and warn when an association is found only in the loose tiers
+(15 arcsec and beyond for Astro-Colibri, 20 arcsec and beyond for TNS).
+Astro-Colibri matches are exported as <code class="docutils literal notranslate"><span class="pre">astrocolibri_*</span></code> columns and TNS
+matches as <code class="docutils literal notranslate"><span class="pre">tns_name</span></code>, <code class="docutils literal notranslate"><span class="pre">tns_type</span></code>, <code class="docutils literal notranslate"><span class="pre">tns_ra</span></code> and <code class="docutils literal notranslate"><span class="pre">tns_dec</span></code>.
+The TNS query uses the public catalogue staged daily by the TNS
+(<code class="docutils literal notranslate"><span class="pre">tns_public_objects.csv.zip</span></code>), downloaded at most once per UTC day and
+cached; it needs <code class="docutils literal notranslate"><span class="pre">TNS_API_KEY</span></code> plus <code class="docutils literal notranslate"><span class="pre">TNS_BOT_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_BOT_NAME</span></code> (bot) or
+<code class="docutils literal notranslate"><span class="pre">TNS_USER_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_USER_NAME</span></code> (user) in the environment.
+A shared mirror of the catalogue can be queried instead of downloading it by
+setting <code class="docutils literal notranslate"><span class="pre">RPP_TNS_MIRROR_URL</span></code> to a <code class="docutils literal notranslate"><span class="pre">tns-mirror</span></code> HTTP API: it answers once per
+detected source through <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/nearest</span></code>, is authoritative when it answers,
+and falls back to the daily catalogue on any failure.
+If the catalogue cannot be downloaded, the TNS Search API is queried with the
+same credentials (a cone search over the field, then one <code class="docutils literal notranslate"><span class="pre">get/object</span></code> call
+per object found, up to 100); <code class="docutils literal notranslate"><span class="pre">RPP_TNS_SANDBOX=1</span></code> selects the TNS sandbox.
+The CSV and VOTable outputs carry the same <code class="docutils literal notranslate"><span class="pre">tns_name</span></code> and <code class="docutils literal notranslate"><span class="pre">tns_type</span></code>
+columns whichever source was used.</p>
 <p>Astro-Colibri and TNS are the two transient services. Both use a progressive
 match radius - 5, 10, 15, 20 and 30 arcsec - that pairs a transient with its
 closest detected source, keep the closest object when several claim the same
@@ -299,6 +320,8 @@ filters.</p>
 <li><p>Image previews and diagnostic plots</p></li>
 <li><p>Source and calibration tables</p></li>
 <li><p>Processing logs</p></li>
+<li><p>Interactive Aladin views, with an automatic jsDelivr fallback if the CDS
+viewer script cannot be downloaded</p></li>
 <li><p>Interactive Aladin views, with an automatic jsDelivr fallback if the CDS
 viewer script cannot be downloaded</p></li>
 <li><p>Download buttons for result archives</p></li>

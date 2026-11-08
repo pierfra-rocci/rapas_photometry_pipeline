@@ -2,6 +2,7 @@ import os
 import json
 import warnings
 import time
+from urllib.parse import unquote
 
 import requests  # type: ignore[import]
 import streamlit as st
@@ -156,20 +157,27 @@ Besoin d'aide ou vous avez trouvé un bug ? Contactez [rpp_support](mailto:rpp_s
                     except ApiError as exc:
                         st.error(f"API error: {exc.message}")
                     else:
-                        st.session_state.logged_in = True
-                        st.session_state.username = client.username or login_username
-                        st.session_state.backend_mode = "api"
-                        st.session_state.api_credentials = {
-                            "username": login_username,
-                            "password": login_password,
-                            "base_url": st.session_state.api_base_url,
-                        }
-                        print(
-                            f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] RPP v{version} - "
-                            f"User '{st.session_state.username}' logged in successfully "
-                            f"(frontend, FastAPI backend)."
-                        )
-                        st.rerun()
+                        if client.user_id is None or not client.username:
+                            st.error(
+                                "The backend did not provide an account identity. "
+                                "Update the backend and try again."
+                            )
+                        else:
+                            st.session_state.logged_in = True
+                            st.session_state.username = client.username
+                            st.session_state.user_id = client.user_id
+                            st.session_state.backend_mode = "api"
+                            st.session_state.api_credentials = {
+                                "username": login_username,
+                                "password": login_password,
+                                "base_url": st.session_state.api_base_url,
+                            }
+                            print(
+                                f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] RPP v{version} - "
+                                f"User '{st.session_state.username}' logged in successfully "
+                                f"(frontend, FastAPI backend)."
+                            )
+                            st.rerun()
                 else:
                     legacy_url = st.session_state.legacy_backend_url
                     try:
@@ -179,22 +187,36 @@ Besoin d'aide ou vous avez trouvé un bug ? Contactez [rpp_support](mailto:rpp_s
                             timeout=15,
                         )
                         if response.status_code == 200:
-                            st.session_state.logged_in = True
-                            st.session_state.username = (
-                                response.headers.get("X-RPP-Username")
-                                or login_username
+                            encoded_username = response.headers.get("X-RPP-Username-Encoded")
+                            canonical_username = (
+                                unquote(encoded_username)
+                                if encoded_username is not None
+                                else response.headers.get("X-RPP-Username")
                             )
-                            st.session_state.backend_mode = "legacy"
-                            st.session_state.legacy_credentials = {
-                                "username": login_username,
-                                "password": login_password,
-                            }
-                            print(
-                                f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] RPP v{version} - "
-                                f"User '{st.session_state.username}' logged in successfully "
-                                f"(frontend, legacy backend)."
-                            )
-                            st.rerun()
+                            try:
+                                user_id = int(response.headers.get("X-RPP-User-Id", ""))
+                            except ValueError:
+                                user_id = None
+                            if user_id is None or not canonical_username:
+                                st.error(
+                                    "The backend did not provide an account identity. "
+                                    "Update the backend and try again."
+                                )
+                            else:
+                                st.session_state.logged_in = True
+                                st.session_state.username = canonical_username
+                                st.session_state.user_id = user_id
+                                st.session_state.backend_mode = "legacy"
+                                st.session_state.legacy_credentials = {
+                                    "username": login_username,
+                                    "password": login_password,
+                                }
+                                print(
+                                    f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] RPP v{version} - "
+                                    f"User '{st.session_state.username}' logged in successfully "
+                                    f"(frontend, legacy backend)."
+                                )
+                                st.rerun()
                         else:
                             st.error(response.text)
                     except requests.exceptions.RequestException as e:

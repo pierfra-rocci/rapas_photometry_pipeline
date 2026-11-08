@@ -3,15 +3,44 @@ Changelog
 
 This document records all notable changes to RAPAS Photometry Pipeline.
 
-Unreleased
-----------
+Version 1.9.3
+-------------
+
+**Instrumental catalog fallback**
+
+*   If the calibration catalog or zero point is unavailable, the pipeline
+    exports instrumental CSV and VOTable catalogs, retaining sky coordinates
+    when a usable WCS is available. Transient finding is skipped without
+    calibrated magnitudes.
+*   The archived ZIP remains available for download after a Streamlit rerun.
+    If PSF merging fails, aperture photometry is retained.
+
+**Catalog service and local astrometry resilience**
+
+*   VizieR and SIMBAD requests retry on their Harvard mirrors after a primary
+    service failure. These are mirrors of the same services, not automatic
+    switches to a different calibration catalog.
+*   Local plate-solving attempts share a 180-second budget, configurable with
+    ``RPP_LOCAL_ASTROMETRY_TIMEOUT_SECONDS``, before the existing online
+    fallback is attempted when configured.
+
+**Private account storage and log access**
+
+*   New result archives and WCS FITS copies use account-ID-based private
+    directories. Older username-based files remain untouched and require
+    operator ownership verification before migration.
+*   In-app global logs are disabled unless account IDs are explicitly listed in
+    ``RPP_LOG_ADMIN_USER_IDS``.
+*   Both backends reserve account IDs in SQLite without changing existing
+    accounts, preventing reuse after deletion while reservation history remains
+    intact. Upgrade both backends and the frontend together.
 
 **Aladin Lite script fallback**
 
 *   If the Aladin Lite script cannot be downloaded from CDS, the viewer retries
-    with the pinned v3.8.2 script from jsDelivr. If neither source is
-    reachable, the widget reports the failure; HiPS imagery still requires
-    access to the tile server.
+    with the pinned v3.8.2 module from jsDelivr. If neither source is
+    reachable, the widget reports the failure and the source-coordinate table
+    remains available; HiPS imagery still requires access to the tile server.
 
 **VOTable export with Astro-Colibri and TNS columns**
 
@@ -157,6 +186,17 @@ Version 1.9.0
     ``src/__version__.py``, so the message follows future releases
     automatically.
 
+**Login audit log**
+
+*   Every successful login writes a timestamped line with the pipeline version
+    to the service log:
+    ``[YYYY-MM-DD HH:MM:SS] RPP vX.Y.Z - User '<username>' logged in successfully (<origin>).``
+*   ``api/main.py`` (FastAPI backend), ``backend.py`` (legacy backend) and
+    ``pages/login.py`` (frontend) each emit their own line; the origin suffix
+    tells them apart. The version is read at runtime from
+    ``src/__version__.py``, so the message follows future releases
+    automatically.
+
 **Curated catalog export**
 
 *   **Fixed export columns.** ``*_catalog.csv`` and ``*_catalog.vot`` now contain
@@ -226,6 +266,17 @@ Version 1.9.0
     ``PSF photometry is not available; using calibrated aperture photometry instead.``;
     the full transient variant is
     ``PSF photometry is not available; using calibrated aperture photometry instead. Transient candidates use the calibrated 1.1 x FWHM aperture magnitude.``
+    required to match the photometry table.
+*   **Transient finder without PSF photometry.** When the photometry table has
+    no PSF magnitude columns, or when the matched detections have no finite
+    PSF value, ``find_candidates()`` now falls back to the calibrated
+    1.1 x FWHM aperture magnitude (``aperture_mag_1_1`` and its error) instead
+    of aborting with "No transient candidates found". The app displays a
+    warning when candidates rely on this fallback, using the same
+    PSF-unavailable wording as the main pipeline. The shared warning is
+    ``PSF photometry is not available; using calibrated aperture photometry instead.``;
+    the full transient variant is
+    ``PSF photometry is not available; using calibrated aperture photometry instead. Transient candidates use the calibrated 1.1 x FWHM aperture magnitude.``
 
 **Finer astrometry and Astro-Colibri radius**
 
@@ -263,6 +314,32 @@ Version 1.9.0
     filter: 3 attempts on network errors and HTTP 429/5xx, ``-from`` label,
     epoch range check, HTTP error reporting, mid-exposure epoch and a per-object
     match tolerance of 10 to 30 arcsec derived from the ephemeris ``Err``.
+
+**Scale-aware photometric error model**
+
+*   **The Poisson term now follows the units of the frame.**
+    ``calc_total_error`` adds ``data / gain`` to the pixel variance, which is
+    only meaningful when the data are counts in the same units as the gain. A
+    rescaled frame (a normalised float stack with a sky level of about 1e-2, for
+    example) violates that: with a genuine e-/ADU gain the Poisson term at the
+    sky level exceeded the measured sky variance by a factor of 1e5, so the
+    error map said nothing about the real noise and the aperture S/N was
+    underestimated by one to two orders of magnitude. The PSF step was hit
+    hardest, because photutils weights the ePSF-to-star fits by
+    ``1 / error**2``: the star cores ended up ~1e-4 of the weight of the sky
+    pixels, 22 of 26 fitted fluxes came back negative, the next ePSF was
+    therefore inverted and ``EPSFBuilder`` aborted with
+    ``Cannot normalize ePSF: the data sum (...) is not finite and positive``,
+    dropping PSF photometry for the whole frame.
+*   **Resolution.** ``resolve_poisson_gain()`` keeps the resolved gain when the
+    Poisson variance it predicts at the sky level stays within
+    ``POISSON_SKY_VARIANCE_TOLERANCE`` (10x) of the measured background
+    variance, and otherwise replaces it with the largest value the frame allows,
+    ``gain = sky level / background_rms**2``. ``compute_error_map()`` builds the
+    per-pixel error from that gain, falling back to the background RMS map alone
+    when no usable gain exists. On the real normalised stack the core error
+    dropped from ~1.4e3x the sky RMS (larger than the data itself) to a few x
+    the sky RMS, and PSF photometry now runs.
 
 **Scale-aware photometric error model**
 

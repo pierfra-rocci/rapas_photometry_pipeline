@@ -12,6 +12,10 @@ Authentication Model
 - Registration and login are initiated through JSON requests.
 - Authenticated routes use the current backend security layer from ``api/security.py``.
 - The Streamlit frontend handles credential storage and request formatting through ``pages/api_client.py``.
+- Successful login returns the canonical username and numeric account ID.
+  The legacy login returns the ID in ``X-RPP-User-Id`` and the UTF-8 username
+  in ``X-RPP-Username-Encoded``. The frontend requires these identities for
+  isolated storage; older backends must be updated before use.
 
 Core Endpoints
 --------------

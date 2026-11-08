@@ -50,6 +50,7 @@ from .schemas import (
 )
 from .security import find_user_by_identifier, get_current_user
 from .storage import build_storage_path
+from .user_ids import initialize_user_id_reservations, reserve_user_id
 from src.__version__ import version
 
 
@@ -57,6 +58,8 @@ from src.__version__ import version
 async def lifespan(_app: FastAPI):
     """Initialize application resources for the FastAPI lifespan."""
     Base.metadata.create_all(bind=engine)
+    with engine.begin() as connection:
+        initialize_user_id_reservations(connection)
     yield
 
 
@@ -248,14 +251,14 @@ def register(
         )
 
     hashed_pw = generate_password_hash(payload.password)
-    user = User(
-        username=payload.username,
-        password=hashed_pw,
-        email=payload.email,
-    )
-
-    db.add(user)
     try:
+        user = User(
+            id=reserve_user_id(db.connection()),
+            username=payload.username,
+            password=hashed_pw,
+            email=payload.email,
+        )
+        db.add(user)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -284,7 +287,9 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
         f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] RPP v{version} - "
         f"User '{user.username}' logged in successfully (FastAPI backend)."
     )
-    return LoginResponse(message="Logged in successfully.", username=user.username)
+    return LoginResponse(
+        message="Logged in successfully.", username=user.username, user_id=user.id
+    )
 
 
 @app.post("/api/recovery/request", response_model=Message)

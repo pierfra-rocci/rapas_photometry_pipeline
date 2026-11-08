@@ -1,13 +1,16 @@
 from stdpipe import pipeline, cutouts, templates, catalogs, photometry, plots
+from typing import Any
+
 from stdpipe import astrometry as stdpipe_astrometry
 from astropy.coordinates import SkyCoord
+from astropy.io.fits import Header
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 import astropy.units as u
-from astropy.wcs import WCS
 from astropy.convolution import Gaussian2DKernel, convolve
 from astropy.visualization import simple_norm
 import numpy as np
+import pandas as pd
 import shutil
 import streamlit as st
 from astropy.table import Table
@@ -20,6 +23,7 @@ from astroquery.imcce import Skybot
 from src.tools_pipeline import (
     format_psf_fallback_message,
     get_prefixed_photometry_column,
+    safe_wcs_create,
 )
 from src.utils import prepare_export_table, skybot_cone_search
 from src.catalog_mirrors import get_vizier_catalog_with_fallback
@@ -315,21 +319,21 @@ def _resolve_photometry_columns(table, mag_column, err_column, filter_band=None)
 
 
 def find_candidates(
-    photometry_table,
-    image,
-    header,
-    fwhm,
-    pixel_scale,
-    ra_center,
-    dec_center,
-    sr,
-    mask=None,
-    filter_cat=None,
-    filter_name=None,
-    mag_limit="<20.0",
-    detect_thresh=TRANSIENT_DETECT_THRESH,
-    mag_threshold=DEFAULT_TRANSIENT_MAG_THRESHOLD,
-):
+    photometry_table: pd.DataFrame,
+    image: np.ndarray,
+    header: Header | dict[str, Any],
+    fwhm: float,
+    pixel_scale: float,
+    ra_center: float,
+    dec_center: float,
+    sr: float,
+    mask: np.ndarray | None = None,
+    filter_cat: str | None = None,
+    filter_name: str | None = None,
+    mag_limit: str = "<20.0",
+    detect_thresh: float = TRANSIENT_DETECT_THRESH,
+    mag_threshold: float = DEFAULT_TRANSIENT_MAG_THRESHOLD,
+) -> Table | list[Any]:
     """Find transient candidates in the given image around the specified object.
 
     The algorithm detects sources with SExtractor, attaches the calibrated PSF
@@ -384,7 +388,10 @@ def find_candidates(
     gain = resolve_effective_gain(header, image)
 
     header, _ = fix_header(header)
-    wcs = WCS(header)
+    wcs, wcs_error, _ = safe_wcs_create(header)
+    if wcs is None:
+        st.warning(f"Transient search skipped: invalid celestial WCS: {wcs_error}")
+        return []
 
     # Check hemisphere using astropy
     _ = SkyCoord(ra=ra_center * u.degree, dec=dec_center * u.degree, frame="icrs")
@@ -819,14 +826,14 @@ def _fetch_hips_template(cutout_header, filter_name, dec_center):
 
 
 def plot_astrocolibri_cutouts(
-    final_table,
-    image,
-    header,
-    output_dir,
-    base_filename,
-    filter_name="r",
-    dec_center=0.0,
-):
+    final_table: pd.DataFrame | None,
+    image: np.ndarray | None,
+    header: Header | dict[str, Any] | None,
+    output_dir: str,
+    base_filename: str,
+    filter_name: str = "r",
+    dec_center: float = 0.0,
+) -> list[str] | None:
     """Display and save cutout images for all Astro-Colibri cross-matches.
 
     Iterates over rows in *final_table* where ``astrocolibri_name`` is set,
@@ -865,8 +872,17 @@ def plot_astrocolibri_cutouts(
     if len(ac_rows) == 0:
         return
 
+    if image is None:
+        st.warning("Astro-Colibri cutouts skipped: no image data.")
+        return []
+    if header is None:
+        st.warning("Astro-Colibri cutouts skipped: no celestial WCS header.")
+        return []
     header, _ = fix_header(header)
-    wcs = WCS(header)
+    wcs, wcs_error, _ = safe_wcs_create(header)
+    if wcs is None:
+        st.warning(f"Astro-Colibri cutouts skipped: invalid celestial WCS: {wcs_error}")
+        return []
 
     st.subheader("Astro-Colibri Match Cutouts")
 

@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Usage Guide &mdash; RAPAS Photometry Pipeline (RPP) v1.9.2 Documentation</title>
+  <title>Usage Guide &mdash; RAPAS Photometry Pipeline (RPP) v1.9.3 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=574b2d58"></script>
+      <script src="_static/documentation_options.js?v=f333a941"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -155,16 +155,29 @@ scientific run.</p></li>
 raw header preview.</p></li>
 <li><p>Full FITS loading, header/WCS checks, and astrometry are run only after
 you click <strong>Start Analysis</strong>.</p></li>
+<li><p>In a multi-extension file, the first nonempty numeric image HDU is used,
+preferring the primary HDU; tables and one-dimensional arrays are
+skipped. Loading and plate solving use the same selected image.</p></li>
 <li><p>If <strong>Astrometry Check</strong> is enabled, the app forces a new plate-solving
 attempt even when a valid WCS already exists.</p></li>
+<li><p>A failed forced solve retains the original valid WCS. If no valid WCS can
+be obtained, sky-dependent matching, transient searches and viewers are
+skipped; pixel positions and uncalibrated instrumental photometry are
+exported when a usable pixel scale is available.</p></li>
+<li><p>If the WCS is usable but the calibration catalog or zero point is
+unavailable, the ZIP contains instrumental measurements with available
+sky coordinates. Transient finding is skipped without calibration.</p></li>
+<li><p>Structural WCS validation does not establish astrometric accuracy. Check
+the solution against reference stars.</p></li>
 </ul>
 </li>
 <li><p><strong>Review outputs</strong></p>
 <ul class="simple">
 <li><p>Download the ZIP archive with catalogs, plots, logs, and optional WCS
-products.</p></li>
-<li><p>When astrometry succeeds, the updated FITS file is also stored using the
-backend data layout.</p></li>
+headers. FITS products are stored separately and excluded from the ZIP.</p></li>
+<li><p>When astrometry succeeds, the updated FITS copy retains the other HDUs,
+leaves the uploaded file unchanged, and is also stored using the backend
+data layout.</p></li>
 </ul>
 </li>
 </ol>
@@ -177,8 +190,28 @@ frontend is always launched with Streamlit.</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">RPP_API_URL</span></code>: override the FastAPI base URL used by the frontend.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">RPP_LEGACY_URL</span></code>: override the legacy backend URL.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">RPP_DB_PATH</span></code>: select the shared SQLite database; set the same value for
+both backends and the frontend.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">RPP_LOG_ADMIN_USER_IDS</span></code>: comma-separated trusted account IDs allowed to
+view global pipeline logs in Streamlit. The default is no access. Verify IDs
+against the shared database, set this in the Streamlit environment, and
+update it whenever accounts or the database change.</p></li>
 <li><p>SMTP settings are required if you want password recovery emails to work.</p></li>
 </ul>
+<p>New archives and WCS FITS copies are stored under
+<code class="docutils literal notranslate"><span class="pre">private_v2/user_&lt;id&gt;/YYYY/MM/</span></code> within their respective storage roots.
+Older username-based files remain untouched and are not shown in the archive
+browser. An operator must verify ownership independently before manually
+migrating them; colliding usernames make old paths unreliable evidence.
+Back up both files and tracking records before making changes.
+Upgrade and restart both backends together with the frontend. Startup creates
+the <code class="docutils literal notranslate"><span class="pre">rpp_user_id_reservations</span></code> table without changing existing user IDs,
+usernames, or password hashes; subsequent registrations do not reuse reserved
+IDs. Keep database and storage backups consistent: replacing or restoring a
+database can roll back its reservation history.
+Do not reassign an account ID while its private files or log permissions remain;
+review storage and revoke or update configured log IDs before deleting accounts
+or replacing/restoring the user database.</p>
 </section>
 <section id="logging-and-troubleshooting">
 <h2>Logging and Troubleshooting<a class="headerlink" href="#logging-and-troubleshooting" title="Link to this heading"></a></h2>
@@ -197,6 +230,17 @@ especially <code class="docutils literal notranslate"><span class="pre">SMTP_SER
 <li><p>For astrometry or plate solving, ensure external dependencies such as
 Astrometry.net indices and <code class="docutils literal notranslate"><span class="pre">solve-field</span></code> are installed and available on
 <code class="docutils literal notranslate"><span class="pre">PATH</span></code>.</p></li>
+<li><p>External catalog services such as GAIA, SIMBAD, SkyBoT, Astro-Colibri and
+the TNS may time out or return partial results. In many cases the pipeline
+continues and records warnings in the log instead of stopping completely.</p></li>
+<li><p>The TNS cross-match needs <code class="docutils literal notranslate"><span class="pre">TNS_API_KEY</span></code> plus <code class="docutils literal notranslate"><span class="pre">TNS_BOT_ID</span></code>/
+<code class="docutils literal notranslate"><span class="pre">TNS_BOT_NAME</span></code> (bot) or <code class="docutils literal notranslate"><span class="pre">TNS_USER_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_USER_NAME</span></code> (user). Its
+catalogue is downloaded once per UTC day and cached (<code class="docutils literal notranslate"><span class="pre">RPP_TNS_CACHE_DIR</span></code>),
+or read from a local file with <code class="docutils literal notranslate"><span class="pre">RPP_TNS_CATALOG_PATH</span></code>. Setting
+<code class="docutils literal notranslate"><span class="pre">RPP_TNS_MIRROR_URL</span></code> queries a shared <code class="docutils literal notranslate"><span class="pre">tns-mirror</span></code> API instead of reading
+the catalogue; if the mirror fails, the daily catalogue is used, and if that
+cannot be downloaded the TNS Search API is queried (<code class="docutils literal notranslate"><span class="pre">RPP_TNS_SANDBOX=1</span></code>
+selects the TNS sandbox).</p></li>
 <li><p>External catalog services such as GAIA, SIMBAD, SkyBoT, Astro-Colibri and
 the TNS may time out or return partial results. In many cases the pipeline
 continues and records warnings in the log instead of stopping completely.</p></li>

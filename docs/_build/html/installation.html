@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Installation Guide &mdash; RAPAS Photometry Pipeline (RPP) v1.9.2 Documentation</title>
+  <title>Installation Guide &mdash; RAPAS Photometry Pipeline (RPP) v1.9.3 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=574b2d58"></script>
+      <script src="_static/documentation_options.js?v=f333a941"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -156,7 +156,8 @@ satellite trail masking helper in <code class="docutils literal notranslate"><sp
 </ul>
 <p>The legacy backend creates its SQLite database (<code class="docutils literal notranslate"><span class="pre">users.db</span></code>, or
 <code class="docutils literal notranslate"><span class="pre">users_dev.db</span></code> when <code class="docutils literal notranslate"><span class="pre">APP_ENV=development</span></code>) on first run and shares the same
-SMTP configuration as the FastAPI backend.</p>
+SMTP configuration as the FastAPI backend. Both backends honor <code class="docutils literal notranslate"><span class="pre">RPP_DB_PATH</span></code>;
+configure the same database for both and for the frontend.</p>
 </section>
 <section id="running-the-tests">
 <h2>Running the Tests<a class="headerlink" href="#running-the-tests" title="Link to this heading"></a></h2>

@@ -15,8 +15,10 @@ import re
 import threading
 import time
 from contextlib import contextmanager
+from urllib.parse import quote
 
 from src.__version__ import version
+from api.user_ids import initialize_user_id_reservations, reserve_user_id
 
 try:
     import config
@@ -58,8 +60,10 @@ def _recovery_reset(email):
         _recovery_failures.pop(email.strip().lower(), None)
 
 
-# Use absolute path for database file
-if os.getenv("APP_ENV") == "development":
+# Use the same database selection as the FastAPI backend.
+if os.getenv("RPP_DB_PATH"):
+    DB_PATH = os.path.abspath(os.environ["RPP_DB_PATH"])
+elif os.getenv("APP_ENV", "production").lower() == "development":
     DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users_dev.db")
 else:
     DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users.db")
@@ -97,6 +101,7 @@ def init_db():
                 code TEXT NOT NULL,
                 expires_at DATETIME NOT NULL
             )""")
+            initialize_user_id_reservations(conn)
             print("Database schema created successfully")
 
             # Verify the tables exist
@@ -252,9 +257,10 @@ def register():
                 return "Username or email is already taken.", 409
 
             hashed_pw = generate_password_hash(password)
+            user_id = reserve_user_id(conn)
             cur.execute(
-                "INSERT INTO users (username, password, email) VALUES (?, ?, ?)",
-                (username, hashed_pw, email),
+                "INSERT INTO users (id, username, password, email) VALUES (?, ?, ?, ?)",
+                (user_id, username, hashed_pw, email),
             )
     except Exception as e:
         print(f"Registration error: {e}")
@@ -295,7 +301,12 @@ def login():
             f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] RPP v{version} - "
             f"User '{logged_in_username}' logged in successfully (legacy backend)."
         )
-        headers = {"X-RPP-Username": logged_in_username} if logged_in_username.isascii() else {}
+        headers = {
+            "X-RPP-User-Id": str(user["id"]),
+            "X-RPP-Username-Encoded": quote(logged_in_username, safe=""),
+        }
+        if logged_in_username.isascii() and logged_in_username.isprintable():
+            headers["X-RPP-Username"] = logged_in_username
         return "Logged in successfully.", 200, headers
     return "Invalid username or password.", 401
 

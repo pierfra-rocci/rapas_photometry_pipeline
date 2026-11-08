@@ -2,6 +2,9 @@
 import os
 import json
 import re
+import gzip
+import shutil
+import tempfile
 import zipfile
 from io import StringIO
 from datetime import datetime
@@ -30,6 +33,26 @@ PIPELINE_PLOT_MIN_HEIGHT = 320
 
 # Timeout (seconds) for outbound HTTP requests so a slow service cannot hang a run
 REQUEST_TIMEOUT_SECONDS = 30
+
+
+def select_fits_image_hdu(hdul: fits.HDUList) -> int | None:
+    """Return the index of the first nonempty numeric image with at least two axes.
+
+    The primary image takes precedence. Tables, empty images and
+    one-dimensional arrays are not science images.
+    """
+    for index, hdu in enumerate(hdul):
+        if not isinstance(hdu, (fits.PrimaryHDU, fits.ImageHDU, fits.CompImageHDU)):
+            continue
+        data = hdu.data
+        if (
+            data is not None
+            and data.ndim >= 2
+            and data.size > 0
+            and data.dtype.kind in "iuf"
+        ):
+            return index
+    return None
 
 
 def get_pipeline_figure_size(base_size):
@@ -352,23 +375,48 @@ def session_results_path(user_dir, session_id=None):
     return path
 
 
-def ensure_session_output_directory(username, session_id=None):
+def user_storage_component(user_id: object) -> str:
+    """Return a filesystem component for an authenticated account ID."""
+    if type(user_id) is not int:
+        raise ValueError("A valid authenticated user ID is required for storage.")
+    return f"user_{user_id}"
+
+
+def ensure_user_output_directory(user_id: object) -> str:
+    """Return the account's private results directory."""
+    component = user_storage_component(user_id)
+    root = ensure_output_directory(directory="private_v2")
+    if root == ".":
+        raise OSError("Could not create the private results directory.")
+    path = os.path.join(root, component)
+    os.makedirs(path, mode=0o700, exist_ok=True)
+    return path
+
+
+def ensure_user_archive_directory(user_id: int) -> str:
+    """Return the current month's archive directory for an account."""
+    now = datetime.now()
+    path = os.path.join(ensure_user_output_directory(user_id), f"{now:%Y}", f"{now:%m}")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def ensure_session_output_directory(user_id: int, session_id: str | None = None) -> str:
     """Return the per-session working directory for a user's intermediate files."""
-    user_dir = ensure_output_directory(
-        directory=f"{sanitize_username(username)}_results"
-    )
+    user_dir = ensure_user_output_directory(user_id)
     return session_results_path(user_dir, session_id)
 
 
-def session_tmp_directory(username, session_id=None):
+def session_tmp_directory(user_id: int, session_id: str | None = None) -> str:
     """Return (and create) the per-session temp folder for uploaded FITS files."""
     import tempfile
 
-    path = os.path.join(tempfile.gettempdir(), sanitize_username(username))
+    path = os.path.join(tempfile.gettempdir(), "rpp_private_v2", user_storage_component(user_id))
+    os.makedirs(path, mode=0o700, exist_ok=True)
     name = _session_dir_name(session_id)
     if name is not None:
         path = os.path.join(path, name)
-    os.makedirs(path, exist_ok=True)
+    os.makedirs(path, mode=0o700, exist_ok=True)
     return path
 
 
@@ -387,8 +435,10 @@ def _newest_mtime(path):
 
 
 def cleanup_stale_session_files(
-    username, max_age_hours=STALE_SESSION_MAX_AGE_HOURS, current_session_id=None
-):
+    user_id: int,
+    max_age_hours: float = STALE_SESSION_MAX_AGE_HOURS,
+    current_session_id: str | None = None,
+) -> int:
     """Delete abandoned per-session temp/work folders and legacy loose temp uploads.
 
     Sessions that were closed without finishing leave ``work_<id>`` folders behind
@@ -401,10 +451,10 @@ def cleanup_stale_session_files(
     import time
 
     cutoff = time.time() - max_age_hours * 3600
-    user = sanitize_username(username)
+    user = user_storage_component(user_id)
     keep = _session_dir_name(current_session_id)
-    tmp_root = os.path.join(tempfile.gettempdir(), user)
-    roots = [tmp_root, ensure_output_directory(directory=f"{user}_results")]
+    tmp_root = os.path.join(tempfile.gettempdir(), "rpp_private_v2", user)
+    roots = [tmp_root, ensure_user_output_directory(user_id)]
     removed = 0
     for root in roots:
         if not root or not os.path.isdir(root):
@@ -603,18 +653,28 @@ def save_header_to_fits(header, filename, output_dir):
         return None, f"Failed to save header as FITS file: {str(e)}"
 
 
-def save_fits_with_wcs(original_path, updated_header, output_dir,
-                       filename_suffix="_wcs", also_save_to_data_dir=True,
-                       original_filename=None, username=None):
+def save_fits_with_wcs(
+    original_path: str | None,
+    updated_header: fits.Header | None,
+    output_dir: str,
+    filename_suffix: str = "_wcs",
+    also_save_to_data_dir: bool = True,
+    original_filename: str | None = None,
+    username: str | None = None,
+    user_id: int | None = None,
+) -> tuple[str | None, str | None, str | None]:
     """
-    Save a FITS file with original image data and updated WCS header.
+    Save a copy of the FITS file with the selected image's updated WCS header.
+
+    The original file and other HDUs are preserved. Image storage and scaling
+    keywords are retained from the original science HDU.
 
     Parameters
     ----------
     original_path : str
         Path to the original FITS file (may be a temp file path).
     updated_header : astropy.io.fits.Header
-        Updated header containing the new WCS solution.
+        Full updated header of the selected image, including its WCS solution.
     output_dir : str
         The directory to save the file in (for ZIP archive).
     filename_suffix : str, optional
@@ -626,32 +686,26 @@ def save_fits_with_wcs(original_path, updated_header, output_dir,
         The original filename of the uploaded file (without temp prefix).
         If None, extracts from original_path.
     username : str, optional
-        Username to prefix the permanent copy filename.
+        Retained for compatibility; it is not used to select storage.
+    user_id : int, optional
+        Authenticated account ID required for a permanent copy.
 
     Returns
     -------
     tuple (str | None, str | None, str | None)
         - (filepath, None, stored_filename): If successful.
-          stored_filename is the name of the file saved to rpp_data/fits/
+          stored_filename is the path relative to rpp_data/fits/
         - (None, error_message, None): If failed.
     """
     if updated_header is None:
         return None, "Updated header is None", None
 
-    if not os.path.exists(original_path):
+    if not original_path or not os.path.exists(original_path):
         return None, f"Original FITS file not found: {original_path}", None
 
-    stored_filename = None  # Track the filename saved to rpp_data/fits/
+    stored_filename = None
 
     try:
-        # Open original FITS and get the image data
-        with fits.open(original_path) as hdul:
-            image_data = hdul[0].data
-
-        # Create new HDU with original data and updated header
-        primary_hdu = fits.PrimaryHDU(data=image_data, header=updated_header)
-        hdul_new = fits.HDUList([primary_hdu])
-
         # Use original_filename if provided, otherwise extract from path
         if original_filename:
             base_name = os.path.splitext(
@@ -662,39 +716,117 @@ def save_fits_with_wcs(original_path, updated_header, output_dir,
 
         # Build output filename for the results directory (goes into ZIP)
         output_filename = os.path.join(output_dir, f"{base_name}{filename_suffix}.fits")
+        if os.path.realpath(output_filename) == os.path.realpath(original_path):
+            return None, "WCS output would overwrite the original FITS file", None
 
-        # Ensure output directory exists
         os.makedirs(output_dir, exist_ok=True)
 
-        # Write FITS file to results directory
-        hdul_new.writeto(output_filename, overwrite=True)
+        fd, temporary_path = tempfile.mkstemp(
+            prefix=".rpp-wcs-", suffix=".fits", dir=output_dir
+        )
+        os.close(fd)
+        try:
+            with open(original_path, "rb") as source, open(temporary_path, "wb") as target:
+                is_gzip = source.read(2) == b"\x1f\x8b"
+                source.seek(0)
+                if is_gzip:
+                    with gzip.GzipFile(fileobj=source, mode="rb") as uncompressed:
+                        shutil.copyfileobj(uncompressed, target)
+                else:
+                    shutil.copyfileobj(source, target)
+
+            compressed_checksums = None
+            with fits.open(
+                temporary_path, mode="update", memmap=False, do_not_scale_image_data=True
+            ) as hdul:
+                image_index = select_fits_image_hdu(hdul)
+                if image_index is None:
+                    raise ValueError("No supported numeric image data found in FITS file")
+                image_hdu = hdul[image_index]
+                if isinstance(image_hdu, fits.CompImageHDU):
+                    with fits.open(
+                        original_path, memmap=False, disable_image_compression=True
+                    ) as physical_hdus:
+                        physical_header = physical_hdus[image_index].header
+                        compressed_checksums = (
+                            "CHECKSUM" in physical_header,
+                            "DATASUM" in physical_header,
+                        )
+
+                original_header = image_hdu.header
+                export_header = updated_header.copy()
+                structural_keys = {
+                    "SIMPLE", "XTENSION", "BITPIX", "NAXIS", "PCOUNT", "GCOUNT",
+                    "EXTEND", "GROUPS", "BSCALE", "BZERO", "BLANK",
+                    "CHECKSUM", "DATASUM",
+                }
+                structural_keys.update(
+                    key for key in original_header if re.fullmatch(r"NAXIS\d+", key)
+                )
+                structural_keys.update(
+                    key for key in export_header if re.fullmatch(r"NAXIS\d+", key)
+                )
+                for key in structural_keys:
+                    if key in original_header:
+                        export_header[key] = (
+                            original_header[key], original_header.comments[key]
+                        )
+                    elif key in export_header:
+                        del export_header[key]
+                image_hdu.header.clear()
+                image_hdu.header.extend(export_header, strip=False)
+
+            if compressed_checksums and any(compressed_checksums):
+                with fits.open(
+                    temporary_path, mode="update", memmap=False,
+                    disable_image_compression=True,
+                ) as physical_hdus:
+                    physical_hdu = physical_hdus[image_index]
+                    has_checksum, has_datasum = compressed_checksums
+                    if has_checksum:
+                        physical_hdu.add_checksum(override_datasum=not has_datasum)
+                    elif has_datasum:
+                        physical_hdu.add_datasum()
+
+            os.replace(temporary_path, output_filename)
+        finally:
+            if os.path.exists(temporary_path):
+                os.unlink(temporary_path)
 
         # Also save a copy to rpp_data/fits/ without timestamp (overwrites existing)
         if also_save_to_data_dir:
             try:
-                # Get rpp_data/fits path (same level as rpp_results)
-                script_dir = os.path.dirname(os.path.abspath(__file__))
-                project_root = os.path.dirname(script_dir)
-                parent_dir = os.path.dirname(project_root)
-                data_fits_dir = os.path.join(parent_dir, "rpp_data", "fits")
-                os.makedirs(data_fits_dir, exist_ok=True)
+                from api.config import FITS_STORAGE_ROOT
 
-                # Build filename with username prefix if provided
-                if username:
-                    data_base_name = f"{sanitize_username(username)}_{base_name}"
-                else:
-                    data_base_name = base_name
+                user_dir = user_storage_component(user_id)
+                now = datetime.now()
+                relative_dir = os.path.join("private_v2", user_dir, f"{now:%Y}", f"{now:%m}")
+                data_fits_dir = os.path.join(FITS_STORAGE_ROOT, relative_dir)
+                os.makedirs(
+                    os.path.join(FITS_STORAGE_ROOT, "private_v2", user_dir),
+                    mode=0o700,
+                    exist_ok=True,
+                )
+                os.makedirs(data_fits_dir, mode=0o700, exist_ok=True)
 
-                # Save with username prefix - overwrites on reprocessing
-                stored_filename = f"{data_base_name}{filename_suffix}.fits"
-                data_output_filename = os.path.join(data_fits_dir, stored_filename)
-                hdul_new.writeto(data_output_filename, overwrite=True)
+                stored_filename = os.path.join(relative_dir, f"{base_name}{filename_suffix}.fits")
+                data_output_filename = os.path.join(FITS_STORAGE_ROOT, stored_filename)
+                if os.path.realpath(data_output_filename) == os.path.realpath(original_path):
+                    raise ValueError("Private WCS output would overwrite the original FITS file")
+                fd, private_temporary_path = tempfile.mkstemp(
+                    prefix=".rpp-wcs-", suffix=".fits", dir=data_fits_dir
+                )
+                os.close(fd)
+                try:
+                    shutil.copyfile(output_filename, private_temporary_path)
+                    os.replace(private_temporary_path, data_output_filename)
+                finally:
+                    if os.path.exists(private_temporary_path):
+                        os.unlink(private_temporary_path)
             except Exception as data_save_error:
                 # Don't fail the whole operation if data dir save fails
                 print(f"Warning: Could not save to rpp_data/fits: {data_save_error}")
                 stored_filename = None
-
-        hdul_new.close()
 
         return output_filename, None, stored_filename
 
@@ -847,7 +979,13 @@ def prepare_export_table(table, filter_band=None):
     return df
 
 
-def save_catalog_files(final_table, catalog_name, output_dir, filter_band=None):
+def save_catalog_files(
+    final_table: pd.DataFrame | None,
+    catalog_name: str,
+    output_dir: str,
+    filter_band: str | None = None,
+    instrumental_only: bool = False,
+) -> tuple[list[str], list[str]]:
     """
     Save the final photometry table as both VOTable (XML) and CSV files.
 
@@ -857,6 +995,8 @@ def save_catalog_files(final_table, catalog_name, output_dir, filter_band=None):
         output_dir (str): The directory to save the files in.
         filter_band (str, optional): Calibration filter, used to resolve the
             filter-prefixed magnitude column names (e.g. ``rapasg_``).
+        instrumental_only (bool): Keep the measured pixel and instrumental
+            photometry columns when no celestial WCS is available.
 
     Only the curated export columns are written (see ``build_export_columns``),
     with ``id`` first and Astro-Colibri detections sorted at the top.
@@ -874,10 +1014,17 @@ def save_catalog_files(final_table, catalog_name, output_dir, filter_band=None):
         return success_messages, error_messages
 
     try:
-        final_table = prepare_export_table(final_table, filter_band)
-
+        if instrumental_only:
+            prepared_table = ensure_source_ids(final_table)
+        else:
+            prepared_table = prepare_export_table(final_table, filter_band)
+        if prepared_table is None:
+            raise ValueError("Photometry table could not be prepared for export")
+        if instrumental_only:
+            prepared_table = prepared_table.reset_index(drop=True)
+            prepared_table = prepared_table.loc[:, ~prepared_table.columns.duplicated()]
         # Clean the DataFrame before conversion to handle problematic columns
-        df_for_votable = final_table.copy()
+        df_for_votable = prepared_table.copy()
 
         # Remove or fix columns that might cause issues with astropy Table conversion
         problematic_columns = []
@@ -917,7 +1064,7 @@ def save_catalog_files(final_table, catalog_name, output_dir, filter_band=None):
 
         # Also create CSV buffer for backward compatibility if needed
         csv_buffer = StringIO()
-        final_table.to_csv(csv_buffer, index=False)
+        prepared_table.to_csv(csv_buffer, index=False)
         csv_data = csv_buffer.getvalue()
 
         # Save CSV file using catalog_name as file name

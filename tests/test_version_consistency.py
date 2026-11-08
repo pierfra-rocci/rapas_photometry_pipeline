@@ -127,3 +127,44 @@ def test_changelog_mentions_current_version():
     assert titles[0] == expected, (
         f"the newest changelog section is '{titles[0]}', expected '{expected}'"
     )
+
+
+def test_published_html_uses_current_version() -> None:
+    """The prebuilt HTML published by CI must match the runtime release."""
+    from src.__version__ import version
+
+    html_dir = PROJECT_ROOT / "docs" / "_build" / "html"
+    html_pages = sorted(html_dir.glob("*.html"))
+    assert (html_dir / "index.html") in html_pages
+    assert (html_dir / "changelog.html") in html_pages
+
+    for page in html_pages:
+        contents = page.read_text(encoding="utf-8")
+        title = re.search(r"<title>(.*?)</title>", contents, re.DOTALL)
+        assert title and f"v{version} Documentation" in title.group(1), (
+            f"{page} does not have a documentation title for {version}"
+        )
+
+    options = (html_dir / "_static" / "documentation_options.js").read_text(
+        encoding="utf-8"
+    )
+    assert f"VERSION: '{version}'" in options
+    changelog = (html_dir / "changelog.html").read_text(encoding="utf-8")
+    headings = re.findall(r"<h2>Version ([0-9.]+)", changelog)
+    assert headings and headings[0] == version
+    published_source = (html_dir / "_sources" / "changelog.rst.txt").read_text(
+        encoding="utf-8"
+    )
+    assert published_source == (PROJECT_ROOT / "docs" / "changelog.rst").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_published_index_displays_current_version() -> None:
+    """The documentation landing page displays the release in its body."""
+    from src.__version__ import version
+
+    index = (PROJECT_ROOT / "docs" / "_build" / "html" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    assert f"<p><strong>Version:</strong> {version}</p>" in index

@@ -20,16 +20,18 @@ These tests call the real production helpers rather than re-implementing their
 logic, so a behavioural change in src/ actually fails the suite.
 """
 
+import importlib.util
 import sys
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
 import pytest
+from astropy.io.fits import Header
 
 # ── Stub out optional heavy dependencies before src.transient is imported ─────
-# Inject MagicMock stand-ins for the heavy modules src.transient needs so its
-# unit tests do not require the real libraries.  Do not stub ``sip_tpv``: it is
+# Inject MagicMock stand-ins only for unavailable optional modules, without
+# replacing installed packages needed by other tests. Do not stub ``sip_tpv``: it is
 # imported by ``src.astrometry`` and stubbing it here would leak into later
 # tests and turn the SIP-to-TPV conversion into a no-op.
 _STUB_MODULES = [
@@ -44,14 +46,15 @@ _STUB_MODULES = [
     "sep",
     "astroquery",
     "astroquery.imcce",
-    "streamlit",
 ]
 for _mod in _STUB_MODULES:
     if _mod not in sys.modules:
-        sys.modules[_mod] = MagicMock()
-
-# Make sure a cached failed import of src.transient doesn't block us
-sys.modules.pop("src.transient", None)
+        try:
+            _available = importlib.util.find_spec(_mod) is not None
+        except (AttributeError, ModuleNotFoundError, ValueError):
+            _available = False
+        if not _available:
+            sys.modules[_mod] = MagicMock()
 
 
 # ─── Shared helpers ──────────────────────────────────────────────────────────
@@ -77,6 +80,17 @@ def _make_ac_table(n_sources=3, n_matches=2):
         "astrocolibri_type": types,
         "astrocolibri_classification": classes,
     })
+
+
+def _celestial_header(dec: float = 15.0) -> Header:
+    from astropy.wcs import WCS
+
+    wcs = WCS(naxis=2)
+    wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+    wcs.wcs.crval = [10.0, dec]
+    wcs.wcs.crpix = [250.0, 250.0]
+    wcs.wcs.cdelt = [-0.001, 0.001]
+    return wcs.to_header()
 
 
 # ─── 1. plot_astrocolibri_cutouts — early-return guards ──────────────────────
@@ -137,7 +151,6 @@ def _run_patched(dec_center, filter_name="r"):
     Returns the first positional argument passed to templates.get_hips_image
     (i.e. the survey + filter string), or None if the mock was never called.
     """
-    from astropy.io.fits import Header
     from src.transient import plot_astrocolibri_cutouts
 
     df = _make_ac_table(n_sources=2, n_matches=1)
@@ -145,7 +158,7 @@ def _run_patched(dec_center, filter_name="r"):
     df.loc[0, "dec"] = dec_center
 
     image = np.zeros((500, 500))
-    header = Header()
+    header = _celestial_header(dec_center)
     mock_cutout = {"image": np.zeros((25, 25)), "header": header}
     mock_fig = MagicMock()
 
@@ -249,13 +262,11 @@ class TestAstrocolibriSafeFilename:
 
     def test_saved_png_path_uses_sanitized_name(self, tmp_path):
         """End-to-end: the production save path embeds the sanitized name."""
-        from astropy.io.fits import Header
-
         from src.transient import plot_astrocolibri_cutouts
 
         df = _make_ac_table(n_sources=1, n_matches=1)
         df.loc[0, "astrocolibri_name"] = "SN 2024/xyz"
-        header = Header()
+        header = _celestial_header()
         mock_fig = MagicMock()
 
         with patch("src.transient.st"), \
@@ -335,14 +346,12 @@ class TestAstrocolibriMagColumnPriority:
 
     def test_cutout_title_uses_selected_magnitude(self):
         """End-to-end: the production title shows the selected magnitude."""
-        from astropy.io.fits import Header
-
         from src.transient import plot_astrocolibri_cutouts
 
         df = _make_ac_table(n_sources=1, n_matches=1)
         df.loc[0, "psf_mag"] = 17.5
         df.loc[0, "psf_mag_err"] = 0.05
-        header = Header()
+        header = _celestial_header()
         mock_fig = MagicMock()
 
         with patch("src.transient.st"), \
@@ -377,10 +386,8 @@ class TestAstrocolibriInvalidCoordinates:
             "astrocolibri_name": ["BadSrc"],
         })
         # Should not raise and should return an empty list (0 saved files)
-        from astropy.io.fits import Header
-
         image = np.zeros((100, 100))
-        header = Header()
+        header = _celestial_header()
 
         with patch("src.transient.st"), \
              patch("src.transient.fix_header", return_value=(header, None)), \
@@ -402,10 +409,8 @@ class TestAstrocolibriInvalidCoordinates:
             "ycenter": [200.0],
             "astrocolibri_name": ["BadSrc"],
         })
-        from astropy.io.fits import Header
-
         image = np.zeros((100, 100))
-        header = Header()
+        header = _celestial_header()
 
         with patch("src.transient.st"), \
              patch("src.transient.fix_header", return_value=(header, None)), \

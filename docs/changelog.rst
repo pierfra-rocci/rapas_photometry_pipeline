@@ -3,15 +3,44 @@ Changelog
 
 This document records all notable changes to RAPAS Photometry Pipeline.
 
-Unreleased
-----------
+Version 1.9.3
+-------------
+
+**Instrumental catalog fallback**
+
+*   If the calibration catalog or zero point is unavailable, the pipeline
+    exports instrumental CSV and VOTable catalogs, retaining sky coordinates
+    when a usable WCS is available. Transient finding is skipped without
+    calibrated magnitudes.
+*   The archived ZIP remains available for download after a Streamlit rerun.
+    If PSF merging fails, aperture photometry is retained.
+
+**Catalog service and local astrometry resilience**
+
+*   VizieR and SIMBAD requests retry on their Harvard mirrors after a primary
+    service failure. These are mirrors of the same services, not automatic
+    switches to a different calibration catalog.
+*   Local plate-solving attempts share a 180-second budget, configurable with
+    ``RPP_LOCAL_ASTROMETRY_TIMEOUT_SECONDS``, before the existing online
+    fallback is attempted when configured.
+
+**Private account storage and log access**
+
+*   New result archives and WCS FITS copies use account-ID-based private
+    directories. Older username-based files remain untouched and require
+    operator ownership verification before migration.
+*   In-app global logs are disabled unless account IDs are explicitly listed in
+    ``RPP_LOG_ADMIN_USER_IDS``.
+*   Both backends reserve account IDs in SQLite without changing existing
+    accounts, preventing reuse after deletion while reservation history remains
+    intact. Upgrade both backends and the frontend together.
 
 **Aladin Lite script fallback**
 
 *   If the Aladin Lite script cannot be downloaded from CDS, the viewer retries
-    with the pinned v3.8.2 script from jsDelivr. If neither source is
-    reachable, the widget reports the failure; HiPS imagery still requires
-    access to the tile server.
+    with the pinned v3.8.2 module from jsDelivr. If neither source is
+    reachable, the widget reports the failure and the source-coordinate table
+    remains available; HiPS imagery still requires access to the tile server.
 
 **VOTable export with Astro-Colibri and TNS columns**
 

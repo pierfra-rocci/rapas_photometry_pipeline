@@ -14,8 +14,6 @@ from photutils.psf import EPSFBuilder, extract_stars, PSFPhotometry
 from photutils.psf import SourceGrouper, EPSFStars
 
 from src.tools_pipeline import FIGURE_SIZES
-from src.utils import ensure_output_directory, sanitize_username, session_results_path
-
 from typing import Any, Optional, Tuple
 
 
@@ -25,7 +23,7 @@ def perform_psf_photometry(
     fwhm: float,
     daostarfind: Any,
     mask: Optional[np.ndarray] = None,
-    error=None,
+    error: Optional[np.ndarray] = None,
     max_sources_for_psf: int = 700,
     max_stars_for_epsf: int = 350,
     local_background_std_factor: float = 3.0,
@@ -1070,12 +1068,8 @@ def perform_psf_photometry(
             psf_filename = (
                 f"{os.path.basename(str(st.session_state.get('base_filename', 'psf_model')))}_psf.fits"
             )
-            username = sanitize_username(st.session_state.get("username", "anonymous"))
             psf_filepath = os.path.join(
-                session_results_path(
-                    ensure_output_directory(directory=f"{username}_results"),
-                    st.session_state.get("session_id"),
-                ),
+                st.session_state["output_dir"],
                 psf_filename,
             )
             hdu.writeto(psf_filepath, overwrite=True)

@@ -18,7 +18,7 @@
 
 ![RAPAS Logo](rapas_logo.png)
 
-![Version](https://img.shields.io/badge/version-1.9.2-blue)
+![Version](https://img.shields.io/badge/version-1.9.3-blue)
 
 A comprehensive astronomical photometry pipeline built with Streamlit, featuring local astrometric plate solving with an optional online fallback, multi-catalog cross-matching, and advanced photometric analysis capabilities.
 
@@ -174,6 +174,10 @@ The upload step stages the file in the UI and shows an immediate raw header
 preview so you can inspect metadata before processing. Full loading, WCS
 validation, and any astrometry re-solve begin only after you click
 **Start Analysis**.
+For multi-extension files, the first nonempty numeric image HDU is used,
+preferring the primary HDU; tables and one-dimensional arrays are skipped.
+The same image is used for plate solving. A solved FITS copy retains the
+other HDUs and leaves the uploaded file unchanged.
 Each browser session is isolated from the others, and the **Reset** button clears only your own session (one press is enough).
 
 ### 6. Run Analysis
@@ -209,8 +213,11 @@ used by `pages/login.py` and `pages/app.py`.
   The legacy backend emits the same line tagged `(legacy backend)`, and the
   frontend emits `(frontend, FastAPI backend)` or `(frontend, legacy backend)`.
   The version is read at runtime from `src/__version__.py`.
-- Administrators can read the last 200 lines of both files from the in-app
-  **Pipeline Logs** page (`pages/showlogs.py`).
+- The in-app **Pipeline Logs** page (`pages/showlogs.py`) is disabled by default.
+  To grant access, set `RPP_LOG_ADMIN_USER_IDS` in the Streamlit environment
+  to a comma-separated list of trusted database user IDs, such as `1,3`.
+  Usernames alone do not grant access. Verify the IDs against the shared
+  database and update the setting whenever accounts or the database change.
 
 ## Service Logs
 
@@ -224,8 +231,8 @@ used by `pages/login.py` and `pages/app.py`.
   The legacy backend emits the same line tagged `(legacy backend)`, and the
   frontend emits `(frontend, FastAPI backend)` or `(frontend, legacy backend)`.
   The version is read at runtime from `src/__version__.py`.
-- Administrators can read the last 200 lines of both files from the in-app
-  **Pipeline Logs** page (`pages/showlogs.py`).
+- The in-app **Pipeline Logs** page (`pages/showlogs.py`) requires trusted
+  database user IDs in `RPP_LOG_ADMIN_USER_IDS`; it is disabled by default.
 
 ## Account and API Features
 
@@ -274,13 +281,31 @@ the online Astrometry.net fallback when a key is configured. If online solving
 is unavailable or also fails, the app tries to continue with the original WCS
 when available.
 
+Local plate-solving attempts share a 180-second wall-clock budget. Set
+`RPP_LOCAL_ASTROMETRY_TIMEOUT_SECONDS` to a positive number to change it.
+When the budget is exhausted, the local solver is stopped and the existing
+online fallback is attempted if configured. Source detection, process cleanup,
+online requests, and later refinement are not hard-bounded by this budget.
+
+Headers are preserved rather than filled with invented celestial coordinates or
+pixel scales. A WCS must have an explicit, nonsingular scale and a finite,
+reversible celestial transform; conflicting CD and PC matrices are rejected.
+These checks do **not** prove astrometric accuracy: verify the solution against
+reference stars. If no valid WCS is available after solving, the app skips sky
+matching and transient searches and exports uncalibrated pixel-only photometry
+when a usable pixel scale is available. If no scale is available, set the pixel
+scale override before running. If a valid WCS exists but the calibration
+catalog or zero point is unavailable, the ZIP instead includes uncalibrated
+instrumental photometry with the available sky coordinates; transient finding
+is skipped because calibrated magnitudes are unavailable.
+
 ### Output Files
 
 The downloadable ZIP contains files matching the input image's base name, except
 for FITS files. FITS products, when generated, remain in the results directory
 and are not included in the ZIP.
 
-- **Photometry Catalog**: CSV and VOTable (`*_catalog.csv` / `*_catalog.vot`)
+- **Photometry Catalog**: CSV and VOTable (`<input-base>.csv` / `<input-base>.vot`)
   restricted to a curated set of columns, always in the same order:
   `id`, `ra`, `dec`, `astrocolibri_name`, `astrocolibri_type`,
   `astrocolibri_classification`, `astrocolibri_ra`, `astrocolibri_dec`, `tns_name`, `tns_type`, `tns_ra`, `tns_dec`, `simbad_main_id`, `simbad_otype`, `simbad_B`,
@@ -307,6 +332,10 @@ and are not included in the ZIP.
   same columns as the catalog (including `id`, so each candidate can be traced
   back to its catalog row); candidates without a catalog counterpart keep their
   own coordinates, pixel position and calibrated PSF magnitude
+- **Instrumental catalog** (`*_instrumental_catalog.csv` and `.vot`): pixel
+  positions, measured fluxes and instrumental magnitudes when no valid WCS or
+  photometric calibration could be obtained. These are not calibrated
+  magnitudes; sky coordinates are included only when a valid WCS is available
 - **Headers**: Input header (`*_header.txt`) and, when a WCS is available, the
   astrometric header (`*_wcs_header.txt`)
 - **Plots and log**: Diagnostic PNG files and the detailed processing log
@@ -404,8 +433,11 @@ The pipeline generates comprehensive output files, available as a ZIP download:
 
 - Uploaded and generated FITS data are stored under `rpp_data/fits/`
 - Result archives are stored under `rpp_results/`
-- Each browser session works in its own `work_<id>` folder (temporary uploads under `/tmp/<user>/` and intermediate results under `rpp_results/<user>_results/`), so concurrent sessions never share files; stale folders older than 24 h are cleaned automatically after login
-- User-scoped storage paths follow `user_{id}/YYYY/MM/...`
+- New archives and WCS FITS copies use `private_v2/user_{id}/YYYY/MM/` under their respective roots. Each session has a `work_<id>` folder under its private results directory and a temporary upload folder under `/tmp/rpp_private_v2/user_{id}/`; stale work folders older than 24 h are cleaned after login.
+- Older username-based archives and WCS FITS copies remain untouched and are not displayed or overwritten by the app. An operator must verify ownership independently before manually copying them into the appropriate private directory; username-derived filenames alone are not reliable proof of ownership. Back up files and database tracking records before migration.
+- FastAPI and Flask must use the same user database. If `RPP_DB_PATH` is set, configure it consistently for both backends and the frontend.
+- Upgrade and restart both backends together with the frontend. Startup creates a persistent `rpp_user_id_reservations` table, preserving existing IDs, usernames, and password hashes while preventing new registrations from reusing reserved IDs.
+- Account IDs must not be reassigned to different people while their private files or log permissions remain. Reservation history can be lost when replacing or restoring a database: before doing so, review private storage and revoke or update configured log IDs. Keep database and storage backups consistent.
 - WCS-solved FITS files and ZIP archives can be linked in the database for
   per-user analysis history
 
@@ -450,19 +482,23 @@ Aladin Lite v3 paints the sky with WebGL2 and fetches its HiPS tiles from CDS
 (`alasky.cds.unistra.fr`), so an empty viewer is usually a WebGL2 or a network
 issue, not a caching one.
 
-- **Read the red line under the viewer**: the widget now names the cause (no
+- **Read the red line above the viewer**: the widget now names the cause (no
   WebGL2 context, or `aladin.js` could not be downloaded) instead of showing
   a blank box. If the CDS script cannot be reached, the widget automatically
   retries it from jsDelivr at
-  `https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js`; if both
-  downloads fail, the widget reports both sources.
+  `https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js` as an ES
+  module; if both sources fail or time out, the widget reports the failure.
+- **Offline coordinates**: expand **Source coordinates (available without
+  Aladin)** above the viewer. The science-image preview is also available
+  independently of Aladin.
 - **Firefox**: enable hardware acceleration, or set `webgl.force-enabled` to
   `true` in `about:config` and restart the browser.
 - **Tiles blocked**: check the browser console for failed requests to
   `alasky.cds.unistra.fr` (proxy, firewall, HTTPS-Only mode); the viewer then
   falls back to `CDS/P/DSS2/red` on its own.
 - **Note**: the jsDelivr fallback provides the Aladin Lite JavaScript library;
-  survey imagery still requires access to the HiPS tile server.
+  survey imagery still requires access to the HiPS tile server. Both default
+  surveys use CDS, so a CDS-wide outage can affect both.
 - **Alternative browsers**: use Chrome or Edge when WebGL2 cannot be enabled.
 - **Full details**: `docs/troubleshooting.rst`, section *Aladin Lite Viewer
   Issues*.
@@ -502,15 +538,26 @@ issue, not a caching one.
 - If the cross-match step itself fails, the photometry catalogue (CSV and
   VOTable) is still written and available for download, without the
   cross-match columns. The transient finder runs independently, so a failure
-  there does not affect the catalogue either.
+  there does not affect the catalogue either. If the calibration cross-match
+  or zero point fails, an uncalibrated instrumental catalog is exported
+  instead and transient finding is skipped.
 - Check the generated log file to see which catalog steps completed, timed out,
   or were skipped.
 
 ## Changelog
 
-> The project currently targets version 1.9.2. Only the three latest releases are listed here; the full history is in `docs/changelog.rst`.
+> The project currently targets version 1.9.3. Recent releases are listed here; the full history is in `docs/changelog.rst`.
 
-### Current Release (1.9.2)
+### Current Release (1.9.3)
+
+- **Partial results and downloads**: when calibration is unavailable, the pipeline exports instrumental CSV and VOTable catalogs instead of calibrated results and skips transient finding. A failed later cross-match or transient search does not prevent the photometry catalog from being exported. The archived ZIP remains downloadable after a Streamlit rerun.
+- **Aladin Lite resilience**: if the CDS script fails, the viewer tries the pinned jsDelivr module; a source-coordinate table remains available without the viewer. The default HiPS imagery still requires access to CDS.
+- **Catalog service mirrors**: failed VizieR and SIMBAD requests can retry on Harvard mirrors. This retries the same service, not a different photometric catalog.
+- **Private account storage**: new archives and WCS FITS files use account-ID-based paths; global in-app logs are restricted to configured administrator IDs.
+- **Local astrometry timeout**: local plate-solving attempts share a configurable 180-second budget before the existing fallback is attempted.
+- **VOTable export**: duplicate catalog columns are removed before CSV and VOTable export.
+
+### Version 1.9.2
 
 - **TNS (Transient Name Server) cross-match**: sources are also matched against the public TNS objects from the daily staged catalogue (`tns_public_objects.csv.zip`, downloaded at most once per UTC day and cached), with a progressive radius of 5, 10, 15, 20 and 30 arcsec that keeps the closest object per source. `tns_name`, `tns_type`, `tns_ra` and `tns_dec` are added to the catalog files, `TNS; ` is added to `catalog_matches`, the objects found in the field are listed in the app, and the Aladin popups name them. A missing key or network/HTTP error is reported as a warning and the run continues. Configure `TNS_API_KEY` with `TNS_BOT_ID`/`TNS_BOT_NAME` (or `TNS_USER_ID`/`TNS_USER_NAME`); `RPP_TNS_CACHE_DIR` and `RPP_TNS_CATALOG_PATH` control the cache location and an offline catalogue.
 - **TNS Search API fallback**: when the staged catalogue cannot be obtained and TNS credentials are set, one `/api/get/search` cone search over the field followed by `/api/get/object` calls (up to 100 objects) provides the name, position and type of the objects; matching and the `tns_name`/`tns_type`/`tns_ra`/`tns_dec` output columns are unchanged. `RPP_TNS_SANDBOX=1` selects the TNS sandbox.
@@ -520,8 +567,8 @@ issue, not a caching one.
 
 ### Version 1.9.1
 
-- **Aladin Lite diagnostics**: the widget now reports why the sky image is missing instead of showing an empty viewer, both on a red line below the viewer and in the browser console: no WebGL2 context (hardware acceleration off, blocklisted GPU, `webgl.disabled`), or `aladin.js` not downloadable from `aladin.cds.unistra.fr`. It also logs the Aladin Lite release actually loaded (`[RPP Aladin] version ...`).
-- **Aladin fallback survey**: new `fallback_survey` argument of `display_catalog_in_aladin()` (`CDS/P/DSS2/red` by default). The HiPS `properties` document is probed with a 12 s timeout and, when it cannot be read, the base layer is switched to the fallback survey; the swap is reported under the viewer, and an explicit message is shown when neither survey is reachable.
+- **Aladin Lite diagnostics**: the widget reports why the sky image is missing instead of showing an empty viewer, both on a red line above the viewer and in the browser console: no WebGL2 context (hardware acceleration off, blocklisted GPU, `webgl.disabled`), or `aladin.js` not downloadable from `aladin.cds.unistra.fr`. It also logs the Aladin Lite release actually loaded (`[RPP Aladin] version ...`).
+- **Aladin fallback survey**: the `fallback_survey` argument of `display_catalog_in_aladin()` defaults to `CDS/P/DSS2/red`. The HiPS `properties` document is probed with a 12 s timeout and, when it cannot be read, the base layer is switched to the fallback survey; the swap is reported above the viewer, and an explicit message is shown when neither survey is reachable.
 - **Aladin troubleshooting and tests**: new *Aladin Lite Viewer Issues* section in `docs/troubleshooting.rst`, plus tests for the diagnostics and the fallback in `tests/test_network_resilience.py`.
 
 ### Version 1.9.0

@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Features &mdash; RAPAS Photometry Pipeline (RPP) v1.9.2 Documentation</title>
+  <title>Features &mdash; RAPAS Photometry Pipeline (RPP) v1.9.3 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=574b2d58"></script>
+      <script src="_static/documentation_options.js?v=f333a941"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -151,11 +151,14 @@ frontend each emit their own line)</p></li>
 </ul>
 </dd>
 <dt><strong>Header Processing</strong>:</dt><dd><ul class="simple">
-<li><p>Automatic WCS keyword validation and correction</p></li>
-<li><p>Removal of problematic or conflicting keywords</p></li>
+<li><p>Celestial WCS validation without inventing coordinates or pixel scales</p></li>
+<li><p>Preserve input metadata; retry WCS parsing without conflicting nonstandard
+metadata only in a temporary copy when necessary</p></li>
+<li><p>Reject conflicting CD and PC matrices, singular or non-finite transforms,
+and transforms that fail reference-pixel or available image-corner checks</p></li>
 <li><p>Observatory information extraction from headers</p></li>
-<li><p>Coordinate system standardization and validation</p></li>
-<li><p>Missing keyword interpolation and defaults</p></li>
+<li><p>Preserve valid projections and SIP distortions; convert output celestial
+coordinates to ICRS</p></li>
 </ul>
 </dd>
 <dt><strong>Cosmic Ray Removal</strong>:</dt><dd><ul class="simple">
@@ -198,10 +201,15 @@ background level as the last resort</p></li>
 <li><p>Automatic source detection using photutils</p></li>
 <li><p>Scale estimation from focal length and pixel size</p></li>
 <li><p>Solution validation and coordinate range checking</p></li>
+<li><p>Structural WCS checks do not prove astrometric accuracy; verify the
+solution against reference stars</p></li>
 <li><p>Forced re-solve option when the user enables Astrometry Check</p></li>
 <li><p>Target of at least 20 detected stars; the detection threshold is lowered
 3 -&gt; 2 -&gt; 1 sigma on small or sparse fields (best effort down to 5 stars)</p></li>
 <li><p>Automatic retry of the solve with a deeper detection when it fails</p></li>
+<li><p>Shared 180-second wall-clock budget for local solver attempts, configurable
+through <code class="docutils literal notranslate"><span class="pre">RPP_LOCAL_ASTROMETRY_TIMEOUT_SECONDS</span></code>; source detection, cleanup,
+online requests, and refinement are outside this hard limit</p></li>
 </ul>
 </dd>
 <dt><strong>WCS Refinement</strong>:</dt><dd><ul class="simple">
@@ -440,10 +448,43 @@ calibrated magnitude</p></li>
 event per source, radius reached reported in the log); matches found only
 at the 15, 20 or 30 arcsec tier raise a warning; the match outcome is
 displayed in the app</p></li>
+<li><p>Search API fallback: if the staged catalogue cannot be obtained, one
+<code class="docutils literal notranslate"><span class="pre">/api/get/search</span></code> cone search over the field followed by
+<code class="docutils literal notranslate"><span class="pre">/api/get/object</span></code> for each object (up to 100) is used instead;
+<code class="docutils literal notranslate"><span class="pre">RPP_TNS_SANDBOX=1</span></code> selects <code class="docutils literal notranslate"><span class="pre">sandbox.wis-tns.org</span></code></p></li>
+<li><p>Progressive cross-match radius 5 -&gt; 10 -&gt; 15 -&gt; 20 -&gt; 30 arcsec (nearest
+event per source, radius reached reported in the log); matches found only
+at the 15, 20 or 30 arcsec tier raise a warning; the match outcome is
+displayed in the app</p></li>
 <li><p>Every source returned by Astro-Colibri for the field is listed (name,
 RA/Dec, type, classification, observatory, trigger ID, position error,
 date, redshift, matched flag, separation); the event
 RA/Dec are exported as <code class="docutils literal notranslate"><span class="pre">astrocolibri_ra</span></code> / <code class="docutils literal notranslate"><span class="pre">astrocolibri_dec</span></code></p></li>
+</ul>
+</dd>
+<dt><strong>TNS (Transient Name Server)</strong>:</dt><dd><ul class="simple">
+<li><p>Public transients (AT/SN/FRB) from the daily staged catalogue
+<code class="docutils literal notranslate"><span class="pre">tns_public_objects.csv.zip</span></code>, downloaded at most once per UTC day and
+cached locally (<code class="docutils literal notranslate"><span class="pre">RPP_TNS_CACHE_DIR</span></code>), or read from a local file
+(<code class="docutils literal notranslate"><span class="pre">RPP_TNS_CATALOG_PATH</span></code>)</p></li>
+<li><p>API key authentication: <code class="docutils literal notranslate"><span class="pre">TNS_API_KEY</span></code> plus <code class="docutils literal notranslate"><span class="pre">TNS_BOT_ID</span></code>/
+<code class="docutils literal notranslate"><span class="pre">TNS_BOT_NAME</span></code> (bot) or <code class="docutils literal notranslate"><span class="pre">TNS_USER_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_USER_NAME</span></code> (user);
+without it the step is skipped with a warning, like Astro-Colibri</p></li>
+<li><p>Optional shared mirror: <code class="docutils literal notranslate"><span class="pre">RPP_TNS_MIRROR_URL</span></code> points at a <code class="docutils literal notranslate"><span class="pre">tns-mirror</span></code>
+HTTP API queried once per detected source (<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/nearest</span></code>), which
+removes the download for multi-user deployments; the mirror is
+authoritative when it answers, any failure falls back to the daily
+catalogue, and fields with more than 500 sources use the catalogue directly</p></li>
+<li><p>Progressive cross-match radius 5 -&gt; 10 -&gt; 15 -&gt; 20 -&gt; 30 arcsec keeping the
+closest object per source; matches found only at the 20 or 30 arcsec tier
+raise a warning</p></li>
+<li><p>Spatial index: the parsed catalogue carries a <code class="docutils literal notranslate"><span class="pre">scipy</span></code> KD-tree over the
+object positions, so the objects of a field are selected by walking the
+tree instead of comparing every catalogue row with the field centre</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tns_name</span></code> (full designation, e.g. <code class="docutils literal notranslate"><span class="pre">SN</span> <span class="pre">2026abc</span></code>), <code class="docutils literal notranslate"><span class="pre">tns_type</span></code>,
+<code class="docutils literal notranslate"><span class="pre">tns_ra</span></code> and <code class="docutils literal notranslate"><span class="pre">tns_dec</span></code> are exported; <code class="docutils literal notranslate"><span class="pre">TNS;</span> <span class="pre">``</span> <span class="pre">is</span> <span class="pre">added</span> <span class="pre">to</span>
+<span class="pre">``catalog_matches</span></code>, and every TNS object in the field is listed in the
+app with its match status and separation</p></li>
 </ul>
 </dd>
 <dt><strong>TNS (Transient Name Server)</strong>:</dt><dd><ul class="simple">
@@ -548,6 +589,7 @@ candidates sorted by best signal-to-noise ratio</p></li>
 <dt><strong>Interactive Sky Viewer</strong>:</dt><dd><ul class="simple">
 <li><p>Aladin Lite integration for source exploration</p></li>
 <li><p>Automatic jsDelivr fallback for the viewer script if the CDS download fails</p></li>
+<li><p>Automatic jsDelivr fallback for the viewer script if the CDS download fails</p></li>
 <li><p>Overlay of detected sources with catalog information</p></li>
 <li><p>Clickable source markers with detailed information</p></li>
 <li><p>Astro-Colibri cross-matches drawn as larger red squares in their own
@@ -615,7 +657,8 @@ Error</em> and <em>Detector Gain</em> controls</p></li>
 <li><p>Per-session <code class="docutils literal notranslate"><span class="pre">work_&lt;id&gt;</span></code> folders for temporary uploads and intermediate results</p></li>
 <li><p>Archive browser for previous results</p></li>
 <li><p>Batch download options for result sets</p></li>
-<li><p>User-scoped storage paths under <code class="docutils literal notranslate"><span class="pre">rpp_data/fits/</span></code> and <code class="docutils literal notranslate"><span class="pre">rpp_results/</span></code></p></li>
+<li><p>User-ID-scoped <code class="docutils literal notranslate"><span class="pre">private_v2/user_&lt;id&gt;/</span></code> storage under <code class="docutils literal notranslate"><span class="pre">rpp_data/fits/</span></code>
+and <code class="docutils literal notranslate"><span class="pre">rpp_results/</span></code>; older username-based files require operator review</p></li>
 </ul>
 </dd>
 <dt><strong>Error Handling</strong>:</dt><dd><ul class="simple">
@@ -647,6 +690,9 @@ Error</em> and <em>Detector Gain</em> controls</p></li>
 <h2>Output Generation &amp; Export<a class="headerlink" href="#output-generation-export" title="Link to this heading"></a></h2>
 <dl class="simple">
 <dt><strong>Comprehensive Result Files</strong>:    - CSV and VOTable catalogs with a curated, fixed column order (unique <code class="docutils literal notranslate"><span class="pre">id</span></code> first, matching the Aladin Lite popup ID; Astro-Colibri, TNS, SIMBAD, SkyBoT and AAVSO matches; Astro-Colibri detections sorted first)</dt><dd><ul class="simple">
+<li><p>CSV and VOTable instrumental catalogs when calibration is unavailable or
+no valid celestial WCS is available but a usable pixel scale permits
+photometry; sky coordinates are included when the WCS is usable</p></li>
 <li><p>Transient candidate CSV sharing the same columns as the catalog</p></li>
 <li><p>FITS files for background and PSF models</p></li>
 <li><p>WCS-solved FITS files with refined astrometric headers</p></li>

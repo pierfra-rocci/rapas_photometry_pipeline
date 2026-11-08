@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from typing import Any, Dict, Optional
 
 import requests  # type: ignore[import]
@@ -11,6 +12,32 @@ from requests.auth import HTTPBasicAuth  # type: ignore[import]
 DEFAULT_API_URL = os.getenv("RPP_API_URL", "http://localhost:8000")
 DEFAULT_LEGACY_URL = os.getenv("RPP_LEGACY_URL", "http://localhost:5000")
 _REQUEST_TIMEOUT = 15
+
+
+def can_view_pipeline_logs(user_id: object) -> bool:
+    """Check the operator-configured account IDs allowed to view global logs."""
+    if type(user_id) is not int:
+        return False
+    configured = os.getenv("RPP_LOG_ADMIN_USER_IDS", "").strip()
+    if not configured:
+        return False
+    values = [value.strip() for value in configured.split(",")]
+    if any(
+        not value.removeprefix("-").isascii()
+        or not value.removeprefix("-").isdecimal()
+        for value in values
+    ):
+        logging.getLogger(__name__).error(
+            "Invalid RPP_LOG_ADMIN_USER_IDS; pipeline log access is disabled."
+        )
+        return False
+    try:
+        return user_id in {int(value) for value in values}
+    except ValueError:
+        logging.getLogger(__name__).error(
+            "Invalid RPP_LOG_ADMIN_USER_IDS; pipeline log access is disabled."
+        )
+        return False
 
 
 def _build_backend_info(
@@ -61,6 +88,7 @@ class ApiClient:
         root = base_url or DEFAULT_API_URL
         self.base_url = root.rstrip("/")
         self.username: Optional[str] = None
+        self.user_id: Optional[int] = None
 
     # ------------------------------------------------------------------
     # Authentication helpers
@@ -73,7 +101,10 @@ class ApiClient:
             data = response.json()
         except ValueError:
             data = None
-        self.username = data.get("username") if isinstance(data, dict) else None
+        canonical_username = data.get("username") if isinstance(data, dict) else None
+        self.username = canonical_username if isinstance(canonical_username, str) else None
+        user_id = data.get("user_id") if isinstance(data, dict) else None
+        self.user_id = user_id if type(user_id) is int else None
         return self._extract_message(response)
 
     def register(self, username: str, password: str, email: str) -> str:

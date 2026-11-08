@@ -1,7 +1,12 @@
+import json
+import math
 import os
+import signal
 import shutil
 import subprocess
+import sys
 import tempfile
+import time
 
 import streamlit as st
 
@@ -16,6 +21,8 @@ from scipy.stats import chi2
 
 from src.catalog_mirrors import get_vizier_catalog_with_fallback
 from src.pipeline import resolve_effective_gain
+from src.tools_pipeline import fix_header, safe_wcs_create
+from src.utils import select_fits_image_hdu
 
 # stdpipe imports
 STDPIPE_IMPORT_ERROR = None
@@ -64,6 +71,126 @@ ASTROMETRY_THRESHOLD_LADDER = (3.0, 2.0, 1.0)
 # A 3-sigma detection with fewer than this many sources is considered too
 # sparse: the 2-sigma detection is tried before settling on it.
 ASTROMETRY_STANDARD_MIN_SOURCES = 100
+LOCAL_ASTROMETRY_TIMEOUT_SECONDS = 180.0
+LOCAL_ASTROMETRY_TIMEOUT_ENV = "RPP_LOCAL_ASTROMETRY_TIMEOUT_SECONDS"
+
+
+class LocalAstrometryCleanupError(RuntimeError):
+    """The local solver process tree could not be stopped safely."""
+
+
+def _local_astrometry_timeout(log_messages: list[str]) -> float:
+    """Return the configured positive wall-clock budget for local solving."""
+    value = os.environ.get(LOCAL_ASTROMETRY_TIMEOUT_ENV)
+    if value is None:
+        return LOCAL_ASTROMETRY_TIMEOUT_SECONDS
+    try:
+        timeout = float(value)
+        if math.isfinite(timeout) and timeout > 0:
+            return timeout
+    except ValueError:
+        pass
+    log_messages.append(
+        f"WARNING: Invalid {LOCAL_ASTROMETRY_TIMEOUT_ENV} value; "
+        f"using {LOCAL_ASTROMETRY_TIMEOUT_SECONDS:g} seconds"
+    )
+    return LOCAL_ASTROMETRY_TIMEOUT_SECONDS
+
+
+def _stop_local_astrometry_process(process: subprocess.Popen[bytes]) -> None:
+    """Stop only the process tree started for this local solver attempt."""
+    try:
+        if os.name == "posix":
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        elif os.name == "nt":
+            taskkill = os.path.join(
+                os.environ.get("SystemRoot", r"C:\Windows"), "System32", "taskkill.exe"
+            )
+            result = subprocess.run(
+                [taskkill, "/PID", str(process.pid), "/T", "/F"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            if result.returncode:
+                raise OSError(result.stderr.strip() or "taskkill failed")
+        else:
+            raise OSError(f"Process-tree termination is unsupported on {os.name}")
+        process.wait(timeout=5)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        try:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+        except (OSError, subprocess.TimeoutExpired) as termination_error:
+            raise LocalAstrometryCleanupError(
+                f"Could not stop the local astrometry worker: {termination_error}"
+            ) from termination_error
+        raise LocalAstrometryCleanupError(
+            f"Could not stop the local astrometry process tree: {error}"
+        ) from error
+
+
+def _run_local_astrometry(
+    sources: Table, options: dict[str, object], deadline: float
+) -> tuple[WCS | None, str]:
+    """Run stdpipe in an isolated process under the shared local deadline."""
+    if time.monotonic() >= deadline:
+        raise TimeoutError("Local astrometry time budget exhausted")
+
+    with tempfile.TemporaryDirectory(prefix="rpp_astrometry_") as workdir:
+        source_path = os.path.join(workdir, "sources.fits")
+        options_path = os.path.join(workdir, "options.json")
+        result_path = os.path.join(workdir, "solution.fits")
+        solver_dir = os.path.join(workdir, "solver")
+        log_path = os.path.join(workdir, "solver.log")
+        os.mkdir(solver_dir)
+        source_table = Table(
+            [sources["x"], sources["y"], sources["flux"], sources["fluxerr"]],
+            names=("x", "y", "flux", "fluxerr"),
+            copy=True,
+        )
+        source_table.write(source_path, format="fits")
+        with open(options_path, "w", encoding="utf-8") as handle:
+            json.dump(options, handle)
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("Local astrometry time budget exhausted")
+        worker_path = os.path.join(os.path.dirname(__file__), "_astrometry_worker.py")
+        with open(log_path, "wb") as log_file:
+            process = subprocess.Popen(
+                [sys.executable, worker_path, source_path, options_path, solver_dir, result_path],
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                start_new_session=os.name == "posix",
+            )
+            try:
+                returncode = process.wait(timeout=max(0.0, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired as error:
+                _stop_local_astrometry_process(process)
+                raise TimeoutError("Local astrometry time budget exhausted") from error
+            except BaseException:
+                _stop_local_astrometry_process(process)
+                raise
+
+        with open(log_path, "rb") as log_file:
+            log_file.seek(0, os.SEEK_END)
+            log_file.seek(max(0, log_file.tell() - 2048))
+            detail = log_file.read().decode("utf-8", errors="replace").strip()
+        if returncode:
+            raise RuntimeError(f"Local astrometry worker exited with code {returncode}: {detail}")
+        if not os.path.exists(result_path):
+            return None, detail
+        with fits.open(result_path, memmap=False) as hdul:
+            result_hdu = hdul[0]
+            if not isinstance(result_hdu, fits.PrimaryHDU):
+                raise ValueError("Local astrometry worker returned an invalid FITS result")
+            return WCS(result_hdu.header, hdul, relax=True), detail
 
 
 def get_adaptive_min_sources(image_shape):
@@ -174,7 +301,32 @@ def estimate_pixel_scale_robust(header, image_shape):
     return None  # No estimate found
 
 
-def solve_with_enhanced_strategy(sources, header, image_data):
+def _accept_solved_wcs(
+    solution: WCS | None, header: fits.Header, log_messages: list[str]
+) -> WCS | None:
+    """Reject solver output that cannot produce a usable celestial WCS."""
+    if solution is None:
+        return None
+    try:
+        solution_header = solution.to_header(relax=True)
+        for key in ("NAXIS1", "NAXIS2"):
+            if key in header:
+                solution_header[key] = header[key]
+        validated, error, messages = safe_wcs_create(solution_header)
+        log_messages.extend(messages)
+        if validated is None:
+            log_messages.append(f"WARNING: Rejected invalid plate solution: {error}")
+            return None
+        return solution.celestial if solution.pixel_n_dim > 2 else solution
+    except Exception as error:
+        log_messages.append(f"WARNING: Could not validate plate solution: {error}")
+        return None
+
+
+def solve_with_enhanced_strategy(
+    sources: Table, header: fits.Header, image_data: np.ndarray,
+    deadline: float | None = None,
+) -> tuple[WCS | None, list[str]]:
     """Multi-stage plate solving with progressive constraints
     
     This function implements a multi-stage approach to plate solving:
@@ -183,6 +335,8 @@ def solve_with_enhanced_strategy(sources, header, image_data):
     3. Targeted search with RA/DEC hints if available
     """
     log_messages = []
+    if deadline is None:
+        deadline = time.monotonic() + _local_astrometry_timeout(log_messages)
     
     # Get pixel scale estimate for constraints
     pixel_scale = estimate_pixel_scale_robust(header, image_data.shape)
@@ -235,11 +389,25 @@ def solve_with_enhanced_strategy(sources, header, image_data):
         ("targeted", kwargs_targeted)
     ]:
         try:
+            if time.monotonic() >= deadline:
+                log_messages.append("WARNING: Local astrometry time budget exhausted")
+                break
             log_messages.append(f"INFO: Trying {stage_name} plate solving")
-            solved_wcs = astrometry.blind_match_objects(sources, **kwargs)
+            candidate, detail = _run_local_astrometry(sources, kwargs, deadline)
+            solved_wcs = _accept_solved_wcs(candidate, header, log_messages)
             if solved_wcs is not None:
                 log_messages.append(f"SUCCESS: {stage_name} solving successful")
                 return solved_wcs, log_messages
+            if candidate is None:
+                log_messages.append(
+                    f"WARNING: {stage_name} solving returned no solution"
+                    + (f": {detail}" if detail else "")
+                )
+        except LocalAstrometryCleanupError:
+            raise
+        except TimeoutError:
+            log_messages.append("WARNING: Local astrometry time budget exhausted")
+            break
         except Exception as e:
             log_messages.append(f"WARNING: {stage_name} solving failed: {e}")
 
@@ -993,7 +1161,9 @@ def _limit_to_brightest(sources, log_messages, limit=500):
     return sources
 
 
-def solve_with_astrometrynet(file_path):
+def solve_with_astrometrynet(
+    file_path: str | os.PathLike[str],
+) -> tuple[WCS | None, fits.Header | None, list[str], str | None]:
     """
     Solve astrometric plate using local Astrometry.Net installation via stdpipe.
     This function loads a FITS image, detects objects using photutils, and uses stdpipe's
@@ -1042,22 +1212,34 @@ def solve_with_astrometrynet(file_path):
 
         # Load the FITS file
         log_messages.append("INFO: Loading FITS file for local plate solving")
-        with fits.open(file_path) as hdul:
-            image_data = hdul[0].data
-            header = hdul[0].header.copy()
+        with fits.open(file_path, memmap=False) as hdul:
+            hdul.verify("fix")
+            image_index = select_fits_image_hdu(hdul)
+            if image_index is None:
+                error_message = "No supported numeric image data found in FITS file"
+                log_messages.append(f"ERROR: {error_message}")
+                return None, None, log_messages, error_message
+            image_data = hdul[image_index].data
+            header = hdul[image_index].header.copy()
+            if image_index:
+                log_messages.append(f"INFO: Using image data from HDU #{image_index}")
 
-        if image_data is None:
-            return None, None, log_messages, "No image data found in FITS file"
-
-        # Check if WCS already exists
         try:
-            existing_wcs = WCS(header)
-            if existing_wcs.is_celestial:
-                log_messages.append("INFO: Proceeding with blind plate solve")
-        except Exception:
+            fixed_header, header_messages = fix_header(header)
+            if not isinstance(fixed_header, fits.Header):
+                raise TypeError("Header repair did not return a FITS header")
+            header = fixed_header
+            log_messages.extend(header_messages)
+        except Exception as header_error:
+            log_messages.append(f"WARNING: Header fixing failed: {header_error}")
+
+        existing_wcs, _, _ = safe_wcs_create(header)
+        if existing_wcs is None:
             log_messages.append(
                 "INFO: No valid WCS found in header. Proceeding with blind solve"
             )
+        else:
+            log_messages.append("INFO: Proceeding with blind plate solve")
 
         # Use adaptive minimum sources based on image size
         adaptive_min_sources = get_adaptive_min_sources(image_data.shape)
@@ -1111,15 +1293,27 @@ def solve_with_astrometrynet(file_path):
         # solve_with_enhanced_strategy.
 
         try:
+            local_timeout = _local_astrometry_timeout(log_messages)
+            local_deadline = time.monotonic() + local_timeout
+            log_messages.append(
+                f"INFO: Local astrometry budget: {local_timeout:g} seconds"
+            )
             # Use enhanced multi-stage plate solving strategy
             solved_wcs, stage_messages = solve_with_enhanced_strategy(
-                sources, header, image_data
+                sources, header, image_data, local_deadline
             )
             log_messages.extend(stage_messages)
+            solved_wcs = _accept_solved_wcs(solved_wcs, header, log_messages)
 
             # Retry with a deeper detection (2 then 1 sigma) when the solve
             # failed and a lower threshold may yield more usable stars.
             while solved_wcs is None and detection_thresh is not None:
+                if time.monotonic() >= local_deadline:
+                    log_messages.append(
+                        "WARNING: Local astrometry time budget exhausted; "
+                        "skipping further local retries"
+                    )
+                    break
                 lower = [
                     t for t in ASTROMETRY_THRESHOLD_LADDER
                     if t < detection_thresh
@@ -1151,9 +1345,10 @@ def solve_with_astrometrynet(file_path):
                     f"({detection_thresh:g} sigma)"
                 )
                 solved_wcs, stage_messages = solve_with_enhanced_strategy(
-                    sources, header, image_data
+                    sources, header, image_data, local_deadline
                 )
                 log_messages.extend(stage_messages)
+                solved_wcs = _accept_solved_wcs(solved_wcs, header, log_messages)
 
             if solved_wcs is None:
                 api_key = _get_online_astrometry_api_key()
@@ -1175,8 +1370,9 @@ def solve_with_astrometrynet(file_path):
                     }
 
                     try:
-                        hint_wcs = WCS(header)
-                        if hint_wcs.is_celestial:
+                        hint_wcs, hint_error, hint_messages = safe_wcs_create(header)
+                        log_messages.extend(hint_messages)
+                        if hint_wcs is not None:
                             center_ra, center_dec, center_sr = (
                                 astrometry.get_frame_center(
                                     wcs=hint_wcs,
@@ -1196,6 +1392,9 @@ def solve_with_astrometrynet(file_path):
                             )
                         else:
                             online_scale = pixel_scale_estimate
+                            log_messages.append(
+                                f"WARNING: Ignoring invalid WCS solver hints: {hint_error}"
+                            )
                     except Exception as hint_error:
                         online_scale = pixel_scale_estimate
                         log_messages.append(
@@ -1213,8 +1412,10 @@ def solve_with_astrometrynet(file_path):
                         )
 
                     try:
-                        solved_wcs = astrometry.blind_match_astrometrynet(
-                            sources, **online_kwargs
+                        solved_wcs = _accept_solved_wcs(
+                            astrometry.blind_match_astrometrynet(sources, **online_kwargs),
+                            header,
+                            log_messages,
                         )
                         if solved_wcs is not None:
                             log_messages.append(
@@ -1330,6 +1531,9 @@ def solve_with_astrometrynet(file_path):
                             cat_col_mag="rmag",
                             verbose=refinement_logger,
                         )
+                        refined_wcs = _accept_solved_wcs(
+                            refined_wcs, header, log_messages
+                        )
 
                         if scamp_diagnostics.get("executable") is None:
                             log_messages.append(
@@ -1382,14 +1586,20 @@ def solve_with_astrometrynet(file_path):
                 # Clear any existing WCS keywords to avoid conflicts
                 astrometry.clear_wcs(
                     updated_header,
-                    remove_comments=True,
+                    remove_comments=False,
                     remove_underscored=True,
-                    remove_history=True,
+                    remove_history=False,
                 )
 
                 # Add new WCS keywords from solution
                 wcs_header = solved_wcs.to_header(relax=True)
                 updated_header.update(wcs_header)
+                verified_wcs, verify_error, verify_messages = safe_wcs_create(updated_header)
+                log_messages.extend(verify_messages)
+                if verified_wcs is None:
+                    error_message = f"Solved header has invalid WCS: {verify_error}"
+                    log_messages.append(f"ERROR: {error_message}")
+                    return None, None, log_messages, error_message
 
                 # Add solution metadata
                 updated_header["COMMENT"] = (

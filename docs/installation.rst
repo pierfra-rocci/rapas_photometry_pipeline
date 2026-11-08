@@ -66,7 +66,8 @@ Backend Dependencies
 
 The legacy backend creates its SQLite database (``users.db``, or
 ``users_dev.db`` when ``APP_ENV=development``) on first run and shares the same
-SMTP configuration as the FastAPI backend.
+SMTP configuration as the FastAPI backend. Both backends honor ``RPP_DB_PATH``;
+configure the same database for both and for the frontend.
 
 Running the Tests
 -----------------

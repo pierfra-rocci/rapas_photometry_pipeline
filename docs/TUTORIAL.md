@@ -103,12 +103,15 @@ After processing, download the ZIP archive containing the catalog, text headers,
 processing log, and generated PNG diagnostics. The archive excludes all FITS
 files.
 
-- `*_catalog.csv` / `.vot`: Source catalog restricted to a curated set of columns, in this order: `id`, `ra`, `dec`, `astrocolibri_name`, `astrocolibri_type`, `astrocolibri_classification`, `astrocolibri_ra`, `astrocolibri_dec`, `tns_name`, `tns_type`, `tns_ra`, `tns_dec`, `simbad_main_id`, `simbad_otype`, `simbad_B`, `simbad_V`, `skybot_NAME`, `skybot_OBJECT_TYPE`, `skybot_MAGV`, `aavso_Name`, `aavso_Type`, `aavso_Period`, `catalog_matches`, `x_center`, `y_center`, then `snr_X_X`, the aperture magnitudes `aperture_mag_X_X` (each followed by its `quality_flag_X_X`), the PSF magnitude `psf_mag`, the errors `aperture_mag_err_X_X` and `psf_mag_err`, and the offsets `psf_minus_aperture_mag_X_X`. The apertures are the fixed `_1_1` and `_1_3` plus the user-defined one (for example `_1_5` at FWHM Radius Factor 1.5), so the last suffix follows your choice. Columns that do not exist for a run (for example without an Astro-Colibri key) are omitted.
+- `<input-base>.csv` / `<input-base>.vot`: Source catalog restricted to a curated set of columns, in this order: `id`, `ra`, `dec`, `astrocolibri_name`, `astrocolibri_type`, `astrocolibri_classification`, `astrocolibri_ra`, `astrocolibri_dec`, `tns_name`, `tns_type`, `tns_ra`, `tns_dec`, `simbad_main_id`, `simbad_otype`, `simbad_B`, `simbad_V`, `skybot_NAME`, `skybot_OBJECT_TYPE`, `skybot_MAGV`, `aavso_Name`, `aavso_Type`, `aavso_Period`, `catalog_matches`, `x_center`, `y_center`, then `snr_X_X`, the aperture magnitudes `aperture_mag_X_X` (each followed by its `quality_flag_X_X`), the PSF magnitude `psf_mag`, the errors `aperture_mag_err_X_X` and `psf_mag_err`, and the offsets `psf_minus_aperture_mag_X_X`. The apertures are the fixed `_1_1` and `_1_3` plus the user-defined one (for example `_1_5` at FWHM Radius Factor 1.5), so the last suffix follows your choice. Columns that do not exist for a run (for example without an Astro-Colibri key) are omitted.
 
   `id` is a unique integer source number; it is the same ID displayed in the Aladin Lite popups, so you can find any source of the viewer in the files. If Astro-Colibri sources are detected, their rows are sorted by `astrocolibri_name` and appear at the very top of the CSV and VOT files.
 
   When a filter prefix applies, magnitudes and errors use prefixed names such as `rapasg_psf_mag` and `rapasg_aperture_mag_err_1_5` (the legacy unprefixed names are used otherwise). Magnitude errors combine the per-source random part and the field-common correlated part (zero-point uncertainty and systematic floor). Colour-corrected magnitudes (`*_colorcorr`), aperture-correction factors, background RMS and the other internal diagnostics are used during the run but are not written to these files.
 - `*_transients.csv`: Transient candidates (when the transient finder is enabled), with the same columns as the catalog, including `id`, so each candidate can be traced back to its catalog row. Candidates without a catalog counterpart keep their own coordinates, pixel position and calibrated PSF magnitude.
+- `*_instrumental_catalog.csv` / `.vot`: Uncalibrated measurements when the
+  WCS or photometric calibration is unavailable. Sky coordinates are included
+  when the WCS is usable; transient finding is skipped without calibration.
 - `*_header.txt`: Input FITS header
 - `*_wcs_header.txt`: Astrometric solution header, when a WCS is available
 - `*.log`: Processing log
@@ -120,7 +123,7 @@ astrometry succeeds, the pipeline saves the original image with the updated WCS
 as `*_wcs.fits` in the results directory and also in `rpp_data/fits/`:
 
 1. **Results directory**: The per-user results folder; the file is excluded from the downloadable ZIP.
-2. **`rpp_data/fits/`**: A persistent copy that is overwritten if the same file is processed again.
+2. **`rpp_data/fits/private_v2/user_<id>/YYYY/MM/`**: A persistent copy that is overwritten if the same file is processed again in the same month. Older username-based files are not migrated automatically.
 
 **Analysis Tracking**: The database tracks selected analysis artifacts and their links; it does not store the photometry rows themselves:
 
@@ -171,7 +174,7 @@ visible directly in the run. The per-source offset is exported as
 method), and the results view plots it against the calibrated PSF magnitude
 (with per-aperture median and zero lines) alongside its histogram.
 
-**Interactive Analysis**: Use the embedded Aladin Lite viewer for real-time exploration, or export coordinates to ESA SkyView. If the CDS-hosted Aladin script cannot be reached, the viewer retries with the pinned v3.8.2 script from jsDelivr. This fallback loads the viewer library; the sky imagery still requires access to the HiPS tile server.
+**Interactive Analysis**: Use the embedded Aladin Lite viewer for real-time exploration, or export coordinates to ESA SkyView. If the CDS-hosted Aladin script fails or times out, the viewer imports the pinned v3.8.2 module from jsDelivr. This fallback loads the viewer library; the sky imagery still requires access to a HiPS tile server, and both default surveys use CDS. Expand **Source coordinates (available without Aladin)** above the viewer to inspect positions even when the viewer or imagery is unavailable.
 
 ### External Services and Partial Results
 

@@ -1,7 +1,7 @@
 RAPAS Photometry Pipeline (RPP)
 ===============================
 
-**Version |release|**
+**Version:** |release|
 
 RAPAS Photometry Pipeline (RPP) is a Streamlit-based astronomical photometry
 application with a FastAPI backend and a legacy compatibility backend. It is

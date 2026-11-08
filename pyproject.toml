@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "RPP"
-version = "1.9.2"
+version = "1.9.3"
 description = "RAPAS Photometry pipeline"
 readme = "README.md"
 requires-python = ">=3.12,<4"
@@ -197,8 +197,6 @@ dev = [
     "pip-upgrade-all==0.1.6",
     "sphinx_rtd_theme",
     "sphinx",
-    "sphinx_rtd_theme",
-    "sphinx"
     "sphinx_rtd_theme",
     "sphinx"
 ]

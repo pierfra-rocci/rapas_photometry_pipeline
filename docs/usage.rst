@@ -78,15 +78,28 @@ Quick Start (Development)
      raw header preview.
    - Full FITS loading, header/WCS checks, and astrometry are run only after
      you click **Start Analysis**.
+   - In a multi-extension file, the first nonempty numeric image HDU is used,
+     preferring the primary HDU; tables and one-dimensional arrays are
+     skipped. Loading and plate solving use the same selected image.
    - If **Astrometry Check** is enabled, the app forces a new plate-solving
      attempt even when a valid WCS already exists.
+   - A failed forced solve retains the original valid WCS. If no valid WCS can
+     be obtained, sky-dependent matching, transient searches and viewers are
+     skipped; pixel positions and uncalibrated instrumental photometry are
+     exported when a usable pixel scale is available.
+   - If the WCS is usable but the calibration catalog or zero point is
+     unavailable, the ZIP contains instrumental measurements with available
+     sky coordinates. Transient finding is skipped without calibration.
+   - Structural WCS validation does not establish astrometric accuracy. Check
+     the solution against reference stars.
 
 7. **Review outputs**
 
    - Download the ZIP archive with catalogs, plots, logs, and optional WCS
-     products.
-   - When astrometry succeeds, the updated FITS file is also stored using the
-     backend data layout.
+     headers. FITS products are stored separately and excluded from the ZIP.
+   - When astrometry succeeds, the updated FITS copy retains the other HDUs,
+     leaves the uploaded file unchanged, and is also stored using the backend
+     data layout.
 
 Production Deployment
 ---------------------
@@ -98,7 +111,28 @@ Useful environment variables:
 
 - ``RPP_API_URL``: override the FastAPI base URL used by the frontend.
 - ``RPP_LEGACY_URL``: override the legacy backend URL.
+- ``RPP_DB_PATH``: select the shared SQLite database; set the same value for
+  both backends and the frontend.
+- ``RPP_LOG_ADMIN_USER_IDS``: comma-separated trusted account IDs allowed to
+  view global pipeline logs in Streamlit. The default is no access. Verify IDs
+  against the shared database, set this in the Streamlit environment, and
+  update it whenever accounts or the database change.
 - SMTP settings are required if you want password recovery emails to work.
+
+New archives and WCS FITS copies are stored under
+``private_v2/user_<id>/YYYY/MM/`` within their respective storage roots.
+Older username-based files remain untouched and are not shown in the archive
+browser. An operator must verify ownership independently before manually
+migrating them; colliding usernames make old paths unreliable evidence.
+Back up both files and tracking records before making changes.
+Upgrade and restart both backends together with the frontend. Startup creates
+the ``rpp_user_id_reservations`` table without changing existing user IDs,
+usernames, or password hashes; subsequent registrations do not reuse reserved
+IDs. Keep database and storage backups consistent: replacing or restoring a
+database can roll back its reservation history.
+Do not reassign an account ID while its private files or log permissions remain;
+review storage and revoke or update configured log IDs before deleting accounts
+or replacing/restoring the user database.
 
 Logging and Troubleshooting
 ---------------------------

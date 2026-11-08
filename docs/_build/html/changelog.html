@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Changelog &mdash; RAPAS Photometry Pipeline (RPP) v1.9.2 Documentation</title>
+  <title>Changelog &mdash; RAPAS Photometry Pipeline (RPP) v1.9.3 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=574b2d58"></script>
+      <script src="_static/documentation_options.js?v=f333a941"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -54,7 +54,7 @@
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 <li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Changelog</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#unreleased">Unreleased</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#version-1-9-3">Version 1.9.3</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#version-1-9-2">Version 1.9.2</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#version-1-9-1">Version 1.9.1</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#version-1-9-0">Version 1.9.0</a></li>
@@ -108,14 +108,43 @@
   <section id="changelog">
 <h1>Changelog<a class="headerlink" href="#changelog" title="Link to this heading"></a></h1>
 <p>This document records all notable changes to RAPAS Photometry Pipeline.</p>
-<section id="unreleased">
-<h2>Unreleased<a class="headerlink" href="#unreleased" title="Link to this heading"></a></h2>
+<section id="version-1-9-3">
+<h2>Version 1.9.3<a class="headerlink" href="#version-1-9-3" title="Link to this heading"></a></h2>
+<p><strong>Instrumental catalog fallback</strong></p>
+<ul class="simple">
+<li><p>If the calibration catalog or zero point is unavailable, the pipeline
+exports instrumental CSV and VOTable catalogs, retaining sky coordinates
+when a usable WCS is available. Transient finding is skipped without
+calibrated magnitudes.</p></li>
+<li><p>The archived ZIP remains available for download after a Streamlit rerun.
+If PSF merging fails, aperture photometry is retained.</p></li>
+</ul>
+<p><strong>Catalog service and local astrometry resilience</strong></p>
+<ul class="simple">
+<li><p>VizieR and SIMBAD requests retry on their Harvard mirrors after a primary
+service failure. These are mirrors of the same services, not automatic
+switches to a different calibration catalog.</p></li>
+<li><p>Local plate-solving attempts share a 180-second budget, configurable with
+<code class="docutils literal notranslate"><span class="pre">RPP_LOCAL_ASTROMETRY_TIMEOUT_SECONDS</span></code>, before the existing online
+fallback is attempted when configured.</p></li>
+</ul>
+<p><strong>Private account storage and log access</strong></p>
+<ul class="simple">
+<li><p>New result archives and WCS FITS copies use account-ID-based private
+directories. Older username-based files remain untouched and require
+operator ownership verification before migration.</p></li>
+<li><p>In-app global logs are disabled unless account IDs are explicitly listed in
+<code class="docutils literal notranslate"><span class="pre">RPP_LOG_ADMIN_USER_IDS</span></code>.</p></li>
+<li><p>Both backends reserve account IDs in SQLite without changing existing
+accounts, preventing reuse after deletion while reservation history remains
+intact. Upgrade both backends and the frontend together.</p></li>
+</ul>
 <p><strong>Aladin Lite script fallback</strong></p>
 <ul class="simple">
 <li><p>If the Aladin Lite script cannot be downloaded from CDS, the viewer retries
-with the pinned v3.8.2 script from jsDelivr. If neither source is
-reachable, the widget reports the failure; HiPS imagery still requires
-access to the tile server.</p></li>
+with the pinned v3.8.2 module from jsDelivr. If neither source is
+reachable, the widget reports the failure and the source-coordinate table
+remains available; HiPS imagery still requires access to the tile server.</p></li>
 </ul>
 <p><strong>VOTable export with Astro-Colibri and TNS columns</strong></p>
 <ul class="simple">
@@ -257,6 +286,17 @@ tells them apart. The version is read at runtime from
 <code class="docutils literal notranslate"><span class="pre">src/__version__.py</span></code>, so the message follows future releases
 automatically.</p></li>
 </ul>
+<p><strong>Login audit log</strong></p>
+<ul class="simple">
+<li><p>Every successful login writes a timestamped line with the pipeline version
+to the service log:
+<code class="docutils literal notranslate"><span class="pre">[YYYY-MM-DD</span> <span class="pre">HH:MM:SS]</span> <span class="pre">RPP</span> <span class="pre">vX.Y.Z</span> <span class="pre">-</span> <span class="pre">User</span> <span class="pre">'&lt;username&gt;'</span> <span class="pre">logged</span> <span class="pre">in</span> <span class="pre">successfully</span> <span class="pre">(&lt;origin&gt;).</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">api/main.py</span></code> (FastAPI backend), <code class="docutils literal notranslate"><span class="pre">backend.py</span></code> (legacy backend) and
+<code class="docutils literal notranslate"><span class="pre">pages/login.py</span></code> (frontend) each emit their own line; the origin suffix
+tells them apart. The version is read at runtime from
+<code class="docutils literal notranslate"><span class="pre">src/__version__.py</span></code>, so the message follows future releases
+automatically.</p></li>
+</ul>
 <p><strong>Curated catalog export</strong></p>
 <ul class="simple">
 <li><p><strong>Fixed export columns.</strong> <code class="docutils literal notranslate"><span class="pre">*_catalog.csv</span></code> and <code class="docutils literal notranslate"><span class="pre">*_catalog.vot</span></code> now contain
@@ -325,6 +365,17 @@ warning when candidates rely on this fallback, using the same
 PSF-unavailable wording as the main pipeline. The shared warning is
 <code class="docutils literal notranslate"><span class="pre">PSF</span> <span class="pre">photometry</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">available;</span> <span class="pre">using</span> <span class="pre">calibrated</span> <span class="pre">aperture</span> <span class="pre">photometry</span> <span class="pre">instead.</span></code>;
 the full transient variant is
+<code class="docutils literal notranslate"><span class="pre">PSF</span> <span class="pre">photometry</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">available;</span> <span class="pre">using</span> <span class="pre">calibrated</span> <span class="pre">aperture</span> <span class="pre">photometry</span> <span class="pre">instead.</span> <span class="pre">Transient</span> <span class="pre">candidates</span> <span class="pre">use</span> <span class="pre">the</span> <span class="pre">calibrated</span> <span class="pre">1.1</span> <span class="pre">x</span> <span class="pre">FWHM</span> <span class="pre">aperture</span> <span class="pre">magnitude.</span></code>
+required to match the photometry table.</p></li>
+<li><p><strong>Transient finder without PSF photometry.</strong> When the photometry table has
+no PSF magnitude columns, or when the matched detections have no finite
+PSF value, <code class="docutils literal notranslate"><span class="pre">find_candidates()</span></code> now falls back to the calibrated
+1.1 x FWHM aperture magnitude (<code class="docutils literal notranslate"><span class="pre">aperture_mag_1_1</span></code> and its error) instead
+of aborting with “No transient candidates found”. The app displays a
+warning when candidates rely on this fallback, using the same
+PSF-unavailable wording as the main pipeline. The shared warning is
+<code class="docutils literal notranslate"><span class="pre">PSF</span> <span class="pre">photometry</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">available;</span> <span class="pre">using</span> <span class="pre">calibrated</span> <span class="pre">aperture</span> <span class="pre">photometry</span> <span class="pre">instead.</span></code>;
+the full transient variant is
 <code class="docutils literal notranslate"><span class="pre">PSF</span> <span class="pre">photometry</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">available;</span> <span class="pre">using</span> <span class="pre">calibrated</span> <span class="pre">aperture</span> <span class="pre">photometry</span> <span class="pre">instead.</span> <span class="pre">Transient</span> <span class="pre">candidates</span> <span class="pre">use</span> <span class="pre">the</span> <span class="pre">calibrated</span> <span class="pre">1.1</span> <span class="pre">x</span> <span class="pre">FWHM</span> <span class="pre">aperture</span> <span class="pre">magnitude.</span></code></p></li>
 </ul>
 <p><strong>Finer astrometry and Astro-Colibri radius</strong></p>
@@ -363,6 +414,32 @@ and the response is parsed defensively.</p></li>
 filter: 3 attempts on network errors and HTTP 429/5xx, <code class="docutils literal notranslate"><span class="pre">-from</span></code> label,
 epoch range check, HTTP error reporting, mid-exposure epoch and a per-object
 match tolerance of 10 to 30 arcsec derived from the ephemeris <code class="docutils literal notranslate"><span class="pre">Err</span></code>.</p></li>
+</ul>
+<p><strong>Scale-aware photometric error model</strong></p>
+<ul class="simple">
+<li><p><strong>The Poisson term now follows the units of the frame.</strong>
+<code class="docutils literal notranslate"><span class="pre">calc_total_error</span></code> adds <code class="docutils literal notranslate"><span class="pre">data</span> <span class="pre">/</span> <span class="pre">gain</span></code> to the pixel variance, which is
+only meaningful when the data are counts in the same units as the gain. A
+rescaled frame (a normalised float stack with a sky level of about 1e-2, for
+example) violates that: with a genuine e-/ADU gain the Poisson term at the
+sky level exceeded the measured sky variance by a factor of 1e5, so the
+error map said nothing about the real noise and the aperture S/N was
+underestimated by one to two orders of magnitude. The PSF step was hit
+hardest, because photutils weights the ePSF-to-star fits by
+<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">/</span> <span class="pre">error**2</span></code>: the star cores ended up ~1e-4 of the weight of the sky
+pixels, 22 of 26 fitted fluxes came back negative, the next ePSF was
+therefore inverted and <code class="docutils literal notranslate"><span class="pre">EPSFBuilder</span></code> aborted with
+<code class="docutils literal notranslate"><span class="pre">Cannot</span> <span class="pre">normalize</span> <span class="pre">ePSF:</span> <span class="pre">the</span> <span class="pre">data</span> <span class="pre">sum</span> <span class="pre">(...)</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">finite</span> <span class="pre">and</span> <span class="pre">positive</span></code>,
+dropping PSF photometry for the whole frame.</p></li>
+<li><p><strong>Resolution.</strong> <code class="docutils literal notranslate"><span class="pre">resolve_poisson_gain()</span></code> keeps the resolved gain when the
+Poisson variance it predicts at the sky level stays within
+<code class="docutils literal notranslate"><span class="pre">POISSON_SKY_VARIANCE_TOLERANCE</span></code> (10x) of the measured background
+variance, and otherwise replaces it with the largest value the frame allows,
+<code class="docutils literal notranslate"><span class="pre">gain</span> <span class="pre">=</span> <span class="pre">sky</span> <span class="pre">level</span> <span class="pre">/</span> <span class="pre">background_rms**2</span></code>. <code class="docutils literal notranslate"><span class="pre">compute_error_map()</span></code> builds the
+per-pixel error from that gain, falling back to the background RMS map alone
+when no usable gain exists. On the real normalised stack the core error
+dropped from ~1.4e3x the sky RMS (larger than the data itself) to a few x
+the sky RMS, and PSF photometry now runs.</p></li>
 </ul>
 <p><strong>Scale-aware photometric error model</strong></p>
 <ul class="simple">

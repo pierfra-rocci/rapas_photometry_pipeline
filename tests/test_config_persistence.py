@@ -171,15 +171,10 @@ def test_initialize_session_state_seeds_new_parameter_defaults(monkeypatch, tmp_
         "st",
         types.SimpleNamespace(session_state=fake_state),
     )
-    monkeypatch.setattr(
-        tools_app,
-        "ensure_output_directory",
-        lambda directory=None: str(tmp_path / (directory or "out")),
-    )
-
     tools_app.initialize_session_state()
 
     seeded = fake_state["analysis_parameters"]
+    assert fake_state["output_dir"] is None
     assert seeded["mag_err_max"] == 2.0
     assert seeded["effective_gain"] == 0.0
 
@@ -269,6 +264,7 @@ def legacy_backend(tmp_path, monkeypatch):
     # ``init_db()`` at import time. Redirect just that one path join so the
     # import cannot create or lock the developer's repo-root users.db.
     db_path = tmp_path / "legacy_users.db"
+    monkeypatch.setenv("RPP_DB_PATH", str(db_path))
     real_join = os.path.join
 
     def _redirected_join(*parts):

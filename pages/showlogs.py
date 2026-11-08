@@ -4,6 +4,8 @@ import os
 
 import streamlit as st
 
+from pages.api_client import can_view_pipeline_logs
+
 
 def read_last_lines(filepath: str, n: int = 200) -> str:
     """Return the last *n* lines of *filepath* as a single string."""
@@ -34,7 +36,7 @@ if not st.session_state.get("logged_in", False):
         )
     st.stop()
 
-if st.session_state.get("username") not in ("admin", "rsavalle"):
+if not can_view_pipeline_logs(st.session_state.get("user_id")):
     st.error("Forbidden: this page is restricted to administrators.")
     st.stop()
 

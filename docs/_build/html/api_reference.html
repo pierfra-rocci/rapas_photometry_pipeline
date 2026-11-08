@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>API Reference &mdash; RAPAS Photometry Pipeline (RPP) v1.9.2 Documentation</title>
+  <title>API Reference &mdash; RAPAS Photometry Pipeline (RPP) v1.9.3 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=574b2d58"></script>
+      <script src="_static/documentation_options.js?v=f333a941"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -119,6 +119,10 @@ successful sign-in is written to the Streamlit log as
 Login, registration, password recovery, and backend selection workflow. Every
 successful sign-in is written to the Streamlit log as
 <code class="docutils literal notranslate"><span class="pre">[YYYY-MM-DD</span> <span class="pre">HH:MM:SS]</span> <span class="pre">RPP</span> <span class="pre">vX.Y.Z</span> <span class="pre">-</span> <span class="pre">User</span> <span class="pre">'&lt;username&gt;'</span> <span class="pre">logged</span> <span class="pre">in</span>
+<span class="pre">successfully</span> <span class="pre">(frontend,</span> <span class="pre">&lt;backend&gt;</span> <span class="pre">backend).</span></code>
+Login, registration, password recovery, and backend selection workflow. Every
+successful sign-in is written to the Streamlit log as
+<code class="docutils literal notranslate"><span class="pre">[YYYY-MM-DD</span> <span class="pre">HH:MM:SS]</span> <span class="pre">RPP</span> <span class="pre">vX.Y.Z</span> <span class="pre">-</span> <span class="pre">User</span> <span class="pre">'&lt;username&gt;'</span> <span class="pre">logged</span> <span class="pre">in</span>
 <span class="pre">successfully</span> <span class="pre">(frontend,</span> <span class="pre">&lt;backend&gt;</span> <span class="pre">backend).</span></code></p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">pages/api_client.py</span></code></dt><dd><p>Thin HTTP client used by the Streamlit frontend to talk to the FastAPI
@@ -181,6 +185,10 @@ FITS upload/listing endpoints. A successful <code class="docutils literal notran
 FITS upload/listing endpoints. A successful <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/login</span></code> writes
 <code class="docutils literal notranslate"><span class="pre">[YYYY-MM-DD</span> <span class="pre">HH:MM:SS]</span> <span class="pre">RPP</span> <span class="pre">vX.Y.Z</span> <span class="pre">-</span> <span class="pre">User</span> <span class="pre">'&lt;username&gt;'</span> <span class="pre">logged</span> <span class="pre">in</span>
 <span class="pre">successfully</span> <span class="pre">(FastAPI</span> <span class="pre">backend).</span></code> to the service log; the legacy backend
+(<code class="docutils literal notranslate"><span class="pre">backend.py</span></code>) emits the same line tagged <code class="docutils literal notranslate"><span class="pre">(legacy</span> <span class="pre">backend)</span></code>.
+FITS upload/listing endpoints. A successful <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/login</span></code> writes
+<code class="docutils literal notranslate"><span class="pre">[YYYY-MM-DD</span> <span class="pre">HH:MM:SS]</span> <span class="pre">RPP</span> <span class="pre">vX.Y.Z</span> <span class="pre">-</span> <span class="pre">User</span> <span class="pre">'&lt;username&gt;'</span> <span class="pre">logged</span> <span class="pre">in</span>
+<span class="pre">successfully</span> <span class="pre">(FastAPI</span> <span class="pre">backend).</span></code> to the service log; the legacy backend
 (<code class="docutils literal notranslate"><span class="pre">backend.py</span></code>) emits the same line tagged <code class="docutils literal notranslate"><span class="pre">(legacy</span> <span class="pre">backend)</span></code>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">api/models.py</span></code></dt><dd><p>SQLAlchemy ORM models for users, FITS storage, recovery codes, and tracking
@@ -198,7 +206,9 @@ conventions.</p>
 <h2>Useful Functions<a class="headerlink" href="#useful-functions" title="Link to this heading"></a></h2>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">src.tools_app.load_fits_data(file)</span></code></dt><dd><p>Load image data and headers from a FITS file with robust handling for empty,
-invalid, multi-extension, or multi-dimensional FITS content.</p>
+invalid, multi-extension, or multi-dimensional FITS content. For
+multi-extension files, select the first nonempty numeric image HDU, not a
+table or one-dimensional array.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">src.tools_app.update_observatory_from_fits_header(header)</span></code></dt><dd><p>Extract observatory metadata (name, latitude, longitude, elevation) from a
 FITS header and update the Streamlit session state observatory fields.</p>
@@ -224,12 +234,39 @@ unavailable or no trails are found.</p>
 <dt><code class="docutils literal notranslate"><span class="pre">src.pipeline.show_subtracted_image(image_sub)</span></code></dt><dd><p>Display the background-subtracted image inside the Streamlit interface.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">src.astrometry.solve_with_astrometrynet(file_path)</span></code></dt><dd><p>Run local astrometric solving with the configured Astrometry.net/stdpipe
-stack.</p>
+stack. Local solver attempts share a 180-second wall-clock budget, adjustable
+with <code class="docutils literal notranslate"><span class="pre">RPP_LOCAL_ASTROMETRY_TIMEOUT_SECONDS</span></code>; other processing and the
+optional online fallback are not bounded by that budget.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">src.xmatch_catalogs.cross_match_with_gaia(...)</span></code></dt><dd><p>Cross-match measured sources with calibration catalogs and prepare data for
 zero-point estimation and later enrichment.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">src.xmatch_catalogs.enhance_catalog(...)</span></code></dt><dd><p>Enrich the photometry catalog with additional catalog matches such as
+SIMBAD, SkyBoT, Astro-Colibri and the TNS.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src.tns_catalog.cross_match_tns(...)</span></code></dt><dd><p>Cross-match the photometry catalog with the public TNS objects in the field.
+The daily staged catalogue is cached and reused, each TNS object is paired
+with its closest source at 5, 10, 15, 20 then 30 arcsec, and the <code class="docutils literal notranslate"><span class="pre">tns_*</span></code>
+columns are only added once the catalogue is available (an unavailable TNS
+leaves the exported columns untouched). A shared mirror configured through
+<code class="docutils literal notranslate"><span class="pre">RPP_TNS_MIRROR_URL</span></code> is queried first and replaces the catalogue whenever
+it answers.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src.tns_catalog.tns_field_mask(catalog,</span> <span class="pre">center,</span> <span class="pre">radius_deg)</span></code></dt><dd><p>Return the boolean mask of the catalogue rows within <code class="docutils literal notranslate"><span class="pre">radius_deg</span></code> of a
+field centre, using the KD-tree attached to the catalogue at parse time
+(<code class="docutils literal notranslate"><span class="pre">tns_spatial_index</span></code>) or, when no index is available, the angular
+separation of every row.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src.tns_catalog.mirror_tns_objects(...)</span></code></dt><dd><p>Query a shared <code class="docutils literal notranslate"><span class="pre">tns-mirror</span></code> HTTP API once per detected source
+(<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/v1/nearest</span></code>). Returns a catalogue-like frame of the objects the
+mirror found, or <code class="docutils literal notranslate"><span class="pre">None</span></code> when the caller must fall back to the daily
+catalogue (no URL, more than 500 sources, or a failed query).</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src.tns_catalog.api_tns_objects(credentials,</span> <span class="pre">ra,</span> <span class="pre">dec,</span> <span class="pre">radius_deg)</span></code></dt><dd><p>Query the TNS Search API for a field: <code class="docutils literal notranslate"><span class="pre">search_tns_api</span></code> runs the
+<code class="docutils literal notranslate"><span class="pre">/api/get/search</span></code> cone search and <code class="docutils literal notranslate"><span class="pre">get_tns_api_object</span></code> fetches the
+position and type of each object through <code class="docutils literal notranslate"><span class="pre">/api/get/object</span></code>. Returns a
+catalogue-like frame, or <code class="docutils literal notranslate"><span class="pre">None</span></code> when the API cannot be used.
+<code class="docutils literal notranslate"><span class="pre">cross_match_tns</span></code> calls it when the staged catalogue is unavailable.</p>
 SIMBAD, SkyBoT, Astro-Colibri and the TNS.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">src.tns_catalog.cross_match_tns(...)</span></code></dt><dd><p>Cross-match the photometry catalog with the public TNS objects in the field.
@@ -316,7 +353,9 @@ catalog.</p>
 </section>
 <section id="analysis-result-files">
 <h2>Analysis Result Files<a class="headerlink" href="#analysis-result-files" title="Link to this heading"></a></h2>
-<p>The Streamlit workflow writes files to a per-user <code class="docutils literal notranslate"><span class="pre">*_results/</span></code> directory.
+<p>The Streamlit workflow writes files under
+<code class="docutils literal notranslate"><span class="pre">rpp_results/private_v2/user_&lt;id&gt;/</span></code> and archives under its <code class="docutils literal notranslate"><span class="pre">YYYY/MM/</span></code>
+subdirectories. Legacy username-based directories are not opened automatically.
 Both ZIP builders include files matching the input base name except files with
 the <code class="docutils literal notranslate"><span class="pre">.fits</span></code> extension. FITS products therefore remain on disk and are not
 part of the downloadable archive.</p>
@@ -337,6 +376,7 @@ part of the downloadable archive.</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">*_catalog.csv</span></code> and <code class="docutils literal notranslate"><span class="pre">*_catalog.vot</span></code></p></td>
+<td><p>Curated columns only (<code class="docutils literal notranslate"><span class="pre">id</span></code> first, then coordinates, Astro-Colibri/TNS/SIMBAD/SkyBoT/AAVSO matches, S/N, aperture and PSF photometry); Astro-Colibri sources sorted first</p></td>
 <td><p>Curated columns only (<code class="docutils literal notranslate"><span class="pre">id</span></code> first, then coordinates, Astro-Colibri/TNS/SIMBAD/SkyBoT/AAVSO matches, S/N, aperture and PSF photometry); Astro-Colibri sources sorted first</p></td>
 <td><p>After photometry and catalog enrichment; <code class="docutils literal notranslate"><span class="pre">src.utils.save_catalog_files</span></code> (columns chosen by <code class="docutils literal notranslate"><span class="pre">build_export_columns</span></code>/<code class="docutils literal notranslate"><span class="pre">prepare_export_table</span></code>)</p></td>
 <td><p>Yes</p></td>

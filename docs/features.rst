@@ -49,11 +49,14 @@ Advanced Image Processing
    - Upload staging in the UI before the scientific processing phase starts
 
 **Header Processing**:
-   - Automatic WCS keyword validation and correction
-   - Removal of problematic or conflicting keywords
+   - Celestial WCS validation without inventing coordinates or pixel scales
+   - Preserve input metadata; retry WCS parsing without conflicting nonstandard
+     metadata only in a temporary copy when necessary
+   - Reject conflicting CD and PC matrices, singular or non-finite transforms,
+     and transforms that fail reference-pixel or available image-corner checks
    - Observatory information extraction from headers
-   - Coordinate system standardization and validation
-   - Missing keyword interpolation and defaults
+   - Preserve valid projections and SIP distortions; convert output celestial
+     coordinates to ICRS
 
 **Cosmic Ray Removal**:
    - L.A.Cosmic algorithm implementation via `astroscrappy` package
@@ -91,10 +94,15 @@ Astrometric Solutions
    - Automatic source detection using photutils
    - Scale estimation from focal length and pixel size
    - Solution validation and coordinate range checking
+   - Structural WCS checks do not prove astrometric accuracy; verify the
+     solution against reference stars
    - Forced re-solve option when the user enables Astrometry Check
    - Target of at least 20 detected stars; the detection threshold is lowered
      3 -> 2 -> 1 sigma on small or sparse fields (best effort down to 5 stars)
    - Automatic retry of the solve with a deeper detection when it fails
+   - Shared 180-second wall-clock budget for local solver attempts, configurable
+     through ``RPP_LOCAL_ASTROMETRY_TIMEOUT_SECONDS``; source detection, cleanup,
+     online requests, and refinement are outside this hard limit
 
 **WCS Refinement**:
    - SCAMP integration for high-precision astrometry
@@ -464,7 +472,8 @@ User Interface & Workflow
    - Per-session ``work_<id>`` folders for temporary uploads and intermediate results
    - Archive browser for previous results
    - Batch download options for result sets
-   - User-scoped storage paths under ``rpp_data/fits/`` and ``rpp_results/``
+   - User-ID-scoped ``private_v2/user_<id>/`` storage under ``rpp_data/fits/``
+     and ``rpp_results/``; older username-based files require operator review
 
 **Error Handling**:
    - Comprehensive error messages with recovery suggestions
@@ -488,6 +497,9 @@ Output Generation & Export
 --------------------------
 
 **Comprehensive Result Files**:    - CSV and VOTable catalogs with a curated, fixed column order (unique ``id`` first, matching the Aladin Lite popup ID; Astro-Colibri, TNS, SIMBAD, SkyBoT and AAVSO matches; Astro-Colibri detections sorted first)
+   - CSV and VOTable instrumental catalogs when calibration is unavailable or
+     no valid celestial WCS is available but a usable pixel scale permits
+     photometry; sky coordinates are included when the WCS is usable
    - Transient candidate CSV sharing the same columns as the catalog
    - FITS files for background and PSF models
    - WCS-solved FITS files with refined astrometric headers

@@ -108,7 +108,9 @@ Useful Functions
 
 ``src.tools_app.load_fits_data(file)``
    Load image data and headers from a FITS file with robust handling for empty,
-   invalid, multi-extension, or multi-dimensional FITS content.
+   invalid, multi-extension, or multi-dimensional FITS content. For
+   multi-extension files, select the first nonempty numeric image HDU, not a
+   table or one-dimensional array.
 
 ``src.tools_app.update_observatory_from_fits_header(header)``
    Extract observatory metadata (name, latitude, longitude, elevation) from a
@@ -143,7 +145,9 @@ Useful Functions
 
 ``src.astrometry.solve_with_astrometrynet(file_path)``
    Run local astrometric solving with the configured Astrometry.net/stdpipe
-   stack.
+   stack. Local solver attempts share a 180-second wall-clock budget, adjustable
+   with ``RPP_LOCAL_ASTROMETRY_TIMEOUT_SECONDS``; other processing and the
+   optional online fallback are not bounded by that budget.
 
 ``src.xmatch_catalogs.cross_match_with_gaia(...)``
    Cross-match measured sources with calibration catalogs and prepare data for
@@ -242,7 +246,9 @@ catalog.
 Analysis Result Files
 ---------------------
 
-The Streamlit workflow writes files to a per-user ``*_results/`` directory.
+The Streamlit workflow writes files under
+``rpp_results/private_v2/user_<id>/`` and archives under its ``YYYY/MM/``
+subdirectories. Legacy username-based directories are not opened automatically.
 Both ZIP builders include files matching the input base name except files with
 the ``.fits`` extension. FITS products therefore remain on disk and are not
 part of the downloadable archive.

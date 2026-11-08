@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Troubleshooting &mdash; RAPAS Photometry Pipeline (RPP) v1.9.2 Documentation</title>
+  <title>Troubleshooting &mdash; RAPAS Photometry Pipeline (RPP) v1.9.3 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=574b2d58"></script>
+      <script src="_static/documentation_options.js?v=f333a941"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -196,7 +196,8 @@ pipeline version to the service log, for example
 <code class="docutils literal notranslate"><span class="pre">[2026-10-18</span> <span class="pre">18:46:22]</span> <span class="pre">RPP</span> <span class="pre">v1.9.0</span> <span class="pre">-</span> <span class="pre">User</span> <span class="pre">'intern1'</span> <span class="pre">logged</span> <span class="pre">in</span> <span class="pre">successfully</span> <span class="pre">(FastAPI</span> <span class="pre">backend).</span></code>
 The FastAPI backend, the legacy backend and the frontend each emit their
 own line, so a login appears in both the backend and frontend logs.
-Administrators can also open the in-app <em>Pipeline Logs</em> page
+Operators whose account IDs are explicitly listed in the Streamlit
+<code class="docutils literal notranslate"><span class="pre">RPP_LOG_ADMIN_USER_IDS</span></code> environment variable can open the in-app <em>Pipeline Logs</em> page
 (<code class="docutils literal notranslate"><span class="pre">pages/showlogs.py</span></code>) to read the last 200 lines of
 <code class="docutils literal notranslate"><span class="pre">fastapi_backend.log</span></code> and <code class="docutils literal notranslate"><span class="pre">streamlit_frontend.log</span></code>.</p></li>
 </ul>
@@ -248,7 +249,8 @@ unsupported format or compression mode.</p></li>
 <li><p>Ensure the file has a standard extension such as <code class="docutils literal notranslate"><span class="pre">.fits</span></code> or
 <code class="docutils literal notranslate"><span class="pre">.fits.gz</span></code>.</p></li>
 <li><p>If it is a multi-extension FITS, ensure image data exists in at least
-one HDU.</p></li>
+one nonempty numeric image HDU with at least two axes. Tables and
+one-dimensional arrays are not selected as images.</p></li>
 </ul>
 </li>
 </ul>
@@ -290,6 +292,11 @@ astrometry, and photometry.</p></li>
 <li><p>Enable plate solving using Astrometry.net.</p></li>
 <li><p>Alternatively, use external software to add WCS information to the FITS
 header before uploading.</p></li>
+<li><p>With a usable pixel scale, a failed solve can still produce an
+instrumental catalog in pixel coordinates. It will not contain
+calibrated magnitudes or sky positions; sky-dependent operations are
+skipped. If the scale is unavailable, supply the pixel scale override.
+A structurally valid WCS should still be checked against reference stars.</p></li>
 </ul>
 </li>
 </ul>
@@ -316,6 +323,12 @@ fails.</p></li>
 </ul>
 </li>
 </ul>
+<p>Local solver attempts share a wall-clock budget of 180 seconds. To change it,
+set <code class="docutils literal notranslate"><span class="pre">RPP_LOCAL_ASTROMETRY_TIMEOUT_SECONDS</span></code> to a positive number in the
+Streamlit process environment. A timeout stops the local solver processes and
+skips further local retries before the online fallback. Source detection,
+process cleanup, online requests, and SCAMP refinement are not hard-bounded by
+this budget.</p>
 <p>When the local Astrometry.net solve fails, RPP can optionally try the online
 Astrometry.net service using the detected source list (not the FITS image). Set
 <code class="docutils literal notranslate"><span class="pre">ASTROMETRY_API_KEY</span></code> in the environment of the Streamlit process, or configure
@@ -513,6 +526,10 @@ service response the parser cannot handle).</p></li>
 without the cross-match columns. Download it from the results.</p></li>
 <li><p>The transient finder runs independently; its failure does not prevent
 the catalogue export.</p></li>
+<li><p>If the calibration cross-match or zero point fails, the ZIP contains
+<code class="docutils literal notranslate"><span class="pre">*_instrumental_catalog.csv</span></code> and <code class="docutils literal notranslate"><span class="pre">.vot</span></code> instead. These measurements
+are not calibrated; valid WCS coordinates are retained when available.
+Transient finding is skipped without calibrated magnitudes.</p></li>
 </ul>
 </li>
 </ul>
@@ -563,7 +580,7 @@ and start the analysis again.</p></li>
 <ul class="simple">
 <li><p><strong>Problem</strong>: The widget appears (layer and zoom controls) but the sky image
 is never drawn, and the application log reports nothing.</p></li>
-<li><p><strong>Solution</strong>: The widget now prints the reason on a red line just below the
+<li><p><strong>Solution</strong>: The widget now prints the reason on a red line just above the
 viewer. Read that line first:</p>
 <ul>
 <li><p><code class="docutils literal notranslate"><span class="pre">This</span> <span class="pre">browser</span> <span class="pre">provides</span> <span class="pre">no</span> <span class="pre">WebGL2</span> <span class="pre">context</span> <span class="pre">...</span></code>: Aladin Lite v3 paints
@@ -571,20 +588,23 @@ the sky with WebGL2. Enable hardware acceleration; on Firefox set
 <code class="docutils literal notranslate"><span class="pre">webgl.force-enabled</span></code> to <code class="docutils literal notranslate"><span class="pre">true</span></code> in <code class="docutils literal notranslate"><span class="pre">about:config</span></code> and restart the
 browser; or use Chrome/Edge. A blocklisted or outdated GPU driver has
 the same effect.</p></li>
-<li><p>If the CDS <code class="docutils literal notranslate"><span class="pre">aladin.js</span></code> download fails, the widget retries from
-jsDelivr using
+<li><p>If the CDS <code class="docutils literal notranslate"><span class="pre">aladin.js</span></code> download or initialization fails or times
+out, the widget imports the ES module from jsDelivr using
 <code class="docutils literal notranslate"><span class="pre">https://cdn.jsdelivr.net/npm/aladin-lite&#64;3.8.2/dist/aladin.js</span></code>.
-If both downloads fail, the red line reports that neither source could
-be reached; check the proxy, firewall, HTTPS-Only mode, or connection.
+If both sources fail, the red line reports the failure; check the
+proxy, firewall, HTTPS-Only mode, or connection.
 The fallback covers the JavaScript library only; the sky imagery still
 requires access to the HiPS tile server.</p></li>
+<li><p>Expand <code class="docutils literal notranslate"><span class="pre">Source</span> <span class="pre">coordinates</span> <span class="pre">(available</span> <span class="pre">without</span> <span class="pre">Aladin)</span></code> above the
+viewer to inspect positions without the library or sky imagery. The
+science-image preview also remains available.</p></li>
 <li><p>No red line and still a black view: open the browser console (F12) and
 look for failed requests to <code class="docutils literal notranslate"><span class="pre">alasky.cds.unistra.fr</span></code>, which serves the
 HiPS tiles. The analysis itself and the exported files are unaffected.</p></li>
 <li><p>The console also logs <code class="docutils literal notranslate"><span class="pre">[RPP</span> <span class="pre">Aladin]</span> <span class="pre">version</span> <span class="pre">...</span></code> with the Aladin Lite
 release actually loaded. The widget tries the CDS latest script first
 (<code class="docutils literal notranslate"><span class="pre">.../api/v3/latest/aladin.js</span></code>), then the pinned jsDelivr v3.8.2
-script if the CDS download fails.</p></li>
+module if the CDS download or initialization fails or times out.</p></li>
 </ul>
 </li>
 </ul>
@@ -592,20 +612,21 @@ script if the CDS download fails.</p></li>
 <ul class="simple">
 <li><p><strong>Problem</strong>: The requested HiPS (<code class="docutils literal notranslate"><span class="pre">CDS/P/DSS2/color</span></code> by default) cannot be
 fetched or is too slow, so the view stays empty.</p></li>
-<li><p><strong>Solution</strong>: The widget probes the HiPS <code class="docutils literal notranslate"><span class="pre">properties</span></code> document
-(<code class="docutils literal notranslate"><span class="pre">https://alasky.cds.unistra.fr/&lt;survey&gt;/properties</span></code>) with a 12 second
-timeout and, when it cannot be read, switches the base layer to
+<li><p><strong>Solution</strong>: The widget probes the HiPS <code class="docutils literal notranslate"><span class="pre">properties</span></code> document with a
+12 second timeout and, when it cannot be read, switches the base layer to
 <code class="docutils literal notranslate"><span class="pre">CDS/P/DSS2/red</span></code>:</p>
 <ul>
-<li><p>A warning is shown under the viewer
-(<code class="docutils literal notranslate"><span class="pre">Survey</span> <span class="pre">&lt;survey&gt;</span> <span class="pre">could</span> <span class="pre">not</span> <span class="pre">be</span> <span class="pre">loaded;</span> <span class="pre">showing</span> <span class="pre">&lt;fallback&gt;</span> <span class="pre">instead.</span></code>)
+<li><p>A warning is shown above the viewer
+(<code class="docutils literal notranslate"><span class="pre">Survey</span> <span class="pre">&lt;survey&gt;</span> <span class="pre">could</span> <span class="pre">not</span> <span class="pre">be</span> <span class="pre">loaded;</span> <span class="pre">trying</span> <span class="pre">&lt;fallback&gt;</span> <span class="pre">instead.</span></code>)
 and mirrored in the console.</p></li>
 <li><p>When the fallback is unreachable too, the message says so instead of
-leaving a blank canvas.</p></li>
+leaving a blank canvas. Both defaults use CDS and may fail together.</p></li>
 <li><p>Change the second survey with the <code class="docutils literal notranslate"><span class="pre">fallback_survey</span></code> argument of
-<code class="docutils literal notranslate"><span class="pre">display_catalog_in_aladin</span></code>, for example
-<code class="docutils literal notranslate"><span class="pre">fallback_survey=&quot;CDS/P/PanSTARRS/DR1/color-i-r-g&quot;</span></code>. An empty string
-disables the fallback, and a survey passed as a full URL is not probed.</p></li>
+<code class="docutils literal notranslate"><span class="pre">display_catalog_in_aladin</span></code>. An empty string disables the fallback.
+The two default identifiers and full HiPS URLs can be checked; other
+identifiers are not guessed as paths, and an uncheckable survey is
+reported. A primary survey passed as a full URL is not probed.
+A third-party HiPS URL must allow cross-origin browser requests.</p></li>
 </ul>
 </li>
 </ul>

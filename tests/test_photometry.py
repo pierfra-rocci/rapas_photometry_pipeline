@@ -1647,11 +1647,7 @@ class TestZeroPointCalibration:
                 return None
 
         monkeypatch.setattr(pipeline_module, "st", FakeStreamlit())
-        monkeypatch.setattr(
-            pipeline_module,
-            "ensure_output_directory",
-            lambda directory=None: str(tmp_path),
-        )
+        pipeline_module.st.session_state["output_dir"] = str(tmp_path)
 
         zero_point_value, zero_point_std, figure = calculate_zero_point(
             phot_table,
@@ -1706,11 +1702,7 @@ class TestZeroPointCalibration:
                 return lambda *_args, **_kwargs: None
 
         monkeypatch.setattr(pipeline_module, "st", FakeStreamlit())
-        monkeypatch.setattr(
-            pipeline_module,
-            "ensure_output_directory",
-            lambda directory=None: str(tmp_path),
-        )
+        pipeline_module.st.session_state["output_dir"] = str(tmp_path)
 
         _, zero_point_std, _ = calculate_zero_point(
             phot_table, matched_table, filter_band="phot_g_mean_mag", air=1.0
@@ -1802,7 +1794,7 @@ class TestPsfApertureCoherency:
                 return None
 
         monkeypatch.setattr(psf_module, "st", FakeStreamlit())
-        monkeypatch.setattr(psf_module, "ensure_output_directory", lambda directory=None: str(tmp_path))
+        psf_module.st.session_state["output_dir"] = str(tmp_path)
 
         psf_table, _ = perform_psf_photometry(
             image,
@@ -1913,11 +1905,7 @@ class TestPsfApertureCoherency:
                 return lambda *_args, **_kwargs: None
 
         monkeypatch.setattr(psf_module, "st", FakeStreamlit())
-        monkeypatch.setattr(
-            psf_module,
-            "ensure_output_directory",
-            lambda directory=None: str(tmp_path),
-        )
+        psf_module.st.session_state["output_dir"] = str(tmp_path)
 
         enabled, _ = perform_psf_photometry(
             image,
@@ -2026,11 +2014,7 @@ class TestPsfApertureCoherency:
                 return lambda *_args, **_kwargs: None
 
         monkeypatch.setattr(psf_module, "st", FakeStreamlit())
-        monkeypatch.setattr(
-            psf_module,
-            "ensure_output_directory",
-            lambda directory=None: str(tmp_path),
-        )
+        psf_module.st.session_state["output_dir"] = str(tmp_path)
 
         psf_table, epsf = perform_psf_photometry(
             image, sources, fwhm, daofind, mask=None, error=error
@@ -2510,11 +2494,9 @@ class TestPipelineErrorBudget:
                 return lambda *_args, **_kwargs: None
 
         fake_st = FakeStreamlit()
+        fake_st.session_state["output_dir"] = str(tmp_path)
         monkeypatch.setattr(pipeline_module, "st", fake_st)
         monkeypatch.setattr(psf_module, "st", fake_st)
-        monkeypatch.setattr(
-            psf_module, "ensure_output_directory", lambda directory=None: str(tmp_path)
-        )
         # Skip CR/satellite masking, but let the real ePSF builder run.
         monkeypatch.setattr(
             pipeline_module,
