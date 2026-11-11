@@ -63,8 +63,7 @@ TNS_PUBLIC_OBJECTS_URL = (
 )
 # Older staging path, still announced by part of the TNS documentation.
 TNS_PUBLIC_OBJECTS_FALLBACK_URL = (
-    "https://www.wis-tns.org/system/files/tns_public_objects/"
-    "tns_public_objects.csv.zip"
+    "https://www.wis-tns.org/system/files/tns_public_objects/tns_public_objects.csv.zip"
 )
 TNS_PUBLIC_OBJECTS_URLS = (
     TNS_PUBLIC_OBJECTS_URL,
@@ -775,9 +774,7 @@ def get_tns_api_object(credentials, name, prefix=None):
     return objects[0] if objects else None
 
 
-def api_tns_objects(
-    credentials, ra, dec, radius_deg, max_objects=TNS_API_MAX_OBJECTS
-):
+def api_tns_objects(credentials, ra, dec, radius_deg, max_objects=TNS_API_MAX_OBJECTS):
     """Query the TNS Search API for the objects of a field.
 
     One cone search lists the objects, then each is fetched for its position
@@ -947,8 +944,7 @@ def load_tns_public_objects(
         frame, messages = _load_tns_frame(str(explicit_path))
         if frame is not None:
             log_messages.append(
-                f"INFO: TNS: loaded {len(frame)} public objects from "
-                f"{explicit_path}."
+                f"INFO: TNS: loaded {len(frame)} public objects from {explicit_path}."
             )
         return frame, log_messages + messages
 
@@ -967,12 +963,12 @@ def load_tns_public_objects(
         frame, messages = _load_tns_frame(path)
         if frame is None:
             return None, messages
-        return frame, [
-            f"INFO: TNS: {reason} ({len(frame)} objects)."
-        ]
+        return frame, [f"INFO: TNS: {reason} ({len(frame)} objects)."]
 
     if tns_cache_is_fresh(path):
-        frame, messages = _use_cached_catalogue("using the shared cached public catalogue")
+        frame, messages = _use_cached_catalogue(
+            "using the shared cached public catalogue"
+        )
         if frame is not None:
             return frame, log_messages + messages
         log_messages += messages
@@ -984,8 +980,7 @@ def load_tns_public_objects(
                 return frame, log_messages + messages
             log_messages += messages
         return None, log_messages + [
-            "WARNING: TNS: no cached catalogue available; skipping the TNS "
-            "cross-match."
+            "WARNING: TNS: no cached catalogue available; skipping the TNS cross-match."
         ]
 
     try:
@@ -1054,9 +1049,7 @@ def load_tns_public_objects(
             # Reuse the frame just parsed instead of re-reading the new file.
             _TNS_FRAME_CACHE[path] = (os.path.getmtime(path), frame)
         except OSError as error:
-            log_messages.append(
-                f"WARNING: TNS: could not cache the catalogue: {error}"
-            )
+            log_messages.append(f"WARNING: TNS: could not cache the catalogue: {error}")
 
         log_messages.append(
             f"INFO: TNS: downloaded the public catalogue ({len(frame)} objects)."
@@ -1153,7 +1146,7 @@ def cross_match_tns(
         return table, ["WARNING: TNS: no sources to cross-match."]
     if ra_center is None or dec_center is None:
         return table, [
-            "WARNING: TNS: no field centre available; skipping the TNS " "cross-match."
+            "WARNING: TNS: no field centre available; skipping the TNS cross-match."
         ]
 
     try:
@@ -1363,8 +1356,7 @@ def cross_match_tns(
                 )
     else:
         log_messages.append(
-            f"INFO: TNS: no source matched within "
-            f"{TNS_MATCH_RADIUS_ARCSEC:g} arcsec."
+            f"INFO: TNS: no source matched within {TNS_MATCH_RADIUS_ARCSEC:g} arcsec."
         )
 
     table.attrs["tns_objects"] = objects_view

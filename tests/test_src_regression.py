@@ -312,9 +312,10 @@ class TestExtractFilterFromHeader:
 
     def test_empty_and_none_values_map_to_unknown(self):
         for value in ("", "NONE", "None"):
-            assert extract_filter_from_header(
-                fits.Header([("FILTER", value)])
-            ) == ("Unknown", "phot_g_mean_mag")
+            assert extract_filter_from_header(fits.Header([("FILTER", value)])) == (
+                "Unknown",
+                "phot_g_mean_mag",
+            )
 
     def test_unknown_filter_maps_to_gaia_g(self):
         raw, mapped = extract_filter_from_header(fits.Header([("FILTER", "mystery")]))
@@ -437,7 +438,9 @@ class TestAirmassFromHeader:
 
     def test_missing_keywords_return_zero(self):
         # Errors are swallowed: the function returns 0.0 instead of raising.
-        assert airmass(fits.Header([("RA", 10.0)]), observatory=DEFAULT_OBSERVATORY) == 0.0
+        assert (
+            airmass(fits.Header([("RA", 10.0)]), observatory=DEFAULT_OBSERVATORY) == 0.0
+        )
 
     def test_no_observatory_returns_zero(self):
         assert airmass(self._header()) == 0.0
@@ -471,9 +474,7 @@ class TestAdaptiveMinSources:
 
 class TestEstimatePixelScaleRobust:
     def test_header_keyword_preferred(self):
-        header = fits.Header(
-            [("PIXSCALE", 0.9), ("FOCALLEN", 800.0), ("XPIXSZ", 3.91)]
-        )
+        header = fits.Header([("PIXSCALE", 0.9), ("FOCALLEN", 800.0), ("XPIXSZ", 3.91)])
         assert estimate_pixel_scale_robust(header, (1000, 1000)) == pytest.approx(0.9)
 
     def test_focal_length_fallback(self):

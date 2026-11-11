@@ -143,15 +143,10 @@ def test_refinement_diagnostics_are_logged_and_none_keeps_initial_wcs(
     assert call_options["order"] == 3
     assert call_options["sr"] == pytest.approx(7 / 3600)
     assert call_options["wcs"] is initial_wcs
-    assert any(
-        "SCAMP: SCAMP invocation returned code 1" in msg
-        for msg in messages
-    )
+    assert any("SCAMP: SCAMP invocation returned code 1" in msg for msg in messages)
     assert any("missing source columns=none" in msg for msg in messages)
     assert any("missing catalog columns=none" in msg for msg in messages)
-    assert any(
-        "Pan-STARRS DR1" in msg for msg in messages
-    )
+    assert any("Pan-STARRS DR1" in msg for msg in messages)
 
 
 def test_online_astrometry_fallback_uses_private_source_list_and_keeps_wcs(
@@ -159,9 +154,9 @@ def test_online_astrometry_fallback_uses_private_source_list_and_keeps_wcs(
 ):
     """A local failure should try the private online source-list solver."""
     image_path = tmp_path / "image.fits"
-    fits.PrimaryHDU(
-        data=np.zeros((32, 32)), header=_make_valid_header()
-    ).writeto(image_path)
+    fits.PrimaryHDU(data=np.zeros((32, 32)), header=_make_valid_header()).writeto(
+        image_path
+    )
 
     initial_wcs = WCS(_make_valid_header())
     sources = Table(
@@ -242,8 +237,7 @@ def test_online_astrometry_fallback_uses_private_source_list_and_keeps_wcs(
     assert remote_options["publicly_visible"] == "n"
     assert remote_options["solve_timeout"] == 600
     assert any(
-        "Online Astrometry.net plate solving successful" in msg
-        for msg in messages
+        "Online Astrometry.net plate solving successful" in msg for msg in messages
     )
     assert all("test-secret" not in message for message in messages)
 
@@ -377,16 +371,14 @@ def test_refine_wcs_with_scamp_accepts_good_and_rejects_worse_solution(
             header = output_wcs.to_header(relax=True)
             with open(os.path.join(cwd, "objects.head"), "w") as handle:
                 handle.write(header.tostring(sep="\n", endcard=True))
-            Table(
-                {"NDeg_Reference": [len(sources)], "Chi2_Reference": [1.0]}
-            ).write(os.path.join(cwd, "scamp.xml"), format="votable")
+            Table({"NDeg_Reference": [len(sources)], "Chi2_Reference": [1.0]}).write(
+                os.path.join(cwd, "scamp.xml"), format="votable"
+            )
             return subprocess_module.CompletedProcess(command, 0, "", "")
 
         return fake_run
 
-    monkeypatch.setattr(
-        astrometry_module.subprocess, "run", fake_run_writing(true_wcs)
-    )
+    monkeypatch.setattr(astrometry_module.subprocess, "run", fake_run_writing(true_wcs))
     refined_wcs, diagnostics = astrometry_module.refine_wcs_with_scamp(
         sources, catalog, wcs=initial_wcs, sr=7 / 3600.0
     )
@@ -541,9 +533,7 @@ def test_detection_max_thresh_restricts_ladder(monkeypatch):
     assert used == [2.0]
 
 
-def test_solve_retries_with_deeper_detection_when_solve_fails(
-    tmp_path, monkeypatch
-):
+def test_solve_retries_with_deeper_detection_when_solve_fails(tmp_path, monkeypatch):
     image_path = tmp_path / "image.fits"
     fits.PrimaryHDU(data=np.zeros((32, 32))).writeto(image_path)
 
@@ -566,9 +556,7 @@ def test_solve_retries_with_deeper_detection_when_solve_fails(
     monkeypatch.setattr(
         astrometry_module, "_try_source_detection_improved", fake_detect
     )
-    monkeypatch.setattr(
-        astrometry_module, "solve_with_enhanced_strategy", fake_solve
-    )
+    monkeypatch.setattr(astrometry_module, "solve_with_enhanced_strategy", fake_solve)
     monkeypatch.setattr(
         astrometry_module.astrometry,
         "get_frame_center",
@@ -590,8 +578,8 @@ def test_solve_retries_with_deeper_detection_when_solve_fails(
         lambda *_a, **_k: (None, {"reason": "disabled for test"}),
     )
 
-    solved_wcs, _header, messages, error = (
-        astrometry_module.solve_with_astrometrynet(str(image_path))
+    solved_wcs, _header, messages, error = astrometry_module.solve_with_astrometrynet(
+        str(image_path)
     )
 
     assert error is None

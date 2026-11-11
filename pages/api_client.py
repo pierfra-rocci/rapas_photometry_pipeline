@@ -23,8 +23,7 @@ def can_view_pipeline_logs(user_id: object) -> bool:
         return False
     values = [value.strip() for value in configured.split(",")]
     if any(
-        not value.removeprefix("-").isascii()
-        or not value.removeprefix("-").isdecimal()
+        not value.removeprefix("-").isascii() or not value.removeprefix("-").isdecimal()
         for value in values
     ):
         logging.getLogger(__name__).error(
@@ -102,7 +101,9 @@ class ApiClient:
         except ValueError:
             data = None
         canonical_username = data.get("username") if isinstance(data, dict) else None
-        self.username = canonical_username if isinstance(canonical_username, str) else None
+        self.username = (
+            canonical_username if isinstance(canonical_username, str) else None
+        )
         user_id = data.get("user_id") if isinstance(data, dict) else None
         self.user_id = user_id if type(user_id) is int else None
         return self._extract_message(response)

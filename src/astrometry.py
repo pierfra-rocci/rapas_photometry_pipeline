@@ -164,7 +164,14 @@ def _run_local_astrometry(
         worker_path = os.path.join(os.path.dirname(__file__), "_astrometry_worker.py")
         with open(log_path, "wb") as log_file:
             process = subprocess.Popen(
-                [sys.executable, worker_path, source_path, options_path, solver_dir, result_path],
+                [
+                    sys.executable,
+                    worker_path,
+                    source_path,
+                    options_path,
+                    solver_dir,
+                    result_path,
+                ],
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
                 start_new_session=os.name == "posix",
@@ -183,13 +190,17 @@ def _run_local_astrometry(
             log_file.seek(max(0, log_file.tell() - 2048))
             detail = log_file.read().decode("utf-8", errors="replace").strip()
         if returncode:
-            raise RuntimeError(f"Local astrometry worker exited with code {returncode}: {detail}")
+            raise RuntimeError(
+                f"Local astrometry worker exited with code {returncode}: {detail}"
+            )
         if not os.path.exists(result_path):
             return None, detail
         with fits.open(result_path, memmap=False) as hdul:
             result_hdu = hdul[0]
             if not isinstance(result_hdu, fits.PrimaryHDU):
-                raise ValueError("Local astrometry worker returned an invalid FITS result")
+                raise ValueError(
+                    "Local astrometry worker returned an invalid FITS result"
+                )
             return WCS(result_hdu.header, hdul, relax=True), detail
 
 
@@ -206,13 +217,9 @@ def get_adaptive_min_sources(image_shape):
     if image_area > 10_000_000:  # Large images (>10MP)
         return max(30, min(50, int(image_area / 200_000)))
     elif image_area > 1_000_000:  # Medium images (1-10MP)
-        return max(
-            ASTROMETRY_TARGET_SOURCES, min(30, int(image_area / 50_000))
-        )
+        return max(ASTROMETRY_TARGET_SOURCES, min(30, int(image_area / 50_000)))
     else:  # Small images (<1MP)
-        return max(
-            ASTROMETRY_TARGET_SOURCES, min(25, int(image_area / 20_000))
-        )
+        return max(ASTROMETRY_TARGET_SOURCES, min(25, int(image_area / 20_000)))
 
 
 def _measure_sn_for_threshold(thresh):
@@ -226,7 +233,7 @@ def _measure_sn_for_threshold(thresh):
 
 def estimate_pixel_scale_robust(header, image_shape):
     """Robust pixel scale estimation with multiple methods and validation
-    
+
     This function tries multiple methods to estimate pixel scale and returns
     the most reliable estimate found. Methods are tried in order of preference.
     """
@@ -263,7 +270,7 @@ def estimate_pixel_scale_robust(header, image_shape):
 
     # Method 3: CD matrix
     try:
-        cd_values = [header.get(f"CD{i}_{j}", 0) for i in [1,2] for j in [1,2]]
+        cd_values = [header.get(f"CD{i}_{j}", 0) for i in [1, 2] for j in [1, 2]]
         if any(x != 0 for x in cd_values):
             cd11, cd12, cd21, cd22 = cd_values
             det = abs(cd11 * cd22 - cd12 * cd21)
@@ -324,11 +331,13 @@ def _accept_solved_wcs(
 
 
 def solve_with_enhanced_strategy(
-    sources: Table, header: fits.Header, image_data: np.ndarray,
+    sources: Table,
+    header: fits.Header,
+    image_data: np.ndarray,
     deadline: float | None = None,
 ) -> tuple[WCS | None, list[str]]:
     """Multi-stage plate solving with progressive constraints
-    
+
     This function implements a multi-stage approach to plate solving:
     1. Broad search with minimal constraints
     2. Narrow search with better pixel scale constraints
@@ -337,10 +346,10 @@ def solve_with_enhanced_strategy(
     log_messages = []
     if deadline is None:
         deadline = time.monotonic() + _local_astrometry_timeout(log_messages)
-    
+
     # Get pixel scale estimate for constraints
     pixel_scale = estimate_pixel_scale_robust(header, image_data.shape)
-    
+
     # Stage 1: Broad search with minimal constraints
     kwargs_broad = {
         "order": 3,
@@ -348,21 +357,27 @@ def solve_with_enhanced_strategy(
         "scale_upper": 15.0,
         "scale_units": "arcsecperpix",
         "radius": 10.0,  # 10 degree radius
-        "verbose": True
+        "verbose": True,
     }
     log_messages.append("INFO: Trying broad plate solving (wide constraints)")
-    
+
     # Stage 2: Narrow search with better constraints
     kwargs_narrow = kwargs_broad.copy()
     if pixel_scale:
-        kwargs_narrow.update({
-            "scale_lower": pixel_scale * 0.7,
-            "scale_upper": pixel_scale * 1.3,
-            "radius": 5.0  # 5 degree radius
-        })
-        log_messages.append(f"INFO: Using pixel scale estimate: {pixel_scale:.2f} arcsec/pixel")
+        kwargs_narrow.update(
+            {
+                "scale_lower": pixel_scale * 0.7,
+                "scale_upper": pixel_scale * 1.3,
+                "radius": 5.0,  # 5 degree radius
+            }
+        )
+        log_messages.append(
+            f"INFO: Using pixel scale estimate: {pixel_scale:.2f} arcsec/pixel"
+        )
     else:
-        log_messages.append("INFO: No pixel scale estimate available, using broad range")
+        log_messages.append(
+            "INFO: No pixel scale estimate available, using broad range"
+        )
 
     # Stage 3: Targeted search with RA/DEC hint
     kwargs_targeted = kwargs_narrow.copy()
@@ -371,11 +386,13 @@ def solve_with_enhanced_strategy(
             ra_hint = float(header["RA"])
             dec_hint = float(header["DEC"])
             if 0 <= ra_hint <= 360 and -90 <= dec_hint <= 90:
-                kwargs_targeted.update({
-                    "center_ra": ra_hint,
-                    "center_dec": dec_hint,
-                    "radius": 2.0  # 2 degree radius
-                })
+                kwargs_targeted.update(
+                    {
+                        "center_ra": ra_hint,
+                        "center_dec": dec_hint,
+                        "radius": 2.0,  # 2 degree radius
+                    }
+                )
                 log_messages.append(
                     f"INFO: Using RA/DEC hint: {ra_hint:.3f}, {dec_hint:.3f}"
                 )
@@ -386,7 +403,7 @@ def solve_with_enhanced_strategy(
     for stage_name, kwargs in [
         ("broad", kwargs_broad),
         ("narrow", kwargs_narrow),
-        ("targeted", kwargs_targeted)
+        ("targeted", kwargs_targeted),
     ]:
         try:
             if time.monotonic() >= deadline:
@@ -742,10 +759,7 @@ def _match_rms_arcsec(wcs, sources, cat, sr_deg, cat_col_ra, cat_col_dec):
 def _wcs_pixel_scale_arcsec(wcs):
     """Return the pixel scale of a WCS in arcsec/pixel."""
     return float(
-        np.hypot(
-            wcs.pixel_scale_matrix[0, 0], wcs.pixel_scale_matrix[0, 1]
-        )
-        * 3600.0
+        np.hypot(wcs.pixel_scale_matrix[0, 0], wcs.pixel_scale_matrix[0, 1]) * 3600.0
     )
 
 
@@ -756,9 +770,18 @@ def _frame_center(wcs, shape):
     return float(np.asarray(ra)), float(np.asarray(dec))
 
 
-def _check_scamp_solution(initial_wcs, refined_wcs, diagnostics, sources, cat,
-                          sr_deg, shape, cat_col_ra, cat_col_dec,
-                          min_matches=SCAMP_MIN_MATCHES):
+def _check_scamp_solution(
+    initial_wcs,
+    refined_wcs,
+    diagnostics,
+    sources,
+    cat,
+    sr_deg,
+    shape,
+    cat_col_ra,
+    cat_col_dec,
+    min_matches=SCAMP_MIN_MATCHES,
+):
     """Return ``None`` when the refined solution passes, else a reason string.
 
     The checks combine SCAMP's own report (number of matched references and the
@@ -771,16 +794,12 @@ def _check_scamp_solution(initial_wcs, refined_wcs, diagnostics, sources, cat,
     n_matches = diagnostics.get("n_matches")
     chi2_value = diagnostics.get("chi2")
     if n_matches is not None and n_matches < min_matches:
-        return (
-            f"only {n_matches:.0f} reference matches (need "
-            f"{min_matches})"
-        )
+        return f"only {n_matches:.0f} reference matches (need {min_matches})"
     if chi2_value is not None and n_matches and n_matches > 0:
         try:
             if chi2.sf(chi2_value, df=n_matches) < SCAMP_MAX_CHI2_PVALUE:
                 return (
-                    f"SCAMP fit rejected (chi2={chi2_value:.1f}, "
-                    f"dof={n_matches:.0f})"
+                    f"SCAMP fit rejected (chi2={chi2_value:.1f}, dof={n_matches:.0f})"
                 )
         except (TypeError, ValueError, FloatingPointError):
             diagnostics["chi2_check_error"] = True
@@ -804,17 +823,19 @@ def _check_scamp_solution(initial_wcs, refined_wcs, diagnostics, sources, cat,
         and refined_rms > initial_rms * SCAMP_RMS_TOLERANCE + 1e-3
     ):
         return (
-            f"refined match RMS {refined_rms:.3f}\" is worse than the initial "
-            f"{initial_rms:.3f}\""
+            f'refined match RMS {refined_rms:.3f}" is worse than the initial '
+            f'{initial_rms:.3f}"'
         )
 
     # Sanity checks on the geometry of the solution.
     try:
         initial_ra, initial_dec = _frame_center(initial_wcs, shape)
         refined_ra, refined_dec = _frame_center(refined_wcs, shape)
-        center_shift = SkyCoord(initial_ra, initial_dec, unit="deg").separation(
-            SkyCoord(refined_ra, refined_dec, unit="deg")
-        ).deg
+        center_shift = (
+            SkyCoord(initial_ra, initial_dec, unit="deg")
+            .separation(SkyCoord(refined_ra, refined_dec, unit="deg"))
+            .deg
+        )
         diagnostics["center_shift_deg"] = center_shift
         if center_shift > SCAMP_MAX_CENTER_SHIFT_DEG:
             return f"frame center moved by {center_shift:.3f} deg"
@@ -929,8 +950,7 @@ def _refine_wcs_with_scamp_once(
     diagnostics["executable"] = executable
     if executable is None:
         diagnostics["reason"] = (
-            "SCAMP executable not found; install SCAMP or set "
-            f"{SCAMP_EXECUTABLE_ENV}"
+            f"SCAMP executable not found; install SCAMP or set {SCAMP_EXECUTABLE_ENV}"
         )
         log(diagnostics["reason"])
         return None, diagnostics
@@ -964,9 +984,7 @@ def _refine_wcs_with_scamp_once(
                 "X_WORLD": np.asarray(cat[cat_col_ra], dtype=float),
                 "Y_WORLD": np.asarray(cat[cat_col_dec], dtype=float),
                 "ERRA_WORLD": _default_column(cat, "e_" + cat_col_ra, 1.0 / 3600.0),
-                "ERRB_WORLD": _default_column(
-                    cat, "e_" + cat_col_dec, 1.0 / 3600.0
-                ),
+                "ERRB_WORLD": _default_column(cat, "e_" + cat_col_dec, 1.0 / 3600.0),
                 "MAG": _default_column(cat, cat_col_mag, 0.0),
                 "MAGERR": _default_column(cat, "e_" + cat_col_mag, 0.01),
                 "OBSDATE": np.full(n_cat, 2000.0),
@@ -1243,13 +1261,13 @@ def solve_with_astrometrynet(
 
         # Use adaptive minimum sources based on image size
         adaptive_min_sources = get_adaptive_min_sources(image_data.shape)
-        log_messages.append(f"INFO: Using adaptive minimum sources: {adaptive_min_sources}")
+        log_messages.append(
+            f"INFO: Using adaptive minimum sources: {adaptive_min_sources}"
+        )
 
         # Try improved detection with progressive parameter grid
         sources = _try_source_detection_improved(
-            image_data,
-            header,
-            min_sources=adaptive_min_sources
+            image_data, header, min_sources=adaptive_min_sources
         )
 
         if sources is None or len(sources) < 5:
@@ -1260,8 +1278,7 @@ def solve_with_astrometrynet(
         detection_thresh = sources.meta.get("detection_thresh")
         if detection_thresh is not None:
             log_messages.append(
-                f"INFO: Detected {len(sources)} sources at "
-                f"{detection_thresh:g} sigma"
+                f"INFO: Detected {len(sources)} sources at {detection_thresh:g} sigma"
             )
         if len(sources) < adaptive_min_sources:
             log_messages.append(
@@ -1278,7 +1295,7 @@ def solve_with_astrometrynet(
 
         # Get pixel scale estimate using improved method
         pixel_scale_estimate = estimate_pixel_scale_robust(header, image_data.shape)
-        
+
         if pixel_scale_estimate is not None:
             log_messages.append(
                 f"INFO: Using pixel scale estimate: {pixel_scale_estimate:.2f} arcsec/pixel"
@@ -1314,10 +1331,7 @@ def solve_with_astrometrynet(
                         "skipping further local retries"
                     )
                     break
-                lower = [
-                    t for t in ASTROMETRY_THRESHOLD_LADDER
-                    if t < detection_thresh
-                ]
+                lower = [t for t in ASTROMETRY_THRESHOLD_LADDER if t < detection_thresh]
                 if not lower:
                     break
                 retry_thresh = lower[0]
@@ -1336,9 +1350,7 @@ def solve_with_astrometrynet(
                         f"INFO: No additional sources at {retry_thresh:g} sigma"
                     )
                     break
-                detection_thresh = deeper.meta.get(
-                    "detection_thresh", retry_thresh
-                )
+                detection_thresh = deeper.meta.get("detection_thresh", retry_thresh)
                 sources = _limit_to_brightest(deeper, log_messages)
                 log_messages.append(
                     f"INFO: Retrying plate solve with {len(sources)} sources "
@@ -1387,9 +1399,7 @@ def solve_with_astrometrynet(
                                     "radius": max(1.0, 2 * center_sr),
                                 }
                             )
-                            online_scale = (
-                                astrometry.get_pixscale(wcs=hint_wcs) * 3600
-                            )
+                            online_scale = astrometry.get_pixscale(wcs=hint_wcs) * 3600
                         else:
                             online_scale = pixel_scale_estimate
                             log_messages.append(
@@ -1413,7 +1423,9 @@ def solve_with_astrometrynet(
 
                     try:
                         solved_wcs = _accept_solved_wcs(
-                            astrometry.blind_match_astrometrynet(sources, **online_kwargs),
+                            astrometry.blind_match_astrometrynet(
+                                sources, **online_kwargs
+                            ),
                             header,
                             log_messages,
                         )
@@ -1475,9 +1487,7 @@ def solve_with_astrometrynet(
                         )
 
                     if cat is not None and len(cat) > 10:
-                        log_messages.append(
-                            f"INFO: Retrieved {len(cat)} catalog stars"
-                        )
+                        log_messages.append(f"INFO: Retrieved {len(cat)} catalog stars")
 
                         # 3. Refine Astrometry
                         # Get pixel scale from solved WCS for matching radius
@@ -1485,16 +1495,19 @@ def solve_with_astrometrynet(
                         refinement_sr = 7 * pixscale_deg
 
                         required_source_columns = {
-                            "x", "y", "xerr", "yerr", "flux", "fluxerr",
-                            "mag", "magerr", "flags",
+                            "x",
+                            "y",
+                            "xerr",
+                            "yerr",
+                            "flux",
+                            "fluxerr",
+                            "mag",
+                            "magerr",
+                            "flags",
                         }
-                        required_catalog_columns = {
-                            "RAJ2000", "DEJ2000", "rmag"
-                        }
+                        required_catalog_columns = {"RAJ2000", "DEJ2000", "rmag"}
                         missing_source_columns = sorted(
-                            required_source_columns.difference(
-                                sources.colnames
-                            )
+                            required_source_columns.difference(sources.colnames)
                         )
                         missing_catalog_columns = sorted(
                             required_catalog_columns.difference(cat.colnames)
@@ -1511,13 +1524,9 @@ def solve_with_astrometrynet(
                         )
 
                         def refinement_logger(*parts, **_kwargs):
-                            message = " ".join(
-                                str(part) for part in parts
-                            ).strip()
+                            message = " ".join(str(part) for part in parts).strip()
                             if message:
-                                log_messages.append(
-                                    f"INFO: SCAMP: {message}"
-                                )
+                                log_messages.append(f"INFO: SCAMP: {message}")
 
                         # Run the SCAMP binary directly (no stdpipe wrapper) and
                         # keep the initial solution unless the refined one passes
@@ -1553,16 +1562,12 @@ def solve_with_astrometrynet(
                                 "astrometric RMS (arcsec)="
                                 f"{scamp_diagnostics.get('astrometric_rms_arcsec')}"
                             )
-                            initial_rms = scamp_diagnostics.get(
-                                "initial_rms_arcsec"
-                            )
-                            refined_rms = scamp_diagnostics.get(
-                                "refined_rms_arcsec"
-                            )
+                            initial_rms = scamp_diagnostics.get("initial_rms_arcsec")
+                            refined_rms = scamp_diagnostics.get("refined_rms_arcsec")
                             if initial_rms is not None and refined_rms is not None:
                                 log_messages.append(
                                     "INFO: SCAMP cross-check: match RMS "
-                                    f"{initial_rms:.3f}\" -> {refined_rms:.3f}\""
+                                    f'{initial_rms:.3f}" -> {refined_rms:.3f}"'
                                 )
                         else:
                             log_messages.append(
@@ -1594,7 +1599,9 @@ def solve_with_astrometrynet(
                 # Add new WCS keywords from solution
                 wcs_header = solved_wcs.to_header(relax=True)
                 updated_header.update(wcs_header)
-                verified_wcs, verify_error, verify_messages = safe_wcs_create(updated_header)
+                verified_wcs, verify_error, verify_messages = safe_wcs_create(
+                    updated_header
+                )
                 log_messages.extend(verify_messages)
                 if verified_wcs is None:
                     error_message = f"Solved header has invalid WCS: {verify_error}"

@@ -71,7 +71,9 @@ def api_client(tmp_path, monkeypatch):
     engine.dispose()
 
 
-def _create_user(session_factory: sessionmaker[Session], username: str, password: str) -> User:
+def _create_user(
+    session_factory: sessionmaker[Session], username: str, password: str
+) -> User:
     """Insert an authenticated test user into the isolated database."""
     with session_factory() as session:
         user = User(
@@ -86,7 +88,9 @@ def _create_user(session_factory: sessionmaker[Session], username: str, password
         return user
 
 
-def _upload_file(client: TestClient, username: str, password: str, filename: str, content: bytes):
+def _upload_file(
+    client: TestClient, username: str, password: str, filename: str, content: bytes
+):
     """Upload a file to the FastAPI FITS endpoint with HTTP Basic auth."""
     return client.post(
         "/api/upload/fits",
@@ -172,8 +176,12 @@ def test_listing_is_isolated_by_authenticated_user(api_client):
     user_1 = _create_user(session_factory, "alice", "secret")
     user_2 = _create_user(session_factory, "bob", "secret")
 
-    upload_one = _upload_file(client, "alice", "secret", "alice_science.fits", _make_fits_bytes())
-    upload_two = _upload_file(client, "bob", "secret", "bob_science.fits", _make_fits_bytes() + b"-unique")
+    upload_one = _upload_file(
+        client, "alice", "secret", "alice_science.fits", _make_fits_bytes()
+    )
+    upload_two = _upload_file(
+        client, "bob", "secret", "bob_science.fits", _make_fits_bytes() + b"-unique"
+    )
 
     assert upload_one.status_code == 201
     assert upload_two.status_code == 201

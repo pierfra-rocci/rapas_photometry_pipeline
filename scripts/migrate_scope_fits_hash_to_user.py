@@ -47,6 +47,7 @@ def get_default_db_path() -> Path:
     """Get the default database path from api/config.py."""
     try:
         from api.config import DB_PATH
+
         return DB_PATH
     except ImportError:
         # Fallback to default location
@@ -80,7 +81,9 @@ def table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     return cursor.fetchone() is not None
 
 
-def unique_index_columns(conn: sqlite3.Connection, table_name: str) -> set[tuple[str, ...]]:
+def unique_index_columns(
+    conn: sqlite3.Connection, table_name: str
+) -> set[tuple[str, ...]]:
     """Return the column tuples of every UNIQUE index on a table.
 
     A column-level ``UNIQUE`` shows up here as an auto-index over exactly that
@@ -93,7 +96,8 @@ def unique_index_columns(conn: sqlite3.Connection, table_name: str) -> set[tuple
         if not is_unique:
             continue
         columns = tuple(
-            info[2] for info in conn.execute(f"PRAGMA index_info({name})")  # noqa: S608
+            info[2]
+            for info in conn.execute(f"PRAGMA index_info({name})")  # noqa: S608
         )
         indexes.add(columns)
     return indexes
@@ -131,14 +135,12 @@ def build_new_table_ddl() -> str:
 
     from api.models import FitsFile
 
-    ddl = str(
-        CreateTable(FitsFile.__table__).compile(dialect=sqlite.dialect())
-    ).strip()
+    ddl = str(CreateTable(FitsFile.__table__).compile(dialect=sqlite.dialect())).strip()
     # Retarget the compiled statement at the staging table name.
     prefix = f"CREATE TABLE {TABLE_NAME} ("
     if not ddl.startswith(prefix):
         raise RuntimeError(f"Unexpected DDL from ORM:\n{ddl}")
-    return f"CREATE TABLE {TEMP_TABLE_NAME} (" + ddl[len(prefix):]
+    return f"CREATE TABLE {TEMP_TABLE_NAME} (" + ddl[len(prefix) :]
 
 
 def column_names(conn: sqlite3.Connection, table_name: str) -> list[str]:
@@ -190,7 +192,9 @@ def verify_migration(conn: sqlite3.Connection) -> dict:
         if result["table_exists"]
         else None
     )
-    indexes = unique_index_columns(conn, TABLE_NAME) if result["table_exists"] else set()
+    indexes = (
+        unique_index_columns(conn, TABLE_NAME) if result["table_exists"] else set()
+    )
     result["unique_indexes"] = indexes
     result["global_hash_constraint_gone"] = ("sha256",) not in indexes
     result["user_hash_constraint_present"] = ("user_id", "sha256") in indexes
@@ -214,9 +218,9 @@ def run_migration(db_path: Path, skip_backup: bool = False) -> int:
     Returns:
         0 on success, 1 on error.
     """
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("Scope FITS hash uniqueness to each user")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     print(f"Database: {db_path}")
 
@@ -276,18 +280,24 @@ def run_migration(db_path: Path, skip_backup: bool = False) -> int:
     print("\n  Verification:")
     print(f"    fits_files present            : {verification['table_exists']}")
     print(f"    rows preserved                : {verification['row_count']}")
-    print(f"    global UNIQUE(sha256) removed : {verification['global_hash_constraint_gone']}")
-    print(f"    UNIQUE(user_id, sha256) added : {verification['user_hash_constraint_present']}")
+    print(
+        f"    global UNIQUE(sha256) removed : {verification['global_hash_constraint_gone']}"
+    )
+    print(
+        f"    UNIQUE(user_id, sha256) added : {verification['user_hash_constraint_present']}"
+    )
     print(f"    staging table cleaned up      : {verification['staging_table_gone']}")
-    print(f"    unique indexes                : {sorted(verification['unique_indexes'])}")
+    print(
+        f"    unique indexes                : {sorted(verification['unique_indexes'])}"
+    )
 
     if not verification["ok"]:
         print("\n  ERROR: post-migration schema does not look correct.")
         return 1
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("Migration completed successfully!")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     return 0
 

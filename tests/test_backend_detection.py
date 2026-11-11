@@ -13,7 +13,9 @@ def _response(status_code: int) -> MagicMock:
 
 
 def test_detect_backend_prefers_api_when_healthy() -> None:
-    with patch("pages.api_client.requests.get", return_value=_response(200)) as mock_get:
+    with patch(
+        "pages.api_client.requests.get", return_value=_response(200)
+    ) as mock_get:
         backend = detect_backend(timeout=0.1)
 
     assert backend["mode"] == "api"

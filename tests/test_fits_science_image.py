@@ -49,7 +49,11 @@ def _table_hdu() -> fits.BinTableHDU:
 @pytest.mark.parametrize("compressed", [False, True])
 def test_loader_skips_tables_and_selects_first_image(compressed: bool) -> None:
     image = np.arange(120, dtype=np.int16).reshape(10, 12)
-    image_hdu = fits.CompImageHDU(image, name="SCI") if compressed else fits.ImageHDU(image, name="SCI")
+    image_hdu = (
+        fits.CompImageHDU(image, name="SCI")
+        if compressed
+        else fits.ImageHDU(image, name="SCI")
+    )
     image_hdu.header["FILTER"] = "r"
     payload = _fits_bytes([fits.PrimaryHDU(), _table_hdu(), image_hdu])
     data, header, messages = tools_app._parse_fits_bytes.__wrapped__(payload)
@@ -60,10 +64,15 @@ def test_loader_skips_tables_and_selects_first_image(compressed: bool) -> None:
 
 @pytest.mark.parametrize("case", ["valid", "invalid_fits", "truncated_gzip"])
 def test_gzip_loader_closes_streams(
-    monkeypatch: pytest.MonkeyPatch, case: str,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
 ) -> None:
     image = np.arange(120, dtype=np.int16).reshape(10, 12)
-    content = b"not a FITS file" if case == "invalid_fits" else _fits_bytes([fits.PrimaryHDU(image)])
+    content = (
+        b"not a FITS file"
+        if case == "invalid_fits"
+        else _fits_bytes([fits.PrimaryHDU(image)])
+    )
     payload = gzip.compress(content)
     if case == "truncated_gzip":
         payload = payload[:12]
@@ -93,10 +102,15 @@ def test_gzip_loader_closes_streams(
 
 
 def test_table_only_or_non_image_dimensions_are_reported() -> None:
-    payload = _fits_bytes([fits.PrimaryHDU(), _table_hdu(), fits.ImageHDU(np.arange(5))])
+    payload = _fits_bytes(
+        [fits.PrimaryHDU(), _table_hdu(), fits.ImageHDU(np.arange(5))]
+    )
     data, header, messages = tools_app._parse_fits_bytes.__wrapped__(payload)
     assert data is None and header is None
-    assert any(ui in {"warning", "error"} and "image" in message.lower() for ui, _, message in messages)
+    assert any(
+        ui in {"warning", "error"} and "image" in message.lower()
+        for ui, _, message in messages
+    )
 
 
 def test_loader_skips_one_dimensional_image_before_science_image() -> None:
@@ -110,20 +124,29 @@ def test_loader_skips_one_dimensional_image_before_science_image() -> None:
 @pytest.mark.parametrize("kind", ["primary", "extension", "compressed"])
 @pytest.mark.parametrize("gzip_input", [False, True])
 def test_solver_uses_same_2d_image_selected_by_loader(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str, gzip_input: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    gzip_input: bool,
 ) -> None:
     image = np.arange(120, dtype=np.uint16).reshape((10, 12)) + 32760
     path = tmp_path / ("image.fits.gz" if gzip_input else "image.fits")
     if kind == "primary":
         hdus = [fits.PrimaryHDU(image), _table_hdu()]
     else:
-        image_hdu = fits.CompImageHDU(image, name="SCI") if kind == "compressed" else fits.ImageHDU(image, name="SCI")
+        image_hdu = (
+            fits.CompImageHDU(image, name="SCI")
+            if kind == "compressed"
+            else fits.ImageHDU(image, name="SCI")
+        )
         hdus = [fits.PrimaryHDU(), _table_hdu(), image_hdu]
     fits.HDUList(hdus).writeto(path)
     loaded, header, _ = tools_app._parse_fits_bytes.__wrapped__(path.read_bytes())
     observed: list[tuple[np.ndarray, fits.Header]] = []
 
-    def detect(image: np.ndarray, science_header: fits.Header, **_kwargs: object) -> None:
+    def detect(
+        image: np.ndarray, science_header: fits.Header, **_kwargs: object
+    ) -> None:
         observed.append((image.copy(), science_header.copy()))
         return None
 
@@ -138,19 +161,34 @@ def test_solver_uses_same_2d_image_selected_by_loader(
 
 @pytest.mark.parametrize("science_in_primary", [False, True])
 def test_wcs_export_preserves_original_hdus(
-    tmp_path: Path, science_in_primary: bool,
+    tmp_path: Path,
+    science_in_primary: bool,
 ) -> None:
     image = np.arange(120, dtype=np.float32).reshape(10, 12)
     primary = fits.PrimaryHDU(image if science_in_primary else None)
-    science = fits.ImageHDU(image, name="SCI") if not science_in_primary else fits.ImageHDU(np.ones((10, 12)), name="AUX")
+    science = (
+        fits.ImageHDU(image, name="SCI")
+        if not science_in_primary
+        else fits.ImageHDU(np.ones((10, 12)), name="AUX")
+    )
     science.header["OBSERVER"] = "Synthetic"
     path = tmp_path / "image.fits"
-    fits.HDUList([primary, _table_hdu(), science, fits.ImageHDU(np.full((10, 12), 7), name="ERR")]).writeto(path)
+    fits.HDUList(
+        [
+            primary,
+            _table_hdu(),
+            science,
+            fits.ImageHDU(np.full((10, 12), 7), name="ERR"),
+        ]
+    ).writeto(path)
     original_bytes = path.read_bytes()
     updated = (fits.getheader(path, 0 if science_in_primary else 2)).copy()
     updated.update(_solved_header(12, 10))
     output, error, stored = utils.save_fits_with_wcs(
-        str(path), updated, str(tmp_path / "out"), also_save_to_data_dir=False,
+        str(path),
+        updated,
+        str(tmp_path / "out"),
+        also_save_to_data_dir=False,
     )
     assert output and error is None and stored is None
     assert path.read_bytes() == original_bytes
@@ -160,7 +198,9 @@ def test_wcs_export_preserves_original_hdus(
         assert safe_wcs_create(exported[science_index].header)[0] is not None
         for index in range(len(original)):
             if original[index].data is not None:
-                np.testing.assert_array_equal(exported[index].data, original[index].data)
+                np.testing.assert_array_equal(
+                    exported[index].data, original[index].data
+                )
             if index != science_index:
                 assert exported[index].header == original[index].header
         assert "CHECKSUM" not in exported[science_index].header
@@ -170,17 +210,25 @@ def test_wcs_export_preserves_original_hdus(
 @pytest.mark.parametrize("kind", ["primary", "extension", "compressed"])
 @pytest.mark.parametrize("gzip_input", [False, True])
 def test_export_preserves_scaled_pixels_and_existing_checksums(
-    tmp_path: Path, kind: str, gzip_input: bool,
+    tmp_path: Path,
+    kind: str,
+    gzip_input: bool,
 ) -> None:
     image = np.arange(120, dtype=np.uint16).reshape(10, 12) + 32760
     image_hdu = (
-        fits.PrimaryHDU(image) if kind == "primary"
-        else fits.CompImageHDU(image, name="SCI") if kind == "compressed"
+        fits.PrimaryHDU(image)
+        if kind == "primary"
+        else fits.CompImageHDU(image, name="SCI")
+        if kind == "compressed"
         else fits.ImageHDU(image, name="SCI")
     )
     image_hdu.header["FILTER"] = "r"
     image_hdu.header.add_history("Original observation")
-    hdus = [image_hdu, _table_hdu()] if kind == "primary" else [fits.PrimaryHDU(), _table_hdu(), image_hdu]
+    hdus = (
+        [image_hdu, _table_hdu()]
+        if kind == "primary"
+        else [fits.PrimaryHDU(), _table_hdu(), image_hdu]
+    )
     index = 0 if kind == "primary" else 2
     path = tmp_path / ("image.fits.gz" if gzip_input else "image.fits")
     fits.HDUList(hdus).writeto(path, checksum=True)
@@ -190,7 +238,10 @@ def test_export_preserves_scaled_pixels_and_existing_checksums(
         updated = original[index].header.copy()
     updated.update(_solved_header(12, 10))
     output, error, _ = utils.save_fits_with_wcs(
-        str(path), updated, str(tmp_path / "out"), also_save_to_data_dir=False,
+        str(path),
+        updated,
+        str(tmp_path / "out"),
+        also_save_to_data_dir=False,
     )
     assert output and error is None
     assert path.read_bytes() == original_bytes
@@ -220,7 +271,10 @@ def test_export_preserves_nontrivial_scaling_and_blank_pixels(tmp_path: Path) ->
         updated = source[0].header.copy()
     updated.update(_solved_header(12, 10))
     output, error, _ = utils.save_fits_with_wcs(
-        str(path), updated, str(tmp_path / "out"), also_save_to_data_dir=False,
+        str(path),
+        updated,
+        str(tmp_path / "out"),
+        also_save_to_data_dir=False,
     )
     assert output and error is None
     with fits.open(output, memmap=False) as exported:
@@ -234,12 +288,18 @@ def test_export_preserves_nontrivial_scaling_and_blank_pixels(tmp_path: Path) ->
 
 @pytest.mark.parametrize("compressed", [False, True])
 def test_selected_image_flows_through_solver_and_private_export(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, compressed: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    compressed: bool,
 ) -> None:
     import api.config
 
     image = np.arange(120, dtype=np.uint16).reshape(10, 12) + 32760
-    science = fits.CompImageHDU(image, name="SCI") if compressed else fits.ImageHDU(image, name="SCI")
+    science = (
+        fits.CompImageHDU(image, name="SCI")
+        if compressed
+        else fits.ImageHDU(image, name="SCI")
+    )
     science.header["FILTER"] = "r"
     science.header.add_comment("Original observation comment")
     science.header.add_history("Original observation history")
@@ -255,10 +315,18 @@ def test_selected_image_flows_through_solver_and_private_export(
         return sources
 
     monkeypatch.setattr(astrometry, "_try_source_detection_improved", detect)
-    monkeypatch.setattr(astrometry, "solve_with_enhanced_strategy", lambda *_args: (wcs, []))
-    monkeypatch.setattr(astrometry.astrometry, "get_frame_center", lambda **_kwargs: (150.0, 2.0, 0.1))
+    monkeypatch.setattr(
+        astrometry, "solve_with_enhanced_strategy", lambda *_args: (wcs, [])
+    )
+    monkeypatch.setattr(
+        astrometry.astrometry, "get_frame_center", lambda **_kwargs: (150.0, 2.0, 0.1)
+    )
     monkeypatch.setattr(astrometry.astrometry, "get_pixscale", lambda **_kwargs: 0.001)
-    monkeypatch.setattr(astrometry, "get_vizier_catalog_with_fallback", lambda *_args, **_kwargs: (None, False))
+    monkeypatch.setattr(
+        astrometry,
+        "get_vizier_catalog_with_fallback",
+        lambda *_args, **_kwargs: (None, False),
+    )
     fits_root = tmp_path / "private-fits"
     monkeypatch.setattr(api.config, "FITS_STORAGE_ROOT", fits_root)
 
@@ -266,7 +334,10 @@ def test_selected_image_flows_through_solver_and_private_export(
     assert solved is not None and updated is not None and error is None
     assert any("HDU #2" in message for message in messages)
     output, error, stored = utils.save_fits_with_wcs(
-        str(path), updated, str(tmp_path / "out"), user_id=73,
+        str(path),
+        updated,
+        str(tmp_path / "out"),
+        user_id=73,
     )
     assert output and stored and error is None
     assert Path(stored).parts[:2] == ("private_v2", "user_73")
@@ -287,7 +358,10 @@ def test_export_rejects_files_without_an_image(tmp_path: Path) -> None:
     fits.HDUList([fits.PrimaryHDU(), _table_hdu()]).writeto(path)
     output_dir = tmp_path / "out"
     output, error, stored = utils.save_fits_with_wcs(
-        str(path), _solved_header(12, 10), str(output_dir), also_save_to_data_dir=False,
+        str(path),
+        _solved_header(12, 10),
+        str(output_dir),
+        also_save_to_data_dir=False,
     )
     assert output is None and stored is None and "image" in error.lower()
     assert list(output_dir.iterdir()) == []
@@ -300,7 +374,10 @@ def test_export_cannot_overwrite_original(
     fits.PrimaryHDU(np.ones((4, 4))).writeto(path)
     original_bytes = path.read_bytes()
     output, error, _ = utils.save_fits_with_wcs(
-        str(path), fits.getheader(path), str(tmp_path), filename_suffix="",
+        str(path),
+        fits.getheader(path),
+        str(tmp_path),
+        filename_suffix="",
         also_save_to_data_dir=False,
     )
     assert output is None and error
@@ -308,7 +385,8 @@ def test_export_cannot_overwrite_original(
 
 
 def test_private_export_does_not_modify_a_hardlinked_original(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import api.config
 
@@ -325,7 +403,10 @@ def test_private_export_does_not_modify_a_hardlinked_original(
     updated.update(_solved_header(4, 4))
 
     output, error, stored = utils.save_fits_with_wcs(
-        str(path), updated, str(tmp_path / "out"), user_id=73,
+        str(path),
+        updated,
+        str(tmp_path / "out"),
+        user_id=73,
     )
     assert output and stored and error is None
     assert path.read_bytes() == original_bytes
@@ -334,13 +415,17 @@ def test_private_export_does_not_modify_a_hardlinked_original(
 
 @pytest.mark.parametrize("filename", ["image.fits.gz", "image.fts.gz"])
 def test_streamlit_uploads_compressed_image(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, filename: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    filename: str,
 ) -> None:
     def session_tmp_directory(user_id: int, session_id: str | None = None) -> str:
         return str(tmp_path)
 
     monkeypatch.setattr(utils, "session_tmp_directory", session_tmp_directory)
-    page = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "pages" / "app.py"))
+    page = AppTest.from_file(
+        str(Path(__file__).resolve().parents[1] / "pages" / "app.py")
+    )
     page.session_state["logged_in"] = True
     page.session_state["username"] = "synthetic"
     page.session_state["user_id"] = 9
@@ -357,7 +442,8 @@ def test_streamlit_uploads_compressed_image(
 
 
 def test_corrupt_fits_stops_before_solving(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     path = tmp_path / "broken.fits"
     path.write_bytes(b"not a fits file")
@@ -372,7 +458,9 @@ def test_corrupt_fits_stops_before_solving(
 
     monkeypatch.setattr(utils, "ensure_output_directory", output_directory)
     monkeypatch.setattr(astrometry, "solve_with_astrometrynet", unexpected_solve)
-    page = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "pages" / "app.py"))
+    page = AppTest.from_file(
+        str(Path(__file__).resolve().parents[1] / "pages" / "app.py")
+    )
     page.session_state["logged_in"] = True
     page.session_state["username"] = "synthetic"
     page.session_state["user_id"] = 9

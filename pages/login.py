@@ -142,7 +142,9 @@ Besoin d'aide ou vous avez trouvé un bug ? Contactez [rpp_support](mailto:rpp_s
             type="password",
             placeholder="Enter your password",
         )
-        st.caption("Firefox users: press Enter after typing your password, then click Login.")
+        st.caption(
+            "Firefox users: press Enter after typing your password, then click Login."
+        )
         if st.button("Login", key="login_btn", use_container_width=True):
             if st.session_state.backend_mode == "unavailable":
                 st.error(st.session_state.backend_status_message)
@@ -183,11 +185,16 @@ Besoin d'aide ou vous avez trouvé un bug ? Contactez [rpp_support](mailto:rpp_s
                     try:
                         response = requests.post(
                             f"{legacy_url}/login",
-                            data={"username": login_username, "password": login_password},
+                            data={
+                                "username": login_username,
+                                "password": login_password,
+                            },
                             timeout=15,
                         )
                         if response.status_code == 200:
-                            encoded_username = response.headers.get("X-RPP-Username-Encoded")
+                            encoded_username = response.headers.get(
+                                "X-RPP-Username-Encoded"
+                            )
                             canonical_username = (
                                 unquote(encoded_username)
                                 if encoded_username is not None
@@ -415,7 +422,9 @@ Besoin d'aide ou vous avez trouvé un bug ? Contactez [rpp_support](mailto:rpp_s
                                         timeout=15,
                                     )
                                     if resp.status_code == 200:
-                                        st.success("Password updated. You can now log in.")
+                                        st.success(
+                                            "Password updated. You can now log in."
+                                        )
                                         st.session_state.recovery_step = 0
                                         st.session_state.recovery_email_value = ""
                                         st.session_state.recovery_code_value = ""
@@ -424,7 +433,9 @@ Besoin d'aide ou vous avez trouvé un bug ? Contactez [rpp_support](mailto:rpp_s
                                     else:
                                         st.error(resp.text)
                                 except requests.exceptions.RequestException as e:
-                                    st.error(f"Connection error: Backend unreachable. {e}")
+                                    st.error(
+                                        f"Connection error: Backend unreachable. {e}"
+                                    )
                     else:
                         st.warning("Please enter all fields.")
             with col_cancel:
@@ -437,7 +448,7 @@ Besoin d'aide ou vous avez trouvé un bug ? Contactez [rpp_support](mailto:rpp_s
                     st.session_state.recovery_new_pw_value = ""
                     st.rerun()
 
-    
+
 else:
     st.success(f"Welcome, {st.session_state.username}! Redirecting to the app...")
     st.sidebar.caption(st.session_state.backend_status_message)

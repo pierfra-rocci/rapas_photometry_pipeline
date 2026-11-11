@@ -22,7 +22,9 @@ def _create_database(path: Path) -> None:
         initialize_user_id_reservations(connection)
 
 
-def test_initialization_and_sqlite_rollback_preserve_existing_users(tmp_path: Path) -> None:
+def test_initialization_and_sqlite_rollback_preserve_existing_users(
+    tmp_path: Path,
+) -> None:
     db_path = tmp_path / "ids.db"
     _create_database(db_path)
 
@@ -36,11 +38,16 @@ def test_initialization_and_sqlite_rollback_preserve_existing_users(tmp_path: Pa
         first = reserve_user_id(connection)
         connection.execute("INSERT INTO users VALUES (?, ?)", (first, "rolled-back"))
         connection.rollback()
-        assert connection.execute(
-            "SELECT id FROM rpp_user_id_reservations WHERE id = ?", (first,)
-        ).fetchone() is None
+        assert (
+            connection.execute(
+                "SELECT id FROM rpp_user_id_reservations WHERE id = ?", (first,)
+            ).fetchone()
+            is None
+        )
         replacement = reserve_user_id(connection)
-        connection.execute("INSERT INTO users VALUES (?, ?)", (replacement, "replacement"))
+        connection.execute(
+            "INSERT INTO users VALUES (?, ?)", (replacement, "replacement")
+        )
         connection.commit()
         connection.execute("DELETE FROM users WHERE id = ?", (replacement,))
         connection.commit()
@@ -60,9 +67,12 @@ def test_sqlalchemy_rollback_keeps_reservation_atomic(tmp_path: Path) -> None:
             )
             transaction.rollback()
         with engine.begin() as connection:
-            assert connection.exec_driver_sql(
-                "SELECT id FROM rpp_user_id_reservations WHERE id = ?", (first,)
-            ).fetchone() is None
+            assert (
+                connection.exec_driver_sql(
+                    "SELECT id FROM rpp_user_id_reservations WHERE id = ?", (first,)
+                ).fetchone()
+                is None
+            )
             replacement = reserve_user_id(connection)
             connection.exec_driver_sql(
                 "INSERT INTO users VALUES (?, ?)", (replacement, "replacement")

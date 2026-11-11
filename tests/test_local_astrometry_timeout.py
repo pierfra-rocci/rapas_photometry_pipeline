@@ -54,7 +54,8 @@ def _fake_solver(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: str) -> 
 
 @pytest.mark.skipif(os.name != "posix", reason="Uses a POSIX executable script")
 def test_real_worker_preserves_stdpipe_iterations_and_solution(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls = tmp_path / "calls.jsonl"
     monkeypatch.setenv("RPP_TEST_SOLVER_CALLS", str(calls))
@@ -81,8 +82,13 @@ fits.PrimaryHDU(header=wcs.to_header()).writeto(os.path.join(workdir, "list.wcs"
         time.monotonic() + 15,
     )
     assert solved is not None
-    np.testing.assert_allclose(solved.all_pix2world([[5, 6], [16, 16]], 0), _wcs().all_pix2world([[5, 6], [16, 16]], 0))
-    commands = [json.loads(line) for line in calls.read_text(encoding="utf-8").splitlines()]
+    np.testing.assert_allclose(
+        solved.all_pix2world([[5, 6], [16, 16]], 0),
+        _wcs().all_pix2world([[5, 6], [16, 16]], 0),
+    )
+    commands = [
+        json.loads(line) for line in calls.read_text(encoding="utf-8").splitlines()
+    ]
     assert len(commands) == 2
     assert "--scale-low" in commands[0] and "--scale-high" in commands[0]
     assert "--verify" in commands[1]
@@ -90,7 +96,8 @@ fits.PrimaryHDU(header=wcs.to_header()).writeto(os.path.join(workdir, "list.wcs"
 
 def test_missing_solver_returns_a_diagnostic() -> None:
     solved, detail = astrometry._run_local_astrometry(
-        _sources(), {"_exe": "/definitely/not/a/solve-field", "verbose": True},
+        _sources(),
+        {"_exe": "/definitely/not/a/solve-field", "verbose": True},
         time.monotonic() + 15,
     )
     assert solved is None
@@ -98,7 +105,8 @@ def test_missing_solver_returns_a_diagnostic() -> None:
 
 
 def test_interrupted_worker_is_cleaned_up(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class InterruptedProcess:
         def wait(self, timeout: float) -> int:
@@ -107,7 +115,9 @@ def test_interrupted_worker_is_cleaned_up(
     process = InterruptedProcess()
     stopped: list[InterruptedProcess] = []
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
-    monkeypatch.setattr(astrometry.subprocess, "Popen", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(
+        astrometry.subprocess, "Popen", lambda *_args, **_kwargs: process
+    )
     monkeypatch.setattr(astrometry, "_stop_local_astrometry_process", stopped.append)
     with pytest.raises(KeyboardInterrupt):
         astrometry._run_local_astrometry(_sources(), {}, time.monotonic() + 10)
@@ -117,7 +127,8 @@ def test_interrupted_worker_is_cleaned_up(
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Checks Linux process states")
 def test_timeout_stops_solver_descendants_and_removes_workdir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pids = tmp_path / "pids.json"
     monkeypatch.setenv("RPP_TEST_SOLVER_PIDS", str(pids))
@@ -135,7 +146,9 @@ time.sleep(60)
     started = time.monotonic()
     with pytest.raises(TimeoutError, match="time budget exhausted"):
         astrometry._run_local_astrometry(
-            _sources(), {"verbose": True}, started + 5.0,
+            _sources(),
+            {"verbose": True},
+            started + 5.0,
         )
     assert time.monotonic() - started < 8
     assert pids.exists(), "The fake solve-field must have started before the timeout"
@@ -156,12 +169,15 @@ time.sleep(60)
 
 @pytest.mark.parametrize("value", ["0", "-1", "nan", "inf", "invalid"])
 def test_invalid_timeout_is_reported_and_uses_default(
-    monkeypatch: pytest.MonkeyPatch, value: str,
+    monkeypatch: pytest.MonkeyPatch,
+    value: str,
 ) -> None:
     monkeypatch.setenv(astrometry.LOCAL_ASTROMETRY_TIMEOUT_ENV, value)
     messages: list[str] = []
     assert astrometry._local_astrometry_timeout(messages) == 180
-    assert any("Invalid" in message and "180 seconds" in message for message in messages)
+    assert any(
+        "Invalid" in message and "180 seconds" in message for message in messages
+    )
 
 
 def test_positive_timeout_configuration_is_honored(
@@ -178,7 +194,9 @@ def test_local_stages_share_one_deadline(monkeypatch: pytest.MonkeyPatch) -> Non
     deadlines: list[float] = []
 
     def no_solution(
-        _sources: Table, _options: dict[str, object], deadline: float,
+        _sources: Table,
+        _options: dict[str, object],
+        deadline: float,
     ) -> tuple[None, str]:
         deadlines.append(deadline)
         clock[0] += 60
@@ -195,7 +213,8 @@ def test_local_stages_share_one_deadline(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_timeout_skips_local_retries_and_uses_private_online_fallback(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     image_path = tmp_path / "image.fits"
     fits.PrimaryHDU(np.zeros((32, 32)), _wcs().to_header()).writeto(image_path)
@@ -212,7 +231,9 @@ def test_timeout_skips_local_retries_and_uses_private_online_fallback(
         detections.append(threshold)
         return sources
 
-    def time_out(_sources: Table, _options: dict[str, object], deadline: float) -> tuple[None, str]:
+    def time_out(
+        _sources: Table, _options: dict[str, object], deadline: float
+    ) -> tuple[None, str]:
         clock[0] = deadline + 0.001
         raise TimeoutError("synthetic timeout")
 
@@ -224,32 +245,54 @@ def test_timeout_skips_local_retries_and_uses_private_online_fallback(
     monkeypatch.setattr(astrometry, "time", SimpleNamespace(monotonic=lambda: clock[0]))
     monkeypatch.setattr(astrometry, "_try_source_detection_improved", detect)
     monkeypatch.setattr(astrometry, "_run_local_astrometry", time_out)
-    monkeypatch.setattr(astrometry, "_get_online_astrometry_api_key", lambda: "synthetic-key")
-    monkeypatch.setattr(astrometry.astrometry, "blind_match_astrometrynet", online_solve)
-    monkeypatch.setattr(astrometry.astrometry, "get_frame_center", lambda **_kwargs: (150.0, 2.0, 0.1))
+    monkeypatch.setattr(
+        astrometry, "_get_online_astrometry_api_key", lambda: "synthetic-key"
+    )
+    monkeypatch.setattr(
+        astrometry.astrometry, "blind_match_astrometrynet", online_solve
+    )
+    monkeypatch.setattr(
+        astrometry.astrometry, "get_frame_center", lambda **_kwargs: (150.0, 2.0, 0.1)
+    )
     monkeypatch.setattr(astrometry.astrometry, "get_pixscale", lambda **_kwargs: 0.001)
-    monkeypatch.setattr(astrometry, "get_vizier_catalog_with_fallback", lambda *_args, **_kwargs: (None, False))
+    monkeypatch.setattr(
+        astrometry,
+        "get_vizier_catalog_with_fallback",
+        lambda *_args, **_kwargs: (None, False),
+    )
     monkeypatch.delenv(astrometry.LOCAL_ASTROMETRY_TIMEOUT_ENV, raising=False)
 
     solved, header, messages, error = astrometry.solve_with_astrometrynet(image_path)
     assert error is None and solved is not None and header is not None
     assert detections == [None]
     assert remote_options["publicly_visible"] == "n"
-    assert any("Local astrometry budget: 180 seconds" in message for message in messages)
+    assert any(
+        "Local astrometry budget: 180 seconds" in message for message in messages
+    )
     assert any("time budget exhausted" in message for message in messages)
-    assert any("online" in message.lower() and "source list" in message.lower() for message in messages)
+    assert any(
+        "online" in message.lower() and "source list" in message.lower()
+        for message in messages
+    )
     assert all("synthetic-key" not in message for message in messages)
 
 
 def test_cleanup_failure_does_not_start_online_fallback(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     image_path = tmp_path / "image.fits"
     fits.PrimaryHDU(np.zeros((32, 32)), _wcs().to_header()).writeto(image_path)
-    monkeypatch.setattr(astrometry, "_try_source_detection_improved", lambda *_args, **_kwargs: _sources())
+    monkeypatch.setattr(
+        astrometry,
+        "_try_source_detection_improved",
+        lambda *_args, **_kwargs: _sources(),
+    )
 
     def fail_cleanup(
-        _sources: Table, _options: dict[str, object], _deadline: float,
+        _sources: Table,
+        _options: dict[str, object],
+        _deadline: float,
     ) -> tuple[None, str]:
         raise astrometry.LocalAstrometryCleanupError("synthetic cleanup failure")
 
@@ -265,14 +308,25 @@ def test_cleanup_failure_does_not_start_online_fallback(
 
 
 def test_online_failure_after_local_failure_is_reported(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     image_path = tmp_path / "image.fits"
     fits.PrimaryHDU(np.zeros((32, 32)), _wcs().to_header()).writeto(image_path)
-    monkeypatch.setattr(astrometry, "_try_source_detection_improved", lambda *_args, **_kwargs: _sources())
-    monkeypatch.setattr(astrometry, "_run_local_astrometry", lambda *_args: (None, "no local solution"))
-    monkeypatch.setattr(astrometry, "_get_online_astrometry_api_key", lambda: "synthetic-key")
-    monkeypatch.setattr(astrometry.astrometry, "get_frame_center", lambda **_kwargs: (150.0, 2.0, 0.1))
+    monkeypatch.setattr(
+        astrometry,
+        "_try_source_detection_improved",
+        lambda *_args, **_kwargs: _sources(),
+    )
+    monkeypatch.setattr(
+        astrometry, "_run_local_astrometry", lambda *_args: (None, "no local solution")
+    )
+    monkeypatch.setattr(
+        astrometry, "_get_online_astrometry_api_key", lambda: "synthetic-key"
+    )
+    monkeypatch.setattr(
+        astrometry.astrometry, "get_frame_center", lambda **_kwargs: (150.0, 2.0, 0.1)
+    )
     monkeypatch.setattr(astrometry.astrometry, "get_pixscale", lambda **_kwargs: 0.001)
 
     def offline(_sources: Table, **_kwargs: object) -> None:
@@ -286,7 +340,8 @@ def test_online_failure_after_local_failure_is_reported(
 
 
 def test_forced_solve_timeout_retains_original_wcs(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     header = _wcs().to_header()
     header["PIXSCALE"] = 1.0
@@ -302,22 +357,29 @@ def test_forced_solve_timeout_retains_original_wcs(
         path.mkdir(parents=True, exist_ok=True)
         return str(path)
 
-    def time_out(_sources: Table, _options: dict[str, object], deadline: float) -> tuple[None, str]:
+    def time_out(
+        _sources: Table, _options: dict[str, object], deadline: float
+    ) -> tuple[None, str]:
         clock[0] = deadline + 0.001
         raise TimeoutError("synthetic timeout")
 
     monkeypatch.setattr(utils, "ensure_output_directory", output_directory)
     monkeypatch.setattr(tools_app, "try_gaia_server", lambda: False)
     monkeypatch.setattr(astrometry, "time", SimpleNamespace(monotonic=lambda: clock[0]))
-    monkeypatch.setattr(astrometry, "_try_source_detection_improved", lambda *_args, **_kwargs: sources)
+    monkeypatch.setattr(
+        astrometry, "_try_source_detection_improved", lambda *_args, **_kwargs: sources
+    )
     monkeypatch.setattr(astrometry, "_run_local_astrometry", time_out)
     monkeypatch.setattr(astrometry, "_get_online_astrometry_api_key", lambda: None)
     monkeypatch.setattr(pipeline, "airmass", lambda *_args, **_kwargs: 0.0)
     monkeypatch.setattr(
-        pipeline, "detection_and_photometry",
+        pipeline,
+        "detection_and_photometry",
         lambda *_args, **_kwargs: (None, None, None, None, None, None, None, None),
     )
-    page = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "pages" / "app.py"))
+    page = AppTest.from_file(
+        str(Path(__file__).resolve().parents[1] / "pages" / "app.py")
+    )
     page.session_state["logged_in"] = True
     page.session_state["username"] = "synthetic"
     page.session_state["user_id"] = 9
@@ -325,11 +387,15 @@ def test_forced_solve_timeout_retains_original_wcs(
     page.session_state["uploaded_temp_path"] = str(image_path)
     page.session_state["uploaded_name"] = "image.fits"
     page.run(timeout=30)
-    next(toggle for toggle in page.toggle if toggle.label == "Astrometry check").set_value(True)
+    next(
+        toggle for toggle in page.toggle if toggle.label == "Astrometry check"
+    ).set_value(True)
     page.session_state["run_analysis_pipeline"] = True
     page.run(timeout=30)
     assert not page.exception
     assert not page.session_state["proceed_without_wcs"]
     assert page.session_state["calibrated_header"]["CTYPE1"] == header["CTYPE1"]
     assert any("time budget exhausted" in warning.value for warning in page.warning)
-    assert any("using the original valid WCS" in warning.value for warning in page.warning)
+    assert any(
+        "using the original valid WCS" in warning.value for warning in page.warning
+    )

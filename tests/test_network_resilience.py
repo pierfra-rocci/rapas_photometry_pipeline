@@ -86,9 +86,7 @@ def test_vizier_query_retries_on_harvard_mirror():
             return ["fallback result"]
 
     vizier = MirrorAwareVizier()
-    result, used_fallback = query_vizier_with_fallback(
-        vizier, "query_region", object()
-    )
+    result, used_fallback = query_vizier_with_fallback(vizier, "query_region", object())
 
     assert result == ["fallback result"]
     assert used_fallback is True
@@ -173,9 +171,7 @@ def test_vizier_query_retries_on_harvard_mirror():
             return ["fallback result"]
 
     vizier = MirrorAwareVizier()
-    result, used_fallback = query_vizier_with_fallback(
-        vizier, "query_region", object()
-    )
+    result, used_fallback = query_vizier_with_fallback(vizier, "query_region", object())
 
     assert result == ["fallback result"]
     assert used_fallback is True
@@ -369,7 +365,10 @@ def test_cross_match_with_gaia_returns_none_after_vizier_and_tap_failures(monkey
     assert matched_table is None
     assert any("Gaia VizieR query failed" in message for message in log_messages)
     assert any("Direct GAIA TAP query failed" in message for message in log_messages)
-    assert any("Both VizieR and direct GAIA queries failed" in message for message in log_messages)
+    assert any(
+        "Both VizieR and direct GAIA queries failed" in message
+        for message in log_messages
+    )
 
 
 def _make_gaia_catalog_table(*, vizier_columns):
@@ -445,7 +444,9 @@ def test_cross_match_with_gaia_queries_vizier_cone(monkeypatch):
     assert matched_table.loc[0, "catalog_source_id"] == "Gaia DR3 123456789"
     assert query_args["catalog"] == "I/355/gaiadr3"
     assert query_args["row_limit"] == 2000
-    assert any("Retrieved 1 Gaia sources from VizieR" in message for message in log_messages)
+    assert any(
+        "Retrieved 1 Gaia sources from VizieR" in message for message in log_messages
+    )
 
 
 def test_cross_match_with_gaia_tap_query_omits_distance_ordering(monkeypatch):
@@ -477,7 +478,10 @@ def test_cross_match_with_gaia_tap_query_omits_distance_ordering(monkeypatch):
     assert len(tap_queries) == 1
     assert "CONTAINS" in tap_queries[0]
     assert "ORDER BY DISTANCE" not in tap_queries[0]
-    assert any("Retrieved 1 sources from direct GAIA TAP query" in message for message in log_messages)
+    assert any(
+        "Retrieved 1 sources from direct GAIA TAP query" in message
+        for message in log_messages
+    )
 
 
 def test_enhance_catalog_matches_simbad_skybot_milliquas_and_10pc(monkeypatch):
@@ -558,6 +562,7 @@ def test_enhance_catalog_matches_simbad_skybot_milliquas_and_10pc(monkeypatch):
 
         def query_region(self, *_args, **_kwargs):
             return simbad_result
+
     class FakeSimbad:
         def add_votable_fields(self, *_fields):
             pass
@@ -603,7 +608,10 @@ def test_enhance_catalog_matches_simbad_skybot_milliquas_and_10pc(monkeypatch):
     monkeypatch.setattr(
         type(xmatch_catalogs.Vizier), "query_constraints", _vizier_constraints
     )
-    monkeypatch.setattr("src.xmatch_catalogs.requests.post", lambda *_args, **_kwargs: FailedAstroColibriResponse())
+    monkeypatch.setattr(
+        "src.xmatch_catalogs.requests.post",
+        lambda *_args, **_kwargs: FailedAstroColibriResponse(),
+    )
     monkeypatch.setattr("src.xmatch_catalogs.requests.get", _skybot_request)
     monkeypatch.setattr(
         "src.xmatch_catalogs.Skybot._parse_result",
@@ -620,7 +628,9 @@ def test_enhance_catalog_matches_simbad_skybot_milliquas_and_10pc(monkeypatch):
     assert enhanced.loc[7, "pc10_name"] == "Nearby star"
     assert request_params["-mime"] == "votable"
     assert request_params["-observer"] == "500"
-    assert not any("Error querying VizieR 10 Parsec" in message for message in log_messages)
+    assert not any(
+        "Error querying VizieR 10 Parsec" in message for message in log_messages
+    )
 
 
 def test_aladin_popup_includes_skybot_and_10pc_matches(monkeypatch):
@@ -655,6 +665,7 @@ def test_aladin_popup_includes_skybot_and_10pc_matches(monkeypatch):
         "SkyBoT": "Asteroid",
         "10 Parsec": "Nearby star",
     }
+
 
 def test_aladin_popup_id_matches_id_column(monkeypatch):
     """The Aladin source ID must be the ``id`` column of the exported files."""
@@ -757,9 +768,7 @@ def _run_astrocolibri_match(monkeypatch, offsets_arcsec):
     monkeypatch.setattr(
         "src.xmatch_catalogs.requests.get", lambda *_a, **_k: FailedResponse()
     )
-    return enhance_catalog(
-        "key", final_table, None, header, pixel_scale_arcsec=1.0
-    )
+    return enhance_catalog("key", final_table, None, header, pixel_scale_arcsec=1.0)
 
 
 def test_astrocolibri_match_radius_helper():
@@ -866,7 +875,9 @@ def test_astrocolibri_events_without_coordinates_are_listed(monkeypatch):
     )
     monkeypatch.setattr(
         "src.xmatch_catalogs.requests.get",
-        lambda *_a, **_k: type("R", (), {"status_code": 503, "text": "", "content": b""})(),
+        lambda *_a, **_k: type(
+            "R", (), {"status_code": 503, "text": "", "content": b""}
+        )(),
     )
     header = {"CRVAL1": 150.0, "CRVAL2": 2.0, "NAXIS1": 100, "NAXIS2": 100}
 
@@ -980,33 +991,52 @@ def test_aladin_reports_missing_webgl2(monkeypatch: pytest.MonkeyPatch) -> None:
     assert helper_index < html.index("aladinLoadLibrary().then")
 
 
-def test_aladin_falls_back_when_primary_script_download_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_aladin_falls_back_when_primary_script_download_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A blocked CDS aladin.js download should load the jsDelivr fallback."""
     html = _render_aladin_widget(monkeypatch)
 
     assert "https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" in html
-    assert "import('https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js')" in html
+    assert (
+        "import('https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js')"
+        in html
+    )
     assert "aladinInitialize(module.default)" in html
     assert "CDS Aladin script timed out." in html
     assert "Aladin Lite could not be initialized from either CDS or jsDelivr" in html
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is required for JavaScript execution")
+@pytest.mark.skipif(
+    shutil.which("node") is None, reason="Node.js is required for JavaScript execution"
+)
 @pytest.mark.parametrize(
     "scenario",
     [
-        "primary", "fallback", "timeout", "init_failure", "both_fail",
-        "no_webgl", "surveys_fail", "mirror", "fallback_url", "unknown_survey",
+        "primary",
+        "fallback",
+        "timeout",
+        "init_failure",
+        "both_fail",
+        "no_webgl",
+        "surveys_fail",
+        "mirror",
+        "fallback_url",
+        "unknown_survey",
     ],
 )
-def test_aladin_javascript_failure_paths(monkeypatch: pytest.MonkeyPatch, scenario: str) -> None:
+def test_aladin_javascript_failure_paths(
+    monkeypatch: pytest.MonkeyPatch, scenario: str
+) -> None:
     options = {}
     if scenario == "fallback_url":
         options["fallback_survey"] = "https://mirror.example/hips"
     elif scenario == "unknown_survey":
         options["fallback_survey"] = "CDS/P/other"
     html = _render_aladin_widget(monkeypatch, **options)
-    script = re.search(r'<script type="text/javascript">([\s\S]*?)</script>', html).group(1)
+    script = re.search(
+        r'<script type="text/javascript">([\s\S]*?)</script>', html
+    ).group(1)
     harness = r"""
 const vm = require('node:vm');
 const input = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
@@ -1096,11 +1126,15 @@ setTimeout(() => console.log(JSON.stringify({events, status: status.textContent}
         assert "no WebGL2 context" in output["status"]
     elif scenario == "both_fail":
         assert events["primary"] == events["fallback"] == 1
-        assert "could not be initialized from either CDS or jsDelivr" in output["status"]
+        assert (
+            "could not be initialized from either CDS or jsDelivr" in output["status"]
+        )
     else:
         assert events["sources"] == 1
         assert events["fallback"] == (
-            0 if scenario in ("primary", "surveys_fail", "fallback_url", "unknown_survey") else 1
+            0
+            if scenario in ("primary", "surveys_fail", "fallback_url", "unknown_survey")
+            else 1
         )
         if scenario == "surveys_fail":
             assert events["switches"] == 1
@@ -1115,7 +1149,10 @@ setTimeout(() => console.log(JSON.stringify({events, status: status.textContent}
             ]
         elif scenario == "mirror":
             assert events["switches"] == 1
-            assert "mirrored copy from https://skies.esac.esa.int/DSSColor" in output["status"]
+            assert (
+                "mirrored copy from https://skies.esac.esa.int/DSSColor"
+                in output["status"]
+            )
             assert events["urls"] == [
                 "https://alasky.cds.unistra.fr/DSS/DSSColor/properties",
                 "https://skies.esac.esa.int/DSSColor/properties",
@@ -1203,9 +1240,7 @@ def test_vizier_query_reaches_later_mirrors_and_restores_server():
             return ["third mirror result"]
 
     vizier = MirrorAwareVizier()
-    result, used_fallback = query_vizier_with_fallback(
-        vizier, "query_region", object()
-    )
+    result, used_fallback = query_vizier_with_fallback(vizier, "query_region", object())
 
     assert result == ["third mirror result"]
     assert used_fallback is True

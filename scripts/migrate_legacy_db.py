@@ -52,24 +52,19 @@ def parse_args() -> argparse.Namespace:
         "--skip-existing",
         action="store_true",
         help=(
-            "Skip inserts when a conflicting row already exists in the "
-            "target table."
+            "Skip inserts when a conflicting row already exists in the target table."
         ),
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help=(
-            "Do not write anything; only report the actions that would be "
-            "taken."
-        ),
+        help=("Do not write anything; only report the actions that would be taken."),
     )
     parser.add_argument(
         "--backup",
         action="store_true",
         help=(
-            "Create a timestamped backup copy of the legacy database "
-            "before migrating."
+            "Create a timestamped backup copy of the legacy database before migrating."
         ),
     )
     parser.add_argument(
@@ -139,7 +134,7 @@ def backup_legacy_db(db_path: str) -> None:
 def sqlite_path_from_url(url: str) -> str | None:
     prefix = "sqlite:///"
     if url.startswith(prefix) and url != prefix + ":memory:":
-        return url[len(prefix):] or None
+        return url[len(prefix) :] or None
     return None
 
 
@@ -148,9 +143,10 @@ def backup_target_db(db_path: str) -> None:
         return
     timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = f"{db_path}.bak-{timestamp}"
-    with closing(sqlite3.connect(db_path)) as src, closing(
-        sqlite3.connect(backup_path)
-    ) as dst:
+    with (
+        closing(sqlite3.connect(db_path)) as src,
+        closing(sqlite3.connect(backup_path)) as dst,
+    ):
         src.backup(dst)
     print(f"Target backup created at {backup_path}")
 
@@ -201,11 +197,7 @@ def row_exists(
             filters.append(table.c[key] == payload[key])
     if not filters:
         return False
-    stmt = (
-        select(table.c[next(iter(table.c.keys()))])
-        .where(and_(*filters))
-        .limit(1)
-    )
+    stmt = select(table.c[next(iter(table.c.keys()))]).where(and_(*filters)).limit(1)
     return session.execute(stmt).first() is not None
 
 
@@ -239,10 +231,7 @@ def transfer_rows(
         )
     else:
         session.commit()
-        print(
-            f"Inserted {inserted} rows into '{table.name}' "
-            f"(skipped {skipped})."
-        )
+        print(f"Inserted {inserted} rows into '{table.name}' (skipped {skipped}).")
 
 
 def main() -> None:

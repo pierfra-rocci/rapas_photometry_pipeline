@@ -59,6 +59,7 @@ for _mod in _STUB_MODULES:
 
 # ─── Shared helpers ──────────────────────────────────────────────────────────
 
+
 def _make_ac_table(n_sources=3, n_matches=2):
     """Build a minimal photometry DataFrame with Astro-Colibri columns.
 
@@ -67,19 +68,21 @@ def _make_ac_table(n_sources=3, n_matches=2):
     names = [f"Src{i}" for i in range(n_matches)] + [None] * (n_sources - n_matches)
     types = [f"Type{i}" for i in range(n_matches)] + [None] * (n_sources - n_matches)
     classes = [f"Class{i}" for i in range(n_matches)] + [None] * (n_sources - n_matches)
-    return pd.DataFrame({
-        "ra": np.linspace(10.0, 30.0, n_sources),
-        "dec": np.linspace(15.0, 45.0, n_sources),
-        "xcenter": np.arange(100, 100 + n_sources, dtype=float),
-        "ycenter": np.arange(200, 200 + n_sources, dtype=float),
-        "psf_mag": np.full(n_sources, 18.5),
-        "psf_mag_err": np.full(n_sources, 0.05),
-        "aperture_mag_1_3": np.full(n_sources, 18.8),
-        "aperture_mag_err_1_3": np.full(n_sources, 0.06),
-        "astrocolibri_name": names,
-        "astrocolibri_type": types,
-        "astrocolibri_classification": classes,
-    })
+    return pd.DataFrame(
+        {
+            "ra": np.linspace(10.0, 30.0, n_sources),
+            "dec": np.linspace(15.0, 45.0, n_sources),
+            "xcenter": np.arange(100, 100 + n_sources, dtype=float),
+            "ycenter": np.arange(200, 200 + n_sources, dtype=float),
+            "psf_mag": np.full(n_sources, 18.5),
+            "psf_mag_err": np.full(n_sources, 0.05),
+            "aperture_mag_1_3": np.full(n_sources, 18.8),
+            "aperture_mag_err_1_3": np.full(n_sources, 0.06),
+            "astrocolibri_name": names,
+            "astrocolibri_type": types,
+            "astrocolibri_classification": classes,
+        }
+    )
 
 
 def _celestial_header(dec: float = 15.0) -> Header:
@@ -94,6 +97,7 @@ def _celestial_header(dec: float = 15.0) -> Header:
 
 
 # ─── 1. plot_astrocolibri_cutouts — early-return guards ──────────────────────
+
 
 class TestPlotAstrocolibriCutoutsGuards:
     """Early-return guard conditions — do not require external libraries."""
@@ -122,11 +126,13 @@ class TestPlotAstrocolibriCutoutsGuards:
         """All astrocolibri_name values are None → no matches → early return."""
         from src.transient import plot_astrocolibri_cutouts
 
-        df = pd.DataFrame({
-            "ra": [10.0, 20.0],
-            "dec": [5.0, 10.0],
-            "astrocolibri_name": [None, None],
-        })
+        df = pd.DataFrame(
+            {
+                "ra": [10.0, 20.0],
+                "dec": [5.0, 10.0],
+                "astrocolibri_name": [None, None],
+            }
+        )
         result = plot_astrocolibri_cutouts(df, None, None, "/tmp", "test")
         assert result is None
 
@@ -134,16 +140,19 @@ class TestPlotAstrocolibriCutoutsGuards:
         """astrocolibri_name column filled with NaN → no matches → early return."""
         from src.transient import plot_astrocolibri_cutouts
 
-        df = pd.DataFrame({
-            "ra": [10.0],
-            "dec": [5.0],
-            "astrocolibri_name": [float("nan")],
-        })
+        df = pd.DataFrame(
+            {
+                "ra": [10.0],
+                "dec": [5.0],
+                "astrocolibri_name": [float("nan")],
+            }
+        )
         result = plot_astrocolibri_cutouts(df, None, None, "/tmp", "test")
         assert result is None
 
 
 # ─── 2. plot_astrocolibri_cutouts — hemisphere-aware survey selection ─────────
+
 
 def _run_patched(dec_center, filter_name="r"):
     """Run plot_astrocolibri_cutouts with all external deps mocked.
@@ -162,13 +171,17 @@ def _run_patched(dec_center, filter_name="r"):
     mock_cutout = {"image": np.zeros((25, 25)), "header": header}
     mock_fig = MagicMock()
 
-    with patch("src.transient.st"), \
-         patch("src.transient.fix_header", return_value=(header, None)), \
-         patch("src.transient.cutouts.get_cutout", return_value=mock_cutout), \
-         patch("src.transient.templates.get_hips_image",
-               side_effect=Exception("network disabled")) as mock_hips, \
-         patch("src.transient.plot_cutout", return_value=mock_fig), \
-         patch("src.transient.plt.close"):
+    with (
+        patch("src.transient.st"),
+        patch("src.transient.fix_header", return_value=(header, None)),
+        patch("src.transient.cutouts.get_cutout", return_value=mock_cutout),
+        patch(
+            "src.transient.templates.get_hips_image",
+            side_effect=Exception("network disabled"),
+        ) as mock_hips,
+        patch("src.transient.plot_cutout", return_value=mock_fig),
+        patch("src.transient.plt.close"),
+    ):
         plot_astrocolibri_cutouts(
             df, image, header, "/tmp", "test", filter_name, dec_center
         )
@@ -228,6 +241,7 @@ class TestAstrocolibriSurveyFallback:
 
 # ─── 3. plot_astrocolibri_cutouts — PNG filename sanitisation ─────────────────
 
+
 class TestAstrocolibriSafeFilename:
     """sanitize_astrocolibri_name() produces the PNG filename in production."""
 
@@ -269,14 +283,20 @@ class TestAstrocolibriSafeFilename:
         header = _celestial_header()
         mock_fig = MagicMock()
 
-        with patch("src.transient.st"), \
-             patch("src.transient.fix_header", return_value=(header, None)), \
-             patch("src.transient.cutouts.get_cutout",
-                   return_value={"image": np.zeros((25, 25)), "header": header}), \
-             patch("src.transient.templates.get_hips_image",
-                   side_effect=Exception("network disabled")), \
-             patch("src.transient.plot_cutout", return_value=mock_fig), \
-             patch("src.transient.plt.close"):
+        with (
+            patch("src.transient.st"),
+            patch("src.transient.fix_header", return_value=(header, None)),
+            patch(
+                "src.transient.cutouts.get_cutout",
+                return_value={"image": np.zeros((25, 25)), "header": header},
+            ),
+            patch(
+                "src.transient.templates.get_hips_image",
+                side_effect=Exception("network disabled"),
+            ),
+            patch("src.transient.plot_cutout", return_value=mock_fig),
+            patch("src.transient.plt.close"),
+        ):
             saved = plot_astrocolibri_cutouts(
                 df, np.zeros((500, 500)), header, str(tmp_path), "science", "r", 10.0
             )
@@ -286,6 +306,7 @@ class TestAstrocolibriSafeFilename:
 
 
 # ─── 4. plot_astrocolibri_cutouts — magnitude column priority ─────────────────
+
 
 class TestAstrocolibriMagColumnPriority:
     """Fallback priority: psf_mag → aperture_mag_1_3 → aperture_mag_1_1 → None.
@@ -354,14 +375,20 @@ class TestAstrocolibriMagColumnPriority:
         header = _celestial_header()
         mock_fig = MagicMock()
 
-        with patch("src.transient.st"), \
-             patch("src.transient.fix_header", return_value=(header, None)), \
-             patch("src.transient.cutouts.get_cutout",
-                   return_value={"image": np.zeros((25, 25)), "header": header}), \
-             patch("src.transient.templates.get_hips_image",
-                   side_effect=Exception("network disabled")), \
-             patch("src.transient.plot_cutout", return_value=mock_fig) as mock_plot, \
-             patch("src.transient.plt.close"):
+        with (
+            patch("src.transient.st"),
+            patch("src.transient.fix_header", return_value=(header, None)),
+            patch(
+                "src.transient.cutouts.get_cutout",
+                return_value={"image": np.zeros((25, 25)), "header": header},
+            ),
+            patch(
+                "src.transient.templates.get_hips_image",
+                side_effect=Exception("network disabled"),
+            ),
+            patch("src.transient.plot_cutout", return_value=mock_fig) as mock_plot,
+            patch("src.transient.plt.close"),
+        ):
             plot_astrocolibri_cutouts(
                 df, np.zeros((500, 500)), header, "/tmp", "science", "r", 10.0
             )
@@ -372,26 +399,31 @@ class TestAstrocolibriMagColumnPriority:
 
 # ─── 5. plot_astrocolibri_cutouts — skip rows with invalid coordinates ─────────
 
+
 class TestAstrocolibriInvalidCoordinates:
     """Rows with NaN or None coordinates must be skipped without crashing."""
 
     def test_nan_ra_row_is_skipped(self):
         from src.transient import plot_astrocolibri_cutouts
 
-        df = pd.DataFrame({
-            "ra": [float("nan")],
-            "dec": [20.0],
-            "xcenter": [100.0],
-            "ycenter": [200.0],
-            "astrocolibri_name": ["BadSrc"],
-        })
+        df = pd.DataFrame(
+            {
+                "ra": [float("nan")],
+                "dec": [20.0],
+                "xcenter": [100.0],
+                "ycenter": [200.0],
+                "astrocolibri_name": ["BadSrc"],
+            }
+        )
         # Should not raise and should return an empty list (0 saved files)
         image = np.zeros((100, 100))
         header = _celestial_header()
 
-        with patch("src.transient.st"), \
-             patch("src.transient.fix_header", return_value=(header, None)), \
-             patch("src.transient.cutouts.get_cutout") as mock_cutout:
+        with (
+            patch("src.transient.st"),
+            patch("src.transient.fix_header", return_value=(header, None)),
+            patch("src.transient.cutouts.get_cutout") as mock_cutout,
+        ):
             result = plot_astrocolibri_cutouts(
                 df, image, header, "/tmp", "test", "r", 20.0
             )
@@ -402,19 +434,23 @@ class TestAstrocolibriInvalidCoordinates:
     def test_nan_dec_row_is_skipped(self):
         from src.transient import plot_astrocolibri_cutouts
 
-        df = pd.DataFrame({
-            "ra": [83.8],
-            "dec": [float("nan")],
-            "xcenter": [100.0],
-            "ycenter": [200.0],
-            "astrocolibri_name": ["BadSrc"],
-        })
+        df = pd.DataFrame(
+            {
+                "ra": [83.8],
+                "dec": [float("nan")],
+                "xcenter": [100.0],
+                "ycenter": [200.0],
+                "astrocolibri_name": ["BadSrc"],
+            }
+        )
         image = np.zeros((100, 100))
         header = _celestial_header()
 
-        with patch("src.transient.st"), \
-             patch("src.transient.fix_header", return_value=(header, None)), \
-             patch("src.transient.cutouts.get_cutout") as mock_cutout:
+        with (
+            patch("src.transient.st"),
+            patch("src.transient.fix_header", return_value=(header, None)),
+            patch("src.transient.cutouts.get_cutout") as mock_cutout,
+        ):
             result = plot_astrocolibri_cutouts(
                 df, image, header, "/tmp", "test", "r", 10.0
             )
@@ -423,6 +459,7 @@ class TestAstrocolibriInvalidCoordinates:
 
 
 # ─── 6. Residuals plot error bar column selection ─────────────────────────────
+
 
 class TestResidualsErrorBarSelection:
     """Drives the real select_residual_error_column() from src/pipeline.py.
@@ -439,19 +476,23 @@ class TestResidualsErrorBarSelection:
 
     def test_uses_aperture_mag_err_1_3_when_present(self):
         residuals = np.array([0.01, -0.02, 0.03])
-        table = pd.DataFrame({
-            "aperture_mag_err_1_3": [0.05, 0.06, 0.07],
-            "aperture_mag_err": [0.99, 0.99, 0.99],  # must NOT be selected
-        })
+        table = pd.DataFrame(
+            {
+                "aperture_mag_err_1_3": [0.05, 0.06, 0.07],
+                "aperture_mag_err": [0.99, 0.99, 0.99],  # must NOT be selected
+            }
+        )
         result = self._select_aperture_err(table, residuals)
         np.testing.assert_array_equal(result, [0.05, 0.06, 0.07])
 
     def test_fallback_to_generic_aperture_err(self):
         """When aperture_mag_err_1_3 is absent, fall back to aperture_mag_err."""
         residuals = np.array([0.01, -0.02, 0.03])
-        table = pd.DataFrame({
-            "aperture_mag_err": [0.10, 0.11, 0.12],
-        })
+        table = pd.DataFrame(
+            {
+                "aperture_mag_err": [0.10, 0.11, 0.12],
+            }
+        )
         result = self._select_aperture_err(table, residuals)
         np.testing.assert_array_equal(result, [0.10, 0.11, 0.12])
 
@@ -468,10 +509,12 @@ class TestResidualsErrorBarSelection:
         residuals = np.zeros(4)
         err_1_3 = np.array([0.02, 0.03, 0.04, 0.05])
         err_generic = np.full(4, 99.0)
-        table = pd.DataFrame({
-            "aperture_mag_err_1_3": err_1_3,
-            "aperture_mag_err": err_generic,
-        })
+        table = pd.DataFrame(
+            {
+                "aperture_mag_err_1_3": err_1_3,
+                "aperture_mag_err": err_generic,
+            }
+        )
         result = self._select_aperture_err(table, residuals)
         np.testing.assert_array_equal(result, err_1_3)
 
@@ -489,6 +532,7 @@ class TestResidualsErrorBarSelection:
 
 
 # ─── 7. Filter mismatch caption text ─────────────────────────────────────────
+
 
 class TestFilterWarningText:
     """Drives the real format_filter_mismatch_message() from src/tools_pipeline.py."""
@@ -539,6 +583,7 @@ class TestFilterWarningText:
 
 # ─── 8. Transient candidate filtering (src/transient.py) ─────────────────────
 
+
 class TestTransientSepFlagMask:
     """The flag mask handed to stdpipe must use SEP's low-byte flag bits.
 
@@ -584,8 +629,9 @@ class TestTransientCandidateChecker:
 
         xcat = Table({"rmag": np.asarray(catalog_mags, dtype=float)})
         xobj = Table({"mag_calib": np.asarray(detected_mags, dtype=float)})
-        return checker_fn(xobj, xcat, "ps1", filter_mag=filter_mag,
-                          mag_threshold=mag_threshold)
+        return checker_fn(
+            xobj, xcat, "ps1", filter_mag=filter_mag, mag_threshold=mag_threshold
+        )
 
     def test_identical_magnitudes_are_confirmed_matches(self):
         """A detection matching its catalogue entry is removed (True)."""
@@ -700,7 +746,10 @@ class TestCalibrationBandAssociation:
     def test_gaia_bands_use_native_gaia_columns(self, band, column):
         from astropy.table import Table
 
-        from src.transient import guess_catalogue_mag_columns, normalize_calibration_filter
+        from src.transient import (
+            guess_catalogue_mag_columns,
+            normalize_calibration_filter,
+        )
 
         cat = Table({n: [1.0] for n in ["Gmag", "BPmag", "RPmag", "gmag", "rmag"]})
         fname = normalize_calibration_filter(band)
@@ -713,7 +762,10 @@ class TestCalibrationBandAssociation:
 
         vizier = Table({n: [1.0] for n in ["Gmag", "BPmag", "RPmag"]})
         xmatch = Table(
-            {n: [1.0] for n in ["phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"]}
+            {
+                n: [1.0]
+                for n in ["phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"]
+            }
         )
         for filt in ("g", "G", "r", "R", "V"):
             col_v = guess_catalogue_mag_columns(filt, vizier)[0]

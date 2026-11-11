@@ -136,12 +136,26 @@ def test_save_catalog_files_csv_and_vot(tmp_path):
 def test_build_transient_table_matches_catalog_rows():
     table = _make_table()
     candidates = [
-        {"ra": 10.0201, "dec": 20.0201, "x": 30.5, "y": 31.5,
-         "mag_calib": 17.0, "mag_calib_err": 0.01},
-        {"ra": 50.0, "dec": -10.0, "x": 5.0, "y": 6.0,
-         "mag_calib": 19.0, "mag_calib_err": 0.2},
+        {
+            "ra": 10.0201,
+            "dec": 20.0201,
+            "x": 30.5,
+            "y": 31.5,
+            "mag_calib": 17.0,
+            "mag_calib_err": 0.01,
+        },
+        {
+            "ra": 50.0,
+            "dec": -10.0,
+            "x": 5.0,
+            "y": 6.0,
+            "mag_calib": 19.0,
+            "mag_calib_err": 0.2,
+        },
     ]
-    out = build_transient_table(candidates, table, FILTER_BAND, match_radius_arcsec=10.0)
+    out = build_transient_table(
+        candidates, table, FILTER_BAND, match_radius_arcsec=10.0
+    )
     assert len(out) == 2
     assert out.columns[0] == "id"
     assert out["id"].iloc[0] == 5
@@ -153,7 +167,16 @@ def test_build_transient_table_matches_catalog_rows():
 
 
 def test_build_transient_table_without_photometry():
-    cands = [{"ra": 1.0, "dec": 2.0, "x": 3.0, "y": 4.0, "mag_calib": 18.0, "mag_calib_err": 0.1}]
+    cands = [
+        {
+            "ra": 1.0,
+            "dec": 2.0,
+            "x": 3.0,
+            "y": 4.0,
+            "mag_calib": 18.0,
+            "mag_calib_err": 0.1,
+        }
+    ]
     out = build_transient_table(cands, None, FILTER_BAND)
     assert list(out["ra"]) == [1.0] and list(out["psf_mag"]) == [18.0]
     assert build_transient_table([], None).empty

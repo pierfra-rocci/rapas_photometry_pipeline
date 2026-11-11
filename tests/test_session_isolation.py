@@ -22,6 +22,7 @@ from src.utils import (
 def isolated_dirs(tmp_path, monkeypatch):
     results = tmp_path / "results"
     results.mkdir()
+
     def _ensure(directory=""):
         path = results / directory
         path.mkdir(parents=True, exist_ok=True)
@@ -187,7 +188,9 @@ class TestResetIsSessionLocal:
 
 
 class TestDownloadButtonPrefix:
-    def test_does_not_pool_files_of_images_sharing_a_prefix(self, tmp_path, monkeypatch):
+    def test_does_not_pool_files_of_images_sharing_a_prefix(
+        self, tmp_path, monkeypatch
+    ):
         import src.tools_app as ta
 
         for name in ("img_catalog.csv", "img.log", "img2_catalog.csv", "image_x.csv"):
@@ -216,7 +219,9 @@ class TestDownloadButtonPrefix:
         assert captured["names"] == ["img.log", "img_catalog.csv"]
 
     def test_existing_archive_is_available_after_work_files_are_removed(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         import src.tools_app as ta
 
@@ -236,7 +241,9 @@ class TestDownloadButtonPrefix:
                 raise AssertionError(message)
 
             @staticmethod
-            def download_button(*_args: object, data: bytes | None = None, **kwargs: object) -> None:
+            def download_button(
+                *_args: object, data: bytes | None = None, **kwargs: object
+            ) -> None:
                 captured["filename"] = kwargs["file_name"]
                 assert data is not None
                 with zipfile.ZipFile(BytesIO(data)) as zf:
@@ -261,7 +268,9 @@ class TestLoadFitsReplaysMessages:
 
         monkeypatch.setattr(ta, "st", FakeSt)
         monkeypatch.setattr(
-            ta, "write_to_log", lambda buf, msg, level="INFO": logged.append((level, msg))
+            ta,
+            "write_to_log",
+            lambda buf, msg, level="INFO": logged.append((level, msg)),
         )
         buf = BytesIO()
         fits.PrimaryHDU(np.zeros((2, 3, 3, 3), dtype=np.float32)).writeto(buf)
@@ -282,7 +291,9 @@ class TestLoadFitsReplaysMessages:
 
         errors = []
         monkeypatch.setattr(
-            ta, "st", type("S", (), {"session_state": {}, "error": staticmethod(errors.append)})
+            ta,
+            "st",
+            type("S", (), {"session_state": {}, "error": staticmethod(errors.append)}),
         )
         assert ta.load_fits_data(BytesIO(b"")) == (None, None)
         assert errors

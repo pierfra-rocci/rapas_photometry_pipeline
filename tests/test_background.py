@@ -146,8 +146,7 @@ class TestBackgroundAccuracy:
         bkg, _fig, _error = estimate_background(image, figure=False)
         ratio = float(np.median(bkg.background_rms)) / TRUE_RMS
         assert ratio == pytest.approx(1.0, abs=0.08), (
-            "background RMS should track the true pixel noise, got "
-            f"x{ratio:.2f}"
+            f"background RMS should track the true pixel noise, got x{ratio:.2f}"
         )
 
     def test_noise_map_stays_below_the_plain_std_estimate_when_crowded(self):
@@ -189,9 +188,7 @@ class TestBackgroundAccuracy:
                 seen["exclude_percentile"] = kwargs.get("exclude_percentile")
                 super().__init__(*args, **kwargs)
 
-        monkeypatch.setattr(
-            "src.tools_pipeline.Background2D", RecordingBackground2D
-        )
+        monkeypatch.setattr("src.tools_pipeline.Background2D", RecordingBackground2D)
         image = _star_field(n=320)
         estimate_background(image, figure=False)
 

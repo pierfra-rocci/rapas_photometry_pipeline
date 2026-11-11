@@ -368,4 +368,6 @@ class WcsFitsZipAssoc(Base):
     )
 
     def __repr__(self) -> str:  # pragma: no cover - debug helper
-        return f"WcsFitsZipAssoc(fits={self.wcs_fits_id!r}, zip={self.zip_archive_id!r})"
+        return (
+            f"WcsFitsZipAssoc(fits={self.wcs_fits_id!r}, zip={self.zip_archive_id!r})"
+        )

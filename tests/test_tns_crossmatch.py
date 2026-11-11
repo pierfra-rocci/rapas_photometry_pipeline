@@ -240,7 +240,9 @@ def test_load_tns_public_objects_downloads_without_credentials(monkeypatch, tmp_
     assert '"tns_id":0' in marker and '"type":"guest"' in marker
 
 
-def test_load_tns_public_objects_sends_the_configured_marker_name(monkeypatch, tmp_path):
+def test_load_tns_public_objects_sends_the_configured_marker_name(
+    monkeypatch, tmp_path
+):
     _clear_tns_env(monkeypatch)
     monkeypatch.setenv("RPP_TNS_MARKER_NAME", "My observatory")
 
@@ -1102,7 +1104,9 @@ def test_tns_field_mask_without_an_index_falls_back_to_separations():
 
 class _ApiResponse(_MirrorResponse):
     def __init__(self, reply=None, status_code=200, headers=None, content=b""):
-        super().__init__({"id_code": status_code, "data": {"reply": reply}}, status_code)
+        super().__init__(
+            {"id_code": status_code, "data": {"reply": reply}}, status_code
+        )
         self.headers = headers or {}
         self.content = content
 
@@ -1149,10 +1153,20 @@ def test_cross_match_tns_falls_back_to_the_search_api(monkeypatch, tmp_path):
     _set_tns_credentials(monkeypatch)
     calls = []
     objects = [
-        {"objname": "2026abc", "prefix": "SN", "ra": 150.0,
-         "dec": 2.0 + 5.0 / 3600.0, "type": "SN Ia"},
-        {"objname": "2026far", "prefix": "AT", "ra": 150.0,
-         "dec": 2.0 + 600.0 / 3600.0, "type": ""},
+        {
+            "objname": "2026abc",
+            "prefix": "SN",
+            "ra": 150.0,
+            "dec": 2.0 + 5.0 / 3600.0,
+            "type": "SN Ia",
+        },
+        {
+            "objname": "2026far",
+            "prefix": "AT",
+            "ra": 150.0,
+            "dec": 2.0 + 600.0 / 3600.0,
+            "type": "",
+        },
     ]
     monkeypatch.setattr(
         "src.tns_catalog.requests.get", lambda *_a, **_k: _OfflineResponse()
@@ -1244,7 +1258,9 @@ def test_search_api_waits_for_the_rate_limit_reset(monkeypatch):
         _ApiResponse([{"objname": "2026abc", "prefix": "SN"}]),
     ]
     sleeps = []
-    monkeypatch.setattr("src.tns_catalog.requests.post", lambda *_a, **_k: answers.pop(0))
+    monkeypatch.setattr(
+        "src.tns_catalog.requests.post", lambda *_a, **_k: answers.pop(0)
+    )
     monkeypatch.setattr("src.tns_catalog.time.sleep", sleeps.append)
 
     names, _messages = search_tns_api(tns_credentials(), 150.0, 2.0, 600.0)
@@ -1326,7 +1342,9 @@ def test_startup_warm_up_reports_a_failed_download(monkeypatch, tmp_path):
 
     _clear_tns_env(monkeypatch)
     monkeypatch.setenv("RPP_TNS_CACHE_DIR", str(tmp_path))
-    monkeypatch.setattr("src.tns_catalog.requests.get", lambda *_a, **_k: _OfflineResponse())
+    monkeypatch.setattr(
+        "src.tns_catalog.requests.get", lambda *_a, **_k: _OfflineResponse()
+    )
 
     ok, messages = _load_shared_tns_catalogue()
 

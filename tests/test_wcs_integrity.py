@@ -21,7 +21,9 @@ from src.tools_pipeline import extract_pixel_scale, fix_header, safe_wcs_create
 from src.xmatch_catalogs import cross_match_with_gaia
 
 
-def _header(projection: str = "TAN", center: tuple[float, float] = (150, 2)) -> fits.Header:
+def _header(
+    projection: str = "TAN", center: tuple[float, float] = (150, 2)
+) -> fits.Header:
     wcs = WCS(naxis=2)
     wcs.wcs.ctype = [f"RA---{projection}", f"DEC--{projection}"]
     wcs.wcs.crval = center
@@ -121,10 +123,16 @@ def test_catalog_matching_rejects_noncelestial_header_before_network(
     def unexpected_query(*_args: object, **_kwargs: object) -> None:
         pytest.fail("A catalog query must not run without celestial WCS")
 
-    monkeypatch.setattr("src.xmatch_catalogs.query_vizier_with_fallback", unexpected_query)
+    monkeypatch.setattr(
+        "src.xmatch_catalogs.query_vizier_with_fallback", unexpected_query
+    )
     matched, messages = cross_match_with_gaia(
         Table({"xcenter": [40.0], "ycenter": [40.0]}),
-        header, 1.0, 3.0, "phot_g_mean_mag", 21.0,
+        header,
+        1.0,
+        3.0,
+        "phot_g_mean_mag",
+        21.0,
     )
     assert matched is None
     assert any("WCS" in message for message in messages)
@@ -132,7 +140,8 @@ def test_catalog_matching_rejects_noncelestial_header_before_network(
 
 @pytest.mark.parametrize("frame", ["invalid", "broken", "galactic", "swapped"])
 def test_photometry_uses_icrs_or_omits_coordinates(
-    monkeypatch: pytest.MonkeyPatch, frame: str,
+    monkeypatch: pytest.MonkeyPatch,
+    frame: str,
 ) -> None:
     y, x = np.indices((128, 128))
     rng = np.random.default_rng(42)
@@ -153,8 +162,10 @@ def test_photometry_uses_icrs_or_omits_coordinates(
         header["CRVAL1"], header["CRVAL2"] = 2.0, 150.0
     header["RA"], header["DEC"], header["PIXSCALE"] = 150.0, 2.0, 1.0
     if frame == "broken":
+
         def fail_transform(*_args: object, **_kwargs: object) -> None:
             raise ValueError("synthetic transform failure")
+
         monkeypatch.setattr(WCS, "pixel_to_world", fail_transform)
 
     messages: list[tuple[str, tuple[object, ...]]] = []
@@ -167,12 +178,18 @@ def test_photometry_uses_icrs_or_omits_coordinates(
 
     monkeypatch.setattr(pipeline, "st", FakeStreamlit())
     monkeypatch.setattr(
-        pipeline, "mask_and_remove_cosmic_rays", lambda *_args, **_kwargs: np.zeros_like(image, dtype=bool)
+        pipeline,
+        "mask_and_remove_cosmic_rays",
+        lambda *_args, **_kwargs: np.zeros_like(image, dtype=bool),
     )
     monkeypatch.setattr(
-        pipeline, "detect_and_mask_satellite_trails", lambda *_args, **_kwargs: np.zeros_like(image, dtype=bool)
+        pipeline,
+        "detect_and_mask_satellite_trails",
+        lambda *_args, **_kwargs: np.zeros_like(image, dtype=bool),
     )
-    monkeypatch.setattr(pipeline, "perform_psf_photometry", lambda *_args, **_kwargs: (None, None))
+    monkeypatch.setattr(
+        pipeline, "perform_psf_photometry", lambda *_args, **_kwargs: (None, None)
+    )
     monkeypatch.setattr(pipeline, "fwhm_fit", lambda *_args, **_kwargs: (3.0, 2.0))
     result = pipeline.detection_and_photometry(image, header, 3.0, 5.0, 10, 1.5)
     table, _, _, _, wcs, *_ = result
@@ -185,8 +202,12 @@ def test_photometry_uses_icrs_or_omits_coordinates(
     else:
         assert wcs is not None
         expected = WCS(header).pixel_to_world(table["xcenter"], table["ycenter"]).icrs
-        np.testing.assert_allclose(table["ra"].to_value("deg"), expected.ra.degree, atol=1e-10)
-        np.testing.assert_allclose(table["dec"].to_value("deg"), expected.dec.degree, atol=1e-10)
+        np.testing.assert_allclose(
+            table["ra"].to_value("deg"), expected.ra.degree, atol=1e-10
+        )
+        np.testing.assert_allclose(
+            table["dec"].to_value("deg"), expected.dec.degree, atol=1e-10
+        )
 
 
 def test_sip_distortion_and_celestial_cube_survive_validation() -> None:
@@ -202,9 +223,12 @@ def test_sip_distortion_and_celestial_cube_survive_validation() -> None:
     validated, error, _ = safe_wcs_create(header)
     assert error is None and validated is not None
     assert validated.sip is not None
-    assert original.pixel_to_world(10, 20).separation(
-        validated.pixel_to_world(10, 20)
-    ).arcsec < 1e-6
+    assert (
+        original.pixel_to_world(10, 20)
+        .separation(validated.pixel_to_world(10, 20))
+        .arcsec
+        < 1e-6
+    )
 
     cube = WCS(naxis=3)
     cube.wcs.ctype = ["RA---TAN", "DEC--TAN", "FREQ"]
@@ -217,6 +241,7 @@ def test_sip_distortion_and_celestial_cube_survive_validation() -> None:
     assert error is None and celestial is not None
     assert celestial.pixel_n_dim == 2 and celestial.is_celestial
     import src.astrometry as astrometry
+
     accepted = astrometry._accept_solved_wcs(cube, cube_header, [])
     assert accepted is not None and accepted.pixel_n_dim == 2
 
@@ -257,7 +282,8 @@ def test_invalid_local_solver_result_tries_next_stage(
 
 
 def test_invalid_local_solution_falls_back_online_without_invalid_hints(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import src.astrometry as astrometry
 
@@ -268,19 +294,35 @@ def test_invalid_local_solution_falls_back_online_without_invalid_hints(
     invalid, valid = WCS(header), WCS(_header())
     sources = Table({"x": np.arange(10.0), "y": np.arange(10.0)})
     options: dict[str, object] = {}
-    monkeypatch.setattr(astrometry, "_try_source_detection_improved", lambda *_args, **_kwargs: sources)
-    monkeypatch.setattr(astrometry, "solve_with_enhanced_strategy", lambda *_args: (invalid, []))
-    monkeypatch.setattr(astrometry, "_get_online_astrometry_api_key", lambda: "test-key")
-    monkeypatch.setattr(astrometry, "get_vizier_catalog_with_fallback", lambda *_args, **_kwargs: (None, False))
-    monkeypatch.setattr(astrometry.astrometry, "get_frame_center", lambda **_kwargs: (150.0, 2.0, 0.1))
+    monkeypatch.setattr(
+        astrometry, "_try_source_detection_improved", lambda *_args, **_kwargs: sources
+    )
+    monkeypatch.setattr(
+        astrometry, "solve_with_enhanced_strategy", lambda *_args: (invalid, [])
+    )
+    monkeypatch.setattr(
+        astrometry, "_get_online_astrometry_api_key", lambda: "test-key"
+    )
+    monkeypatch.setattr(
+        astrometry,
+        "get_vizier_catalog_with_fallback",
+        lambda *_args, **_kwargs: (None, False),
+    )
+    monkeypatch.setattr(
+        astrometry.astrometry, "get_frame_center", lambda **_kwargs: (150.0, 2.0, 0.1)
+    )
     monkeypatch.setattr(astrometry.astrometry, "get_pixscale", lambda **_kwargs: 0.01)
 
     def online_solve(_sources: Table, **kwargs: object) -> WCS:
         options.update(kwargs)
         return valid
 
-    monkeypatch.setattr(astrometry.astrometry, "blind_match_astrometrynet", online_solve)
-    solved, updated, messages, error = astrometry.solve_with_astrometrynet(str(image_path))
+    monkeypatch.setattr(
+        astrometry.astrometry, "blind_match_astrometrynet", online_solve
+    )
+    solved, updated, messages, error = astrometry.solve_with_astrometrynet(
+        str(image_path)
+    )
     assert error is None and solved is not None and updated is not None
     assert safe_wcs_create(updated)[0] is not None
     assert "center_ra" not in options and "center_dec" not in options
@@ -290,7 +332,8 @@ def test_invalid_local_solution_falls_back_online_without_invalid_hints(
 
 
 def test_invalid_wcs_skips_transient_search_and_cutouts(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import src.transient as transient
 
@@ -305,16 +348,26 @@ def test_invalid_wcs_skips_transient_search_and_cutouts(
 
     monkeypatch.setattr(transient, "get_vizier_catalog_with_fallback", unexpected_query)
     monkeypatch.setattr(transient, "_fetch_hips_template", unexpected_query)
-    frame = pd.DataFrame({"astrocolibri_name": ["candidate"], "ra": [150.0], "dec": [2.0]})
+    frame = pd.DataFrame(
+        {"astrocolibri_name": ["candidate"], "ra": [150.0], "dec": [2.0]}
+    )
     image = np.zeros((80, 80))
-    assert transient.find_candidates(frame, image, header, 3.0, 1.0, 150.0, 2.0, 0.1) == []
-    assert transient.plot_astrocolibri_cutouts(frame, image, header, str(tmp_path), "image") == []
+    assert (
+        transient.find_candidates(frame, image, header, 3.0, 1.0, 150.0, 2.0, 0.1) == []
+    )
+    assert (
+        transient.plot_astrocolibri_cutouts(
+            frame, image, header, str(tmp_path), "image"
+        )
+        == []
+    )
     assert len(warnings) == 2
 
 
 @pytest.mark.parametrize("frame", ["galactic", "swapped"])
 def test_catalog_query_uses_wcs_image_center_in_icrs(
-    monkeypatch: pytest.MonkeyPatch, frame: str,
+    monkeypatch: pytest.MonkeyPatch,
+    frame: str,
 ) -> None:
     header = _header()
     if frame == "galactic":
@@ -348,7 +401,11 @@ def test_catalog_query_uses_wcs_image_center_in_icrs(
     )
     cross_match_with_gaia(
         Table({"xcenter": [40.0], "ycenter": [40.0]}),
-        header, 1.0, 3.0, "phot_g_mean_mag", 21.0,
+        header,
+        1.0,
+        3.0,
+        "phot_g_mean_mag",
+        21.0,
     )
     assert query_centers
     expected = WCS(header).pixel_to_world(39.5, 39.5).icrs
@@ -356,7 +413,8 @@ def test_catalog_query_uses_wcs_image_center_in_icrs(
 
 
 def test_forced_solve_rejects_invalid_header_and_retains_original(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import src.astrometry as astrometry
     import src.tools_app as tools_app
@@ -375,13 +433,20 @@ def test_forced_solve_rejects_invalid_header_and_retains_original(
 
     monkeypatch.setattr(utils, "ensure_output_directory", output_directory)
     monkeypatch.setattr(tools_app, "try_gaia_server", lambda: False)
-    monkeypatch.setattr(astrometry, "solve_with_astrometrynet", lambda _path: (WCS(header), invalid_header, [], None))
+    monkeypatch.setattr(
+        astrometry,
+        "solve_with_astrometrynet",
+        lambda _path: (WCS(header), invalid_header, [], None),
+    )
     monkeypatch.setattr(pipeline, "airmass", lambda *_args, **_kwargs: 0.0)
     monkeypatch.setattr(
-        pipeline, "detection_and_photometry",
+        pipeline,
+        "detection_and_photometry",
         lambda *_args, **_kwargs: (None, None, None, None, None, None, None, None),
     )
-    page = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "pages" / "app.py"))
+    page = AppTest.from_file(
+        str(Path(__file__).resolve().parents[1] / "pages" / "app.py")
+    )
     page.session_state["logged_in"] = True
     page.session_state["username"] = "synthetic"
     page.session_state["user_id"] = 9
@@ -389,20 +454,28 @@ def test_forced_solve_rejects_invalid_header_and_retains_original(
     page.session_state["uploaded_temp_path"] = str(image_path)
     page.session_state["uploaded_name"] = "image.fits"
     page.run(timeout=30)
-    next(toggle for toggle in page.toggle if toggle.label == "Astrometry check").set_value(True)
+    next(
+        toggle for toggle in page.toggle if toggle.label == "Astrometry check"
+    ).set_value(True)
     page.session_state["run_analysis_pipeline"] = True
     page.run(timeout=30)
     assert not page.exception
     assert not page.session_state["proceed_without_wcs"]
     assert page.session_state["calibrated_header"]["CTYPE1"] == header["CTYPE1"]
-    assert any("using the original valid WCS" in warning.value for warning in page.warning)
+    assert any(
+        "using the original valid WCS" in warning.value for warning in page.warning
+    )
     assert any("invalid WCS" in error.value for error in page.error)
-    assert not any("Plate-solve successful" in success.value for success in page.success)
+    assert not any(
+        "Plate-solve successful" in success.value for success in page.success
+    )
 
 
 @pytest.mark.parametrize("invalid_solution", [False, True])
 def test_unsolved_image_exports_instrumental_results_without_sky_queries(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, invalid_solution: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_solution: bool,
 ) -> None:
     import src.astrometry as astrometry
     import src.xmatch_catalogs as catalogs
@@ -415,7 +488,9 @@ def test_unsolved_image_exports_instrumental_results_without_sky_queries(
     header["PIXSCALE"] = 1.0
     header["RA"], header["DEC"] = 150.0, 2.0
     image_path = tmp_path / "image.fits"
-    fits.PrimaryHDU(np.random.default_rng(42).normal(200, 3, (80, 80)), header).writeto(image_path)
+    fits.PrimaryHDU(np.random.default_rng(42).normal(200, 3, (80, 80)), header).writeto(
+        image_path
+    )
     results = tmp_path / "results"
 
     def output_directory(directory: str = "") -> str:
@@ -425,7 +500,10 @@ def test_unsolved_image_exports_instrumental_results_without_sky_queries(
 
     solve_calls: list[str] = []
     monkeypatch.setattr(utils, "ensure_output_directory", output_directory)
-    def failed_solve(path: str) -> tuple[WCS | None, fits.Header | None, list[str], str | None]:
+
+    def failed_solve(
+        path: str,
+    ) -> tuple[WCS | None, fits.Header | None, list[str], str | None]:
         solve_calls.append(path)
         if invalid_solution:
             return WCS(_header()), header, [], None
@@ -451,7 +529,9 @@ def test_unsolved_image_exports_instrumental_results_without_sky_queries(
         pytest.fail("Catalog matching must not run without celestial WCS")
 
     monkeypatch.setattr(catalogs, "cross_match_with_gaia", unexpected_query)
-    page = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "pages" / "app.py"))
+    page = AppTest.from_file(
+        str(Path(__file__).resolve().parents[1] / "pages" / "app.py")
+    )
     page.session_state["logged_in"] = True
     page.session_state["username"] = "synthetic"
     page.session_state["user_id"] = 9
@@ -466,7 +546,9 @@ def test_unsolved_image_exports_instrumental_results_without_sky_queries(
     assert page.session_state["proceed_without_wcs"]
     if invalid_solution:
         assert any("invalid WCS" in error.value for error in page.error)
-        assert not any("Initial solve successful" in success.value for success in page.success)
+        assert not any(
+            "Initial solve successful" in success.value for success in page.success
+        )
     assert "ra" not in page.session_state["final_phot_table"].columns
     archives = list(results.rglob("*.zip"))
     assert len(archives) == 1, "\n".join(
@@ -482,16 +564,29 @@ def test_unsolved_image_exports_instrumental_results_without_sky_queries(
     assert "instrumental_mag_1_3" in csv
     assert "aperture_sum_bkg_corr_1_3" in csv
     assert "-5.0" in csv
-    assert {"xcenter", "ycenter", "instrumental_mag_1_3", "aperture_sum_bkg_corr_1_3"} <= set(votable.colnames)
+    assert {
+        "xcenter",
+        "ycenter",
+        "instrumental_mag_1_3",
+        "aperture_sum_bkg_corr_1_3",
+    } <= set(votable.colnames)
     assert "ra" not in votable.colnames and "dec" not in votable.colnames
 
 
 @pytest.mark.parametrize(
     "failure",
-    ["calibration_offline", "calibration_exception", "zero_point", "psf_merge_error", "optional_services"],
+    [
+        "calibration_offline",
+        "calibration_exception",
+        "zero_point",
+        "psf_merge_error",
+        "optional_services",
+    ],
 )
 def test_offline_failures_preserve_catalog_archive(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
 ) -> None:
     import matplotlib.pyplot as plt
 
@@ -503,7 +598,9 @@ def test_offline_failures_preserve_catalog_archive(
     header["RA"], header["DEC"] = 150.0, 2.0
     wcs = WCS(header)
     image_path = tmp_path / "image.fits"
-    fits.PrimaryHDU(np.random.default_rng(42).normal(200, 3, (80, 80)), header).writeto(image_path)
+    fits.PrimaryHDU(np.random.default_rng(42).normal(200, 3, (80, 80)), header).writeto(
+        image_path
+    )
     results = tmp_path / "results"
 
     def output_directory(directory: str = "") -> str:
@@ -518,37 +615,72 @@ def test_offline_failures_preserve_catalog_archive(
     monkeypatch.setattr(tools_app, "try_gaia_server", lambda: False)
     monkeypatch.setattr(astrometry, "solve_with_astrometrynet", offline)
     monkeypatch.setattr(pipeline, "airmass", lambda *_args, **_kwargs: 0.0)
-    photometry = Table({
-        "xcenter": [30.0], "ycenter": [40.0],
-        "aperture_sum_bkg_corr_1_3": [100.0], "instrumental_mag_1_3": [-5.0],
-    })
-    psf = Table({"x_init": [30.0], "y_init": [40.0], "flux_fit": [90.0], "instrumental_mag": [-4.9]})
+    photometry = Table(
+        {
+            "xcenter": [30.0],
+            "ycenter": [40.0],
+            "aperture_sum_bkg_corr_1_3": [100.0],
+            "instrumental_mag_1_3": [-5.0],
+        }
+    )
+    psf = Table(
+        {
+            "x_init": [30.0],
+            "y_init": [40.0],
+            "flux_fit": [90.0],
+            "instrumental_mag": [-4.9],
+        }
+    )
     monkeypatch.setattr(
-        pipeline, "detection_and_photometry",
+        pipeline,
+        "detection_and_photometry",
         lambda *_args, **_kwargs: (photometry, psf, None, None, wcs, None, 3.0, None),
     )
     matched = (
-        None if failure in ("calibration_offline", "psf_merge_error")
+        None
+        if failure in ("calibration_offline", "psf_merge_error")
         else pd.DataFrame({"ra": [150.0], "dec": [2.0]})
     )
     monkeypatch.setattr(
-        catalogs, "cross_match_with_gaia",
-        offline if failure == "calibration_exception" else lambda *_args, **_kwargs: (matched, []),
+        catalogs,
+        "cross_match_with_gaia",
+        offline
+        if failure == "calibration_exception"
+        else lambda *_args, **_kwargs: (matched, []),
     )
-    monkeypatch.setattr(tools_pipeline, "validate_cross_match_results", lambda *_args: True)
+    monkeypatch.setattr(
+        tools_pipeline, "validate_cross_match_results", lambda *_args: True
+    )
     if failure == "psf_merge_error":
         monkeypatch.setattr(tools_pipeline, "merge_photometry_catalogs", offline)
     zero_point = None if failure == "zero_point" else 25.0
-    monkeypatch.setattr(pipeline, "calculate_zero_point", lambda *_args: (zero_point, 0.1, None))
-    monkeypatch.setattr(pipeline, "fit_color_term_correction", lambda *_args, **_kwargs: {"fitted": False, "supported": False})
     monkeypatch.setattr(
-        tools_pipeline, "add_calibrated_magnitudes",
+        pipeline, "calculate_zero_point", lambda *_args: (zero_point, 0.1, None)
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "fit_color_term_correction",
+        lambda *_args, **_kwargs: {"fitted": False, "supported": False},
+    )
+    monkeypatch.setattr(
+        tools_pipeline,
+        "add_calibrated_magnitudes",
         lambda table, **_kwargs: table.assign(aperture_mag_1_1=20.0),
     )
-    monkeypatch.setattr(tools_pipeline, "clean_photometry_table", lambda table, **_kwargs: (table, []))
-    monkeypatch.setattr(tools_pipeline, "apply_color_term_correction", lambda table, *_args, **_kwargs: table)
-    monkeypatch.setattr(tools_app, "plot_magnitude_distribution", lambda *_args: plt.figure())
-    monkeypatch.setattr(transient, "plot_astrocolibri_cutouts", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        tools_pipeline, "clean_photometry_table", lambda table, **_kwargs: (table, [])
+    )
+    monkeypatch.setattr(
+        tools_pipeline,
+        "apply_color_term_correction",
+        lambda table, *_args, **_kwargs: table,
+    )
+    monkeypatch.setattr(
+        tools_app, "plot_magnitude_distribution", lambda *_args: plt.figure()
+    )
+    monkeypatch.setattr(
+        transient, "plot_astrocolibri_cutouts", lambda *_args, **_kwargs: []
+    )
     transient_calls: list[bool] = []
 
     def fail_transient(*_args: object, **_kwargs: object) -> None:
@@ -558,10 +690,13 @@ def test_offline_failures_preserve_catalog_archive(
     monkeypatch.setattr(catalogs, "enhance_catalog", offline)
     monkeypatch.setattr(transient, "find_candidates", fail_transient)
     monkeypatch.setattr(
-        tools_app, "display_catalog_in_aladin",
+        tools_app,
+        "display_catalog_in_aladin",
         offline if failure == "optional_services" else lambda *_args, **_kwargs: None,
     )
-    page = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "pages" / "app.py"))
+    page = AppTest.from_file(
+        str(Path(__file__).resolve().parents[1] / "pages" / "app.py")
+    )
     page.session_state["logged_in"] = True
     page.session_state["username"] = "synthetic"
     page.session_state["user_id"] = 9
@@ -569,8 +704,12 @@ def test_offline_failures_preserve_catalog_archive(
     page.session_state["uploaded_temp_path"] = str(image_path)
     page.session_state["uploaded_name"] = "image.fits"
     page.run(timeout=30)
-    next(toggle for toggle in page.toggle if toggle.label == "Astrometry check").set_value(False)
-    next(box for box in page.checkbox if box.label == "Enable Transient Finder").set_value(True)
+    next(
+        toggle for toggle in page.toggle if toggle.label == "Astrometry check"
+    ).set_value(False)
+    next(
+        box for box in page.checkbox if box.label == "Enable Transient Finder"
+    ).set_value(True)
     page.session_state["run_analysis_pipeline"] = True
     page.run(timeout=30)
 
@@ -590,29 +729,46 @@ def test_offline_failures_preserve_catalog_archive(
             assert {"image.csv", "image.vot"} <= names
             assert "image_transients.csv" not in names
             assert any("Cross-match failed" in message for message in errors)
-            assert any("Error during transient finding" in message for message in errors)
-            assert any("Error displaying Aladin viewer" in message for message in errors)
+            assert any(
+                "Error during transient finding" in message for message in errors
+            )
+            assert any(
+                "Error displaying Aladin viewer" in message for message in errors
+            )
             assert transient_calls
         else:
-            assert {"image_instrumental_catalog.csv", "image_instrumental_catalog.vot"} <= names
+            assert {
+                "image_instrumental_catalog.csv",
+                "image_instrumental_catalog.vot",
+            } <= names
             csv = pd.read_csv(BytesIO(archive.read("image_instrumental_catalog.csv")))
-            votable = Table.read(BytesIO(archive.read("image_instrumental_catalog.vot")), format="votable")
+            votable = Table.read(
+                BytesIO(archive.read("image_instrumental_catalog.vot")),
+                format="votable",
+            )
             assert {"ra", "dec", "instrumental_mag_1_3"} <= set(csv.columns)
             assert {"ra", "dec", "instrumental_mag_1_3"} <= set(votable.colnames)
             assert np.isfinite(csv["ra"]).all() and np.isfinite(csv["dec"]).all()
             assert csv["instrumental_mag_1_3"].iloc[0] == -5.0
             if failure == "psf_merge_error":
                 assert "psf_instrumental_mag" not in csv.columns
-                assert any("Could not merge PSF photometry" in item.value for item in page.warning)
+                assert any(
+                    "Could not merge PSF photometry" in item.value
+                    for item in page.warning
+                )
             else:
                 assert csv["psf_instrumental_mag"].iloc[0] == -4.9
                 assert "psf_instrumental_mag" in votable.colnames
             assert "image_transients.csv" not in names
             assert not transient_calls
-            assert any("Transient search skipped" in item.value for item in page.warning)
+            assert any(
+                "Transient search skipped" in item.value for item in page.warning
+            )
 
     assert page.session_state["last_result_zip_path"] == str(archives[0])
     page.run(timeout=30)
     assert not page.exception
-    assert any("Previously archived results" in caption.value for caption in page.caption)
+    assert any(
+        "Previously archived results" in caption.value for caption in page.caption
+    )
     assert list(results.rglob("*.zip")) == archives

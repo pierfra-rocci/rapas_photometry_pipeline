@@ -586,13 +586,13 @@ Sources are assigned quality flags based on their S/N:
 import pandas as pd
 
 # Load photometry catalog
-df = pd.read_csv('photometry.csv')
+df = pd.read_csv("photometry.csv")
 
 # Filter for reliable sources only
-reliable_sources = df[df['quality_flag_1_1'] == 'good']
+reliable_sources = df[df["quality_flag_1_1"] == "good"]
 
 # Include marginal detections with warning
-usable_sources = df[df['quality_flag_1_1'].isin(['good', 'marginal'])]
+usable_sources = df[df["quality_flag_1_1"].isin(["good", "marginal"])]
 ```
 
 ---

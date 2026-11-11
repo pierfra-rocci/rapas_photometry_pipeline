@@ -84,9 +84,7 @@ def _gaia_server_available() -> bool:
     # A table-list request is not portable to the Heidelberg mirror (its TAP
     # /tables document lacks the eSA TAP+ column flags astroquery parses), so
     # probe with a one-row query that both endpoints answer.
-    query_gaia_with_fallback(
-        Gaia, "SELECT TOP 1 source_id FROM gaiadr3.gaia_source"
-    )
+    query_gaia_with_fallback(Gaia, "SELECT TOP 1 source_id FROM gaiadr3.gaia_source")
     return True
 
 
@@ -152,7 +150,9 @@ def clear_all_caches():
 
         # Drop the old uploader widget and rotate the key so a fresh, empty
         # uploader is created in a single press.
-        for key in [k for k in st.session_state.keys() if k.startswith("science_uploader")]:
+        for key in [
+            k for k in st.session_state.keys() if k.startswith("science_uploader")
+        ]:
             del st.session_state[key]
         st.session_state["upload_generation"] = (
             st.session_state.get("upload_generation", 0) + 1
@@ -267,7 +267,9 @@ def load_fits_data(_file):
 @st.cache_data(show_spinner=False)
 def _parse_fits_bytes(
     file_content: bytes,
-) -> tuple[np.ndarray | None, fits.Header | None, list[tuple[str | None, str | None, str]]]:
+) -> tuple[
+    np.ndarray | None, fits.Header | None, list[tuple[str | None, str | None, str]]
+]:
     """Parse FITS bytes into ``(image_data, header, messages)``; cached by content.
 
     Pure function: ``messages`` is a list of ``(ui, log_level, text)`` for the
@@ -300,11 +302,17 @@ def _parse_fits_bytes(
         image_index = select_fits_image_hdu(hdul)
         if image_index is None:
             messages.append(
-                ("warning", "WARNING", "No supported numeric image data found in the FITS file.")
+                (
+                    "warning",
+                    "WARNING",
+                    "No supported numeric image data found in the FITS file.",
+                )
             )
             return None, None, messages
         image_hdu = hdul[image_index]
-        if not isinstance(image_hdu, (fits.PrimaryHDU, fits.ImageHDU, fits.CompImageHDU)):
+        if not isinstance(
+            image_hdu, (fits.PrimaryHDU, fits.ImageHDU, fits.CompImageHDU)
+        ):
             raise TypeError("Selected FITS HDU is not an image")
         data = image_hdu.data
         if data is None:
@@ -312,7 +320,11 @@ def _parse_fits_bytes(
         header = image_hdu.header
         if image_index:
             messages.append(
-                ("info", "INFO", f"Using image data from HDU #{image_index}; earlier HDUs contain no supported image.")
+                (
+                    "info",
+                    "INFO",
+                    f"Using image data from HDU #{image_index}; earlier HDUs contain no supported image.",
+                )
             )
 
         if len(data.shape) == 3:
@@ -350,7 +362,11 @@ def _parse_fits_bytes(
                 )
         except Exception as fix_error:
             messages.append(
-                ("warning", None, f"Header fixing encountered an issue: {str(fix_error)}")
+                (
+                    "warning",
+                    None,
+                    f"Header fixing encountered an issue: {str(fix_error)}",
+                )
             )
             messages.append(
                 (None, "WARNING", f"Header fixing failed: {str(fix_error)}")
@@ -365,7 +381,9 @@ def _parse_fits_bytes(
         try:
             hdul.close()
         except Exception as close_error:
-            messages.append(("warning", "WARNING", f"Could not close FITS file: {close_error}"))
+            messages.append(
+                ("warning", "WARNING", f"Could not close FITS file: {close_error}")
+            )
         finally:
             streams.close()
 
@@ -627,18 +645,12 @@ def display_catalog_in_aladin(
                 if qso_name and qso_name not in ["", "nan", "None"]:
                     catalog_matches["QSO"] = qso_name
 
-            if (
-                "skybot_NAME" in present_optional_cols
-                and pd.notna(row["skybot_NAME"])
-            ):
+            if "skybot_NAME" in present_optional_cols and pd.notna(row["skybot_NAME"]):
                 skybot_name = str(row["skybot_NAME"]).strip()
                 if skybot_name and skybot_name not in ["", "nan", "None"]:
                     catalog_matches["SkyBoT"] = skybot_name
 
-            if (
-                "pc10_name" in present_optional_cols
-                and pd.notna(row["pc10_name"])
-            ):
+            if "pc10_name" in present_optional_cols and pd.notna(row["pc10_name"]):
                 pc10_name = str(row["pc10_name"]).strip()
                 if pc10_name and pc10_name not in ["", "nan", "None"]:
                     catalog_matches["10 Parsec"] = pc10_name
@@ -1170,7 +1182,7 @@ def provide_download_buttons(folder_path: str, archive_path: str | None = None) 
             for f in os.listdir(folder_path)
             if os.path.isfile(os.path.join(folder_path, f))
             and f.startswith(base_filename)
-            and f[len(base_filename):len(base_filename) + 1] in ("", "_", ".", "-")
+            and f[len(base_filename) : len(base_filename) + 1] in ("", "_", ".", "-")
             and not f.lower().endswith(".zip")
             and not f.lower().endswith(".fits")
         ]
@@ -1241,7 +1253,8 @@ def display_archived_files_browser(output_dir: str) -> None:
         zip_files = []
         for root, dirs, files in os.walk(output_dir):
             dirs[:] = [
-                name for name in dirs
+                name
+                for name in dirs
                 if not name.startswith("work_")
                 and not os.path.islink(os.path.join(root, name))
             ]
@@ -1270,7 +1283,11 @@ def display_archived_files_browser(output_dir: str) -> None:
 
         selected = st.session_state.get("archived_selected_zip")
         selected_archive = next(
-            (item for item in zip_files if selected and item["path"] == selected.get("path")),
+            (
+                item
+                for item in zip_files
+                if selected and item["path"] == selected.get("path")
+            ),
             None,
         )
         if selected and selected_archive is None:
@@ -1346,7 +1363,7 @@ def display_archived_files_browser(output_dir: str) -> None:
                 st.session_state.pop("archived_selected_zip", None)
 
     except Exception as e:
-        st.error(f"Error accessing results directory: {str(e)}") 
+        st.error(f"Error accessing results directory: {str(e)}")
 
 
 def plot_magnitude_distribution(final_table, log_buffer=None):
@@ -1389,7 +1406,9 @@ def plot_magnitude_distribution(final_table, log_buffer=None):
     # Plots compare PSF photometry against the 1.1xFWHM aperture when available.
     _preferred = [c for c in aperture_mag_cols if c.endswith("_1_1")]
     aperture_mag_col = (
-        _preferred[0] if _preferred else (aperture_mag_cols[0] if aperture_mag_cols else None)
+        _preferred[0]
+        if _preferred
+        else (aperture_mag_cols[0] if aperture_mag_cols else None)
     )
 
     # Construct the error column name: aperture_mag_1.1 -> aperture_mag_err_1.1
@@ -1544,9 +1563,7 @@ def plot_photometry_offsets(final_table, log_buffer=None):
         Figure with the offset scatter and histogram, or a placeholder figure
         when no offset columns are present.
     """
-    fig_offset, (ax_scatter, ax_hist) = plt.subplots(
-        1, 2, figsize=(14, 5), dpi=100
-    )
+    fig_offset, (ax_scatter, ax_hist) = plt.subplots(1, 2, figsize=(14, 5), dpi=100)
 
     marker = "psf_minus_aperture_mag_"
     # Prefer one column per radius: if both the legacy and the prefixed form are
@@ -1579,9 +1596,7 @@ def plot_photometry_offsets(final_table, log_buffer=None):
         prefix = col.split(marker, 1)[0]  # "" or e.g. "rapasg_"
         psf_mag_col = f"{prefix}psf_mag"
 
-        offsets = pd.to_numeric(final_table[col], errors="coerce").to_numpy(
-            dtype=float
-        )
+        offsets = pd.to_numeric(final_table[col], errors="coerce").to_numpy(dtype=float)
         finite = np.isfinite(offsets)
         if not finite.any():
             continue

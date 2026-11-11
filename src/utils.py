@@ -411,7 +411,9 @@ def session_tmp_directory(user_id: int, session_id: str | None = None) -> str:
     """Return (and create) the per-session temp folder for uploaded FITS files."""
     import tempfile
 
-    path = os.path.join(tempfile.gettempdir(), "rpp_private_v2", user_storage_component(user_id))
+    path = os.path.join(
+        tempfile.gettempdir(), "rpp_private_v2", user_storage_component(user_id)
+    )
     os.makedirs(path, mode=0o700, exist_ok=True)
     name = _session_dir_name(session_id)
     if name is not None:
@@ -542,7 +544,7 @@ def zip_results_on_exit(science_file_obj, outputdir, archive_dir=None):
     per-session working directory can feed the user's persistent archive.
 
     Returns:
-        tuple (str, str) or (None, None): 
+        tuple (str, str) or (None, None):
             - (zip_filename, zip_path) if successful
             - (None, None) if no files to zip or output_dir doesn't exist
     """
@@ -555,7 +557,7 @@ def zip_results_on_exit(science_file_obj, outputdir, archive_dir=None):
         for f in os.listdir(output_dir)
         if os.path.isfile(os.path.join(output_dir, f))
         and f.startswith(base_name)
-        and f[len(base_name):len(base_name) + 1] in ("", "_", ".", "-")
+        and f[len(base_name) : len(base_name) + 1] in ("", "_", ".", "-")
         and not f.lower().endswith(".zip")
         and not f.lower().endswith(".fits")
     ]
@@ -573,7 +575,7 @@ def zip_results_on_exit(science_file_obj, outputdir, archive_dir=None):
             os.remove(os.path.join(output_dir, file))
         except Exception as e:
             print(f"Warning: Could not remove file {file} after zipping: {e}")
-    
+
     return zip_filename, zip_path
 
 
@@ -726,7 +728,10 @@ def save_fits_with_wcs(
         )
         os.close(fd)
         try:
-            with open(original_path, "rb") as source, open(temporary_path, "wb") as target:
+            with (
+                open(original_path, "rb") as source,
+                open(temporary_path, "wb") as target,
+            ):
                 is_gzip = source.read(2) == b"\x1f\x8b"
                 source.seek(0)
                 if is_gzip:
@@ -737,11 +742,16 @@ def save_fits_with_wcs(
 
             compressed_checksums = None
             with fits.open(
-                temporary_path, mode="update", memmap=False, do_not_scale_image_data=True
+                temporary_path,
+                mode="update",
+                memmap=False,
+                do_not_scale_image_data=True,
             ) as hdul:
                 image_index = select_fits_image_hdu(hdul)
                 if image_index is None:
-                    raise ValueError("No supported numeric image data found in FITS file")
+                    raise ValueError(
+                        "No supported numeric image data found in FITS file"
+                    )
                 image_hdu = hdul[image_index]
                 if isinstance(image_hdu, fits.CompImageHDU):
                     with fits.open(
@@ -756,9 +766,19 @@ def save_fits_with_wcs(
                 original_header = image_hdu.header
                 export_header = updated_header.copy()
                 structural_keys = {
-                    "SIMPLE", "XTENSION", "BITPIX", "NAXIS", "PCOUNT", "GCOUNT",
-                    "EXTEND", "GROUPS", "BSCALE", "BZERO", "BLANK",
-                    "CHECKSUM", "DATASUM",
+                    "SIMPLE",
+                    "XTENSION",
+                    "BITPIX",
+                    "NAXIS",
+                    "PCOUNT",
+                    "GCOUNT",
+                    "EXTEND",
+                    "GROUPS",
+                    "BSCALE",
+                    "BZERO",
+                    "BLANK",
+                    "CHECKSUM",
+                    "DATASUM",
                 }
                 structural_keys.update(
                     key for key in original_header if re.fullmatch(r"NAXIS\d+", key)
@@ -769,7 +789,8 @@ def save_fits_with_wcs(
                 for key in structural_keys:
                     if key in original_header:
                         export_header[key] = (
-                            original_header[key], original_header.comments[key]
+                            original_header[key],
+                            original_header.comments[key],
                         )
                     elif key in export_header:
                         del export_header[key]
@@ -778,7 +799,9 @@ def save_fits_with_wcs(
 
             if compressed_checksums and any(compressed_checksums):
                 with fits.open(
-                    temporary_path, mode="update", memmap=False,
+                    temporary_path,
+                    mode="update",
+                    memmap=False,
                     disable_image_compression=True,
                 ) as physical_hdus:
                     physical_hdu = physical_hdus[image_index]
@@ -800,7 +823,9 @@ def save_fits_with_wcs(
 
                 user_dir = user_storage_component(user_id)
                 now = datetime.now()
-                relative_dir = os.path.join("private_v2", user_dir, f"{now:%Y}", f"{now:%m}")
+                relative_dir = os.path.join(
+                    "private_v2", user_dir, f"{now:%Y}", f"{now:%m}"
+                )
                 data_fits_dir = os.path.join(FITS_STORAGE_ROOT, relative_dir)
                 os.makedirs(
                     os.path.join(FITS_STORAGE_ROOT, "private_v2", user_dir),
@@ -809,10 +834,16 @@ def save_fits_with_wcs(
                 )
                 os.makedirs(data_fits_dir, mode=0o700, exist_ok=True)
 
-                stored_filename = os.path.join(relative_dir, f"{base_name}{filename_suffix}.fits")
+                stored_filename = os.path.join(
+                    relative_dir, f"{base_name}{filename_suffix}.fits"
+                )
                 data_output_filename = os.path.join(FITS_STORAGE_ROOT, stored_filename)
-                if os.path.realpath(data_output_filename) == os.path.realpath(original_path):
-                    raise ValueError("Private WCS output would overwrite the original FITS file")
+                if os.path.realpath(data_output_filename) == os.path.realpath(
+                    original_path
+                ):
+                    raise ValueError(
+                        "Private WCS output would overwrite the original FITS file"
+                    )
                 fd, private_temporary_path = tempfile.mkstemp(
                     prefix=".rpp-wcs-", suffix=".fits", dir=data_fits_dir
                 )
@@ -1132,9 +1163,7 @@ def skybot_cone_search(ra_deg, dec_deg, radius_deg, epoch_jd, parser):
             )
             status = getattr(response, "status_code", 200)
             if status == 429 or status >= 500:
-                raise requests.exceptions.HTTPError(
-                    f"SkyBoT answered HTTP {status}"
-                )
+                raise requests.exceptions.HTTPError(f"SkyBoT answered HTTP {status}")
             break
         except requests.exceptions.RequestException:
             if attempt == SKYBOT_ATTEMPTS:

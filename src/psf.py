@@ -735,9 +735,7 @@ def perform_psf_photometry(
                 try:
                     from astropy.nddata import StdDevUncertainty
 
-                    epsf_unc = (
-                        StdDevUncertainty(error) if error is not None else None
-                    )
+                    epsf_unc = StdDevUncertainty(error) if error is not None else None
                 except Exception:
                     epsf_unc = None
                 epsf_nddata = NDData(
@@ -747,9 +745,7 @@ def perform_psf_photometry(
                 )
         except Exception as star_bkg_error:
             epsf_nddata = nddata
-            st.warning(
-                f"Could not de-contaminate ePSF star cutouts: {star_bkg_error}"
-            )
+            st.warning(f"Could not de-contaminate ePSF star cutouts: {star_bkg_error}")
 
     try:
         stars = extract_stars(epsf_nddata, stars_table, size=psf_extraction_size)
@@ -988,7 +984,9 @@ def perform_psf_photometry(
                 )
                 new_offset_x = (new_peak_x - psf_center_x) / oversamp
                 new_offset_y = (new_peak_y - psf_center_y) / oversamp
-                improved = abs(new_offset_x) <= abs(offset_x) and abs(new_offset_y) <= abs(offset_y)
+                improved = abs(new_offset_x) <= abs(offset_x) and abs(
+                    new_offset_y
+                ) <= abs(offset_y)
                 if improved:
                     epsf_data = epsf_data_centered
                     # Recreate psf_for_phot from the re-centered data
@@ -1008,7 +1006,9 @@ def perform_psf_photometry(
                         "keeping original PSF."
                     )
             except Exception as _recenter_err:
-                st.warning(f"PSF re-centering skipped: {_recenter_err}. Keeping original PSF.")
+                st.warning(
+                    f"PSF re-centering skipped: {_recenter_err}. Keeping original PSF."
+                )
         else:
             st.warning(
                 f"✓ PSF peak offset from center: ({offset_x:.2f}, {offset_y:.2f}) pixels (acceptable)"
@@ -1065,9 +1065,7 @@ def perform_psf_photometry(
                 nstars_val = 0
             hdu.header["NSTARS"] = (nstars_val, "Number of stars used for PSF model")
 
-            psf_filename = (
-                f"{os.path.basename(str(st.session_state.get('base_filename', 'psf_model')))}_psf.fits"
-            )
+            psf_filename = f"{os.path.basename(str(st.session_state.get('base_filename', 'psf_model')))}_psf.fits"
             psf_filepath = os.path.join(
                 st.session_state["output_dir"],
                 psf_filename,

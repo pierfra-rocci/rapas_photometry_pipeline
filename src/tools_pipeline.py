@@ -38,8 +38,7 @@ URL = "https://astro-colibri.science/"
 # transient finder use the same wording so the fallback is reported
 # consistently across the app.
 PSF_FALLBACK_MESSAGE = (
-    "PSF photometry is not available; using calibrated aperture photometry "
-    "instead."
+    "PSF photometry is not available; using calibrated aperture photometry instead."
 )
 
 
@@ -121,7 +120,9 @@ def get_filter_prefix(filter_band: str | None) -> str | None:
     return None
 
 
-def get_prefixed_photometry_column(column_name: str, filter_band: str | None) -> str | None:
+def get_prefixed_photometry_column(
+    column_name: str, filter_band: str | None
+) -> str | None:
     """Return the prefixed photometry column name for the selected filter.
 
     Parameters
@@ -244,8 +245,12 @@ def extract_photometric_color_series(table, filter_band: str | None):
     primary_candidates = _candidate_columns(color_config.get("primary_column"))
     secondary_candidates = _candidate_columns(color_config.get("secondary_column"))
 
-    primary_column = next((col for col in primary_candidates if col in table.columns), None)
-    secondary_column = next((col for col in secondary_candidates if col in table.columns), None)
+    primary_column = next(
+        (col for col in primary_candidates if col in table.columns), None
+    )
+    secondary_column = next(
+        (col for col in secondary_candidates if col in table.columns), None
+    )
 
     if primary_column and secondary_column:
         metadata["found_columns"] = [primary_column, secondary_column]
@@ -256,7 +261,9 @@ def extract_photometric_color_series(table, filter_band: str | None):
     return None, metadata
 
 
-def apply_color_term_correction(final_table, color_term_result, filter_band: str | None = None):
+def apply_color_term_correction(
+    final_table, color_term_result, filter_band: str | None = None
+):
     """Append color-corrected magnitudes without altering legacy columns.
 
     Parameters
@@ -279,7 +286,9 @@ def apply_color_term_correction(final_table, color_term_result, filter_band: str
     if not color_term_result or not color_term_result.get("fitted", False):
         return final_table
 
-    source_color, color_metadata = extract_photometric_color_series(final_table, filter_band)
+    source_color, color_metadata = extract_photometric_color_series(
+        final_table, filter_band
+    )
     if source_color is None:
         return final_table
 
@@ -322,13 +331,17 @@ def apply_color_term_correction(final_table, color_term_result, filter_band: str
     corrected_table["color_term_offset"] = color_offset
     corrected_table["color_term_offset_err"] = color_offset_err
     corrected_table["color_term_applied"] = valid_color_mask
-    corrected_table["color_term_columns"] = ",".join(color_metadata.get("found_columns", []))
+    corrected_table["color_term_columns"] = ",".join(
+        color_metadata.get("found_columns", [])
+    )
 
     for column in list(corrected_table.columns):
         if column == "psf_mag" or column.startswith("aperture_mag_"):
             if column.endswith("_colorcorr") or column.startswith("aperture_mag_err_"):
                 continue
-            corrected_table[f"{column}_colorcorr"] = corrected_table[column] + color_offset
+            corrected_table[f"{column}_colorcorr"] = (
+                corrected_table[column] + color_offset
+            )
             corrected_table.loc[~valid_color_mask, f"{column}_colorcorr"] = np.nan
 
             # Error of the corrected magnitude: the baseline calibrated error
@@ -337,9 +350,7 @@ def apply_color_term_correction(final_table, color_term_result, filter_band: str
             if column == "psf_mag":
                 err_col = "psf_mag_err"
             else:
-                err_col = column.replace(
-                    "aperture_mag_", "aperture_mag_err_", 1
-                )
+                err_col = column.replace("aperture_mag_", "aperture_mag_err_", 1)
             if err_col in corrected_table.columns:
                 base_err = pd.to_numeric(
                     corrected_table[err_col], errors="coerce"
@@ -361,8 +372,7 @@ def apply_color_term_correction(final_table, color_term_result, filter_band: str
         alias_map = {}
         for column in list(corrected_table.columns):
             if (
-                column.endswith("_colorcorr")
-                or column.endswith("_colorcorr_err")
+                column.endswith("_colorcorr") or column.endswith("_colorcorr_err")
             ) and not column.startswith(f"{filter_prefix}_"):
                 alias_name = f"{filter_prefix}_{column}"
                 if alias_name not in corrected_table.columns:
@@ -419,6 +429,7 @@ def drop_legacy_magnitude_columns(final_table, filter_band=None):
 
     return final_table
 
+
 # Expanded filter dictionary to handle many common filter name variations
 FILTER_DICT = {
     # Johnson-Cousins system
@@ -432,7 +443,6 @@ FILTER_DICT = {
     "johnson_v": "v_jkc_mag",
     "cousins_r": "r_jkc_mag",
     "cousins_i": "i_jkc_mag",
-
     # SDSS system
     "u_sdss": "u_sdss_mag",
     "g_sdss": "gmag",
@@ -446,7 +456,6 @@ FILTER_DICT = {
     "sdss_z": "zmag",
     "g": "gmag",
     "z": "zmag",
-
     # Gaia system
     "gaia_g": "phot_g_mean_mag",
     "gaia_bp": "phot_bp_mean_mag",
@@ -456,7 +465,6 @@ FILTER_DICT = {
     "g_gaia": "phot_g_mean_mag",
     "bp_gaia": "phot_bp_mean_mag",
     "rp_gaia": "phot_rp_mean_mag",
-
     # Common clear/luminance filters
     "clear": "phot_g_mean_mag",
     "lum": "phot_g_mean_mag",
@@ -466,7 +474,6 @@ FILTER_DICT = {
     "c": "phot_rp_mean_mag",
     "open": "phot_g_mean_mag",
     "w": "phot_g_mean_mag",  # Wide/White
-
     # Color filters (RGB)
     "red": "rmag",
     "green": "gmag",
@@ -474,7 +481,6 @@ FILTER_DICT = {
     "rgb_r": "rmag",
     "rgb_g": "gmag",
     "rgb_b": "b_jkc_mag",
-
     # Sloan variations with apostrophes
     "u'": "u_sdss_mag",
     "g'": "gmag",
@@ -486,7 +492,6 @@ FILTER_DICT = {
     "sloan_r": "rmag",
     "sloan_i": "imag",
     "sloan_z": "zmag",
-
     # Pan-STARRS (map to closest SDSS equivalents)
     "ps_g": "gmag",
     "ps_r": "rmag",
@@ -496,7 +501,6 @@ FILTER_DICT = {
     "ps1_r": "rmag",
     "ps1_i": "imag",
     "ps1_z": "zmag",
-
     # Common typos and variations
     "clr": "phot_g_mean_mag",
     "lumn": "phot_g_mean_mag",
@@ -504,7 +508,6 @@ FILTER_DICT = {
     "visual": "v_jkc_mag",
     "ha": "rmag",  # H-alpha, map to r
     "oiii": "gmag",  # OIII, map to g
-
     # Telescope-specific common names
     "astrodon_r": "rmag",
     "astrodon_g": "gmag",
@@ -512,7 +515,6 @@ FILTER_DICT = {
     "baader_r": "rmag",
     "baader_g": "gmag",
     "baader_b": "b_jkc_mag",
-
     # Default/unknown
     "unknown": "phot_g_mean_mag",
     "none": "phot_g_mean_mag",
@@ -617,7 +619,11 @@ def safe_wcs_create(
             if issubclass(warning.category, FITSFixedWarning):
                 message = str(warning.message)
                 if "cdfix" in message.lower():
-                    return None, f"Invalid WCS linear transformation: {message}", log_messages
+                    return (
+                        None,
+                        f"Invalid WCS linear transformation: {message}",
+                        log_messages,
+                    )
                 log_messages.append(f"WARNING: Astropy WCS correction: {message}")
             else:
                 log_messages.append(f"WARNING: WCS creation: {warning.message}")
@@ -625,21 +631,31 @@ def safe_wcs_create(
             wcs_obj = wcs_obj.celestial
 
         if not wcs_obj.is_celestial or wcs_obj.pixel_n_dim != 2:
-            return None, "WCS is not a two-dimensional celestial transformation", log_messages
+            return (
+                None,
+                "WCS is not a two-dimensional celestial transformation",
+                log_messages,
+            )
         matrix = np.asarray(wcs_obj.pixel_scale_matrix, dtype=float)
         if (
             matrix.shape != (2, 2)
             or not np.all(np.isfinite(matrix))
             or np.linalg.matrix_rank(matrix) < 2
         ):
-            return None, "WCS linear transformation is singular or non-finite", log_messages
+            return (
+                None,
+                "WCS linear transformation is singular or non-finite",
+                log_messages,
+            )
         reference = np.asarray(wcs_obj.wcs.crpix, dtype=float) - 1
         if not np.all(np.isfinite(reference)):
             return None, "WCS reference pixel is non-finite", log_messages
         pixels: list[list[float]] = [reference.tolist()]
         width = working_header.get("NAXIS1")
         height = working_header.get("NAXIS2")
-        if isinstance(width, (int, float, str)) and isinstance(height, (int, float, str)):
+        if isinstance(width, (int, float, str)) and isinstance(
+            height, (int, float, str)
+        ):
             width, height = int(width), int(height)
             if width > 0 and height > 0:
                 pixels.extend(
@@ -676,7 +692,9 @@ def fix_header(
         ):
             fixed_header["CTYPE1"] = "RA---TAN-SIP"
             fixed_header["CTYPE2"] = "DEC--TAN-SIP"
-            log_messages.append("INFO: Added SIP suffix to match distortion coefficients")
+            log_messages.append(
+                "INFO: Added SIP suffix to match distortion coefficients"
+            )
     _, error, wcs_messages = safe_wcs_create(fixed_header)
     log_messages.extend(wcs_messages)
     if error:
@@ -810,7 +828,10 @@ def extract_pixel_scale(header):
 
         # Sanity check: CD matrix values should result in reasonable pixel scales
         if np.isfinite(scale) and 0.01 <= scale <= 100:
-            return scale, f"from CD matrix (CD1_1={abs(cd1_1):.2e}, CD2_2={abs(cd2_2):.2e})"
+            return (
+                scale,
+                f"from CD matrix (CD1_1={abs(cd1_1):.2e}, CD2_2={abs(cd2_2):.2e})",
+            )
 
     # Method 3: Calculate from pixel size and focal length using simple formula
     focal_length = None
@@ -898,16 +919,13 @@ def validate_cross_match_results(
         if "ra" in table.columns and "dec" in table.columns:
             try:
                 ra_range = float(np.nanmax(table["ra"]) - np.nanmin(table["ra"]))
-                dec_range = float(
-                    np.nanmax(table["dec"]) - np.nanmin(table["dec"])
-                )
+                dec_range = float(np.nanmax(table["dec"]) - np.nanmin(table["dec"]))
             except (TypeError, ValueError):
                 continue
             if np.isfinite(ra_range) and np.isfinite(dec_range):
                 if ra_range < 0.001 or dec_range < 0.001:  # less than ~4 arcsec
                     st.warning(
-                        "Matched sources seem too clustered - possible "
-                        "coordinate issue"
+                        "Matched sources seem too clustered - possible coordinate issue"
                     )
                     return False
             break
@@ -1478,6 +1496,7 @@ def add_calibrated_magnitudes(
 
     return final_table
 
+
 def clean_photometry_table(df, require_magnitude=True):
     """
     Clean table but preserve sources that have valid photometry in at least one method.
@@ -1653,9 +1672,7 @@ def estimate_background(image_data, box_size=64, filter_size=5, figure=True):
     if mesh < BACKGROUND_SMALL_MESH_THRESHOLD:
         adjusted_filter_size = min(adjusted_filter_size, 3)
     max_filter_size = mesh if mesh % 2 == 1 else max(mesh - 1, 1)
-    adjusted_filter_size = max(
-        1, min(adjusted_filter_size, max_filter_size)
-    )
+    adjusted_filter_size = max(1, min(adjusted_filter_size, max_filter_size))
     if adjusted_filter_size % 2 == 0:
         adjusted_filter_size = max(1, adjusted_filter_size - 1)
 

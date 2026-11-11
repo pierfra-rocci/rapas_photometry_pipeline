@@ -16,7 +16,9 @@ def _execute(
     return connection.exec_driver_sql(statement)
 
 
-def initialize_user_id_reservations(connection: sqlite3.Connection | Connection) -> None:
+def initialize_user_id_reservations(
+    connection: sqlite3.Connection | Connection,
+) -> None:
     """Reserve all existing account IDs without changing their user records."""
     _execute(
         connection,

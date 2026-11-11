@@ -19,9 +19,7 @@ def _stub_streamlit() -> ModuleType:
 
 
 def test_pyproject_pins_compatible_setuptools() -> None:
-    pyproject = tomllib.loads(
-        (ROOT_DIR / "pyproject.toml").read_text(encoding="utf-8")
-    )
+    pyproject = tomllib.loads((ROOT_DIR / "pyproject.toml").read_text(encoding="utf-8"))
 
     build_requires = pyproject["build-system"]["requires"]
     dependencies = pyproject["project"]["dependencies"]

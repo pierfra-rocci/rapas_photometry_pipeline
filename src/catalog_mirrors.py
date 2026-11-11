@@ -80,8 +80,7 @@ def query_vizier_with_fallback(
 
     raise RuntimeError(
         "VizieR query failed on every mirror "
-        f"({', '.join(_server_order(primary, VIZIER_SERVERS))}): "
-        + "; ".join(errors)
+        f"({', '.join(_server_order(primary, VIZIER_SERVERS))}): " + "; ".join(errors)
     )
 
 

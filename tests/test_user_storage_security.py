@@ -36,7 +36,9 @@ def test_user_storage_is_distinct_and_legacy_files_are_untouched(
 
     assert first == tmp_path / "private_v2" / "user_1"
     assert second == tmp_path / "private_v2" / "user_2"
-    assert archive == first / datetime.now().strftime("%Y") / datetime.now().strftime("%m")
+    assert archive == first / datetime.now().strftime("%Y") / datetime.now().strftime(
+        "%m"
+    )
     assert list(first.glob("*.zip")) == []
     assert (legacy / "old.zip").read_bytes() == b"legacy"
 
@@ -72,12 +74,20 @@ def test_permanent_wcs_fits_is_scoped_to_account_id(
     legacy.write_bytes(b"legacy")
 
     first, first_error, first_stored = utils.save_fits_with_wcs(
-        str(source), header, str(tmp_path / "first"), original_filename="image.fits",
-        username="alice", user_id=1,
+        str(source),
+        header,
+        str(tmp_path / "first"),
+        original_filename="image.fits",
+        username="alice",
+        user_id=1,
     )
     second, second_error, second_stored = utils.save_fits_with_wcs(
-        str(source), header, str(tmp_path / "second"), original_filename="image.fits",
-        username="attacker/alice", user_id=2,
+        str(source),
+        header,
+        str(tmp_path / "second"),
+        original_filename="image.fits",
+        username="attacker/alice",
+        user_id=2,
     )
 
     assert first and second and first_error is None and second_error is None
@@ -97,7 +107,9 @@ def test_wcs_fits_is_not_persisted_without_account_id(
     source = tmp_path / "image.fits"
     fits.PrimaryHDU(np.ones((4, 4))).writeto(source)
     output, error, stored = utils.save_fits_with_wcs(
-        str(source), fits.getheader(source), str(tmp_path / "output"),
+        str(source),
+        fits.getheader(source),
+        str(tmp_path / "output"),
         username="alice",
     )
     assert output and error is None and stored is None
@@ -105,7 +117,7 @@ def test_wcs_fits_is_not_persisted_without_account_id(
 
 
 def test_log_access_requires_explicit_account_id(
-    monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("RPP_LOG_ADMIN_USER_IDS", raising=False)
     assert not can_view_pipeline_logs(1)
@@ -174,7 +186,9 @@ def test_login_refuses_backend_without_account_id(
     page.button(key="login_btn").click().run()
     assert not page.exception
     assert not page.session_state["logged_in"]
-    assert any("did not provide an account identity" in item.value for item in page.error)
+    assert any(
+        "did not provide an account identity" in item.value for item in page.error
+    )
 
 
 @pytest.mark.parametrize("user_id", [0, -1])
@@ -226,7 +240,9 @@ def test_archive_browser_discards_selection_from_another_account(
     other.parent.mkdir(parents=True)
     other.write_bytes(b"private")
     (current / "linked.zip").symlink_to(other)
-    (current.parent.parent / "linked_dir").symlink_to(other.parent, target_is_directory=True)
+    (current.parent.parent / "linked_dir").symlink_to(
+        other.parent, target_is_directory=True
+    )
     work = current.parent.parent / "work_session"
     work.mkdir()
     (work / "temporary.zip").write_bytes(b"temporary")

@@ -73,6 +73,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 def _ensure_password_strength(password: str) -> None:
     """Validate minimal password complexity."""
     if len(password) < 8:
@@ -130,6 +131,7 @@ def _recovery_register_failure(email: str) -> None:
 def _recovery_reset(email: str) -> None:
     with _recovery_lock:
         _recovery_failures.pop(email, None)
+
 
 try:  # pragma: no cover - optional SMTP configuration
     import config as smtp_config  # type: ignore[import]

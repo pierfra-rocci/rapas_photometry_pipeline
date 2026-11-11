@@ -219,9 +219,7 @@ class TestErrorPropagation:
         )
         # The random (per-source) and correlated (field-common) parts must be
         # exposed separately, and their quadrature sum must reproduce the total.
-        assert_allclose(
-            out["aperture_mag_err_1_3_random"].values, [0.05, 0.10]
-        )
+        assert_allclose(out["aperture_mag_err_1_3_random"].values, [0.05, 0.10])
         assert_allclose(
             out["aperture_mag_err_1_3_correlated"].values,
             [zero_point_std, zero_point_std],
@@ -328,9 +326,7 @@ class TestApertureCorrection:
 
         radii = [sigma, 2.0 * sigma, 3.0 * sigma]
         ee = compute_encircled_energy(psf, oversampling=1, radii_pixels=radii)
-        expected = np.array(
-            [1.0 - np.exp(-(r**2) / (2.0 * sigma**2)) for r in radii]
-        )
+        expected = np.array([1.0 - np.exp(-(r**2) / (2.0 * sigma**2)) for r in radii])
 
         # Whole-pixel inclusion in the PSF sum introduces a small pixelisation
         # error, so the comparison uses a modest tolerance.
@@ -352,9 +348,7 @@ class TestApertureCorrection:
 
     def test_encircled_energy_invalid_input_disables_correction(self):
         """Empty/zero PSFs must not produce a spurious correction."""
-        assert_array_equal(
-            compute_encircled_energy(np.zeros((5, 5)), 1, [2.0]), [1.0]
-        )
+        assert_array_equal(compute_encircled_energy(np.zeros((5, 5)), 1, [2.0]), [1.0])
         assert_array_equal(compute_encircled_energy(None, 1, [2.0]), [1.0])
 
 
@@ -458,9 +452,7 @@ class TestEffectiveGainEstimation:
             def __init__(self):
                 self.session_state = {"analysis_parameters": {}}
                 if gain is not None:
-                    self.session_state["analysis_parameters"][
-                        "effective_gain"
-                    ] = gain
+                    self.session_state["analysis_parameters"]["effective_gain"] = gain
 
             def __getattr__(self, _name):
                 return lambda *_args, **_kwargs: None
@@ -758,7 +750,9 @@ class TestCosmicRayMasking:
 
         assert detected_gain["value"] == 2.5
         assert not mask.any()
-        assert not any("GAIN keyword missing" in message for _, message in fake_st.messages)
+        assert not any(
+            "GAIN keyword missing" in message for _, message in fake_st.messages
+        )
 
     def test_unphysical_cr_mask_is_discarded(self, monkeypatch):
         import astroscrappy
@@ -872,7 +866,9 @@ class TestQualityFlags:
         """Test quality flag assignment based on S/N thresholds."""
         snr = np.array([2.5, 5.0, 5.1, 10.0, 10.1, 100.0])
 
-        quality_flags = np.where(snr <= 5, "poor", np.where(snr <= 10, "marginal", "good"))
+        quality_flags = np.where(
+            snr <= 5, "poor", np.where(snr <= 10, "marginal", "good")
+        )
 
         expected_flags = ["poor", "poor", "marginal", "marginal", "good", "good"]
 
@@ -1090,7 +1086,8 @@ class TestFWHMRadiusFactor:
             table[f"aperture_mag_err{suffix}"] = 1.0857 * flux_err / flux
             table[f"instrumental_mag{suffix}"] = -2.5 * np.log10(flux)
             quality = np.where(
-                flux / flux_err < 3, "poor",
+                flux / flux_err < 3,
+                "poor",
                 np.where(flux / flux_err < 5, "marginal", "good"),
             )
             table[f"quality_flag{suffix}"] = quality
@@ -1338,7 +1335,9 @@ class TestColorTermCalibration:
         zero_point = 25.0
         true_color_term = 0.18
         color_ref = np.median(color)
-        catalog_mag = instrumental_mag + zero_point + true_color_term * (color - color_ref)
+        catalog_mag = (
+            instrumental_mag + zero_point + true_color_term * (color - color_ref)
+        )
 
         matched_table = pd.DataFrame(
             {
@@ -1396,9 +1395,7 @@ class TestColorTermCalibration:
         color_centered = expected_color.values - 0.4
         cov = np.asarray(covariance)
         expected_offset_err = np.sqrt(
-            cov[0, 0]
-            + 2.0 * color_centered * cov[0, 1]
-            + color_centered**2 * cov[1, 1]
+            cov[0, 0] + 2.0 * color_centered * cov[0, 1] + color_centered**2 * cov[1, 1]
         )
 
         assert "psf_mag" in corrected.columns
@@ -1419,9 +1416,7 @@ class TestColorTermCalibration:
         )
 
         # The color-term fit uncertainty is propagated into every corrected error.
-        assert_allclose(
-            corrected["color_term_offset_err"].values, expected_offset_err
-        )
+        assert_allclose(corrected["color_term_offset_err"].values, expected_offset_err)
         assert_allclose(
             corrected["psf_mag_colorcorr_err"].values,
             np.sqrt(np.array([0.05, 0.10]) ** 2 + expected_offset_err**2),
@@ -1498,7 +1493,9 @@ class TestColorTermCalibration:
         assert result["color_term_std"] == pytest.approx(np.sqrt(covariance[1, 1]))
         assert result["color_term_std"] > 0.0
 
-    def test_drop_legacy_magnitude_columns_keeps_unprefixed_colorcorr_when_alias_exists(self):
+    def test_drop_legacy_magnitude_columns_keeps_unprefixed_colorcorr_when_alias_exists(
+        self,
+    ):
         df = pd.DataFrame(
             {
                 "id": [1],
@@ -1828,21 +1825,31 @@ class TestPsfApertureCoherency:
         for row in psf_table:
             x_fit = float(row["x_fit"])
             y_fit = float(row["y_fit"])
-            distances = np.hypot(aperture_positions[:, 0] - x_fit, aperture_positions[:, 1] - y_fit)
+            distances = np.hypot(
+                aperture_positions[:, 0] - x_fit, aperture_positions[:, 1] - y_fit
+            )
             nearest = int(np.argmin(distances))
             if distances[nearest] > 2.0:
                 continue
 
-            matched_aperture_fluxes.append(float(aperture_table["aperture_sum"][nearest]))
+            matched_aperture_fluxes.append(
+                float(aperture_table["aperture_sum"][nearest])
+            )
             matched_psf_fluxes.append(float(row["flux_fit"]))
-            if "flux_err" in psf_table.colnames and np.isfinite(row["flux_err"]) and row["flux_err"] > 0:
+            if (
+                "flux_err" in psf_table.colnames
+                and np.isfinite(row["flux_err"])
+                and row["flux_err"] > 0
+            ):
                 matched_psf_snr.append(float(row["flux_fit"] / row["flux_err"]))
 
         assert len(matched_psf_fluxes) >= 15
 
         matched_aperture_fluxes = np.asarray(matched_aperture_fluxes)
         matched_psf_fluxes = np.asarray(matched_psf_fluxes)
-        relative_difference = np.abs(matched_aperture_fluxes - matched_psf_fluxes) / matched_psf_fluxes
+        relative_difference = (
+            np.abs(matched_aperture_fluxes - matched_psf_fluxes) / matched_psf_fluxes
+        )
 
         assert np.median(relative_difference) < 0.05
         assert np.percentile(relative_difference, 90) < 0.08
@@ -2165,9 +2172,7 @@ class TestPhotometryOffsetPlot:
 
     def test_legacy_and_prefixed_columns_are_deduplicated(self):
         table = self._table()
-        table["rapasg_psf_minus_aperture_mag_1_3"] = table[
-            "psf_minus_aperture_mag_1_3"
-        ]
+        table["rapasg_psf_minus_aperture_mag_1_3"] = table["psf_minus_aperture_mag_1_3"]
         fig = plot_photometry_offsets(table)
         try:
             hist_labels = fig.axes[1].get_legend_handles_labels()[1]
@@ -2340,16 +2345,16 @@ class TestPipelineErrorBudget:
             rtol=1e-9,
         )
         # The instrumental magnitude reflects the aperture-corrected flux
-        assert_allclose(inst[good], -2.5 * np.log10(flux[good] * apcorr[good]), rtol=1e-9)
+        assert_allclose(
+            inst[good], -2.5 * np.log10(flux[good] * apcorr[good]), rtol=1e-9
+        )
         # The local-background and centroid terms are folded into the flux error
         assert np.all(err[good] > ap_err[good])
         bkg_pixel_err = np.asarray(
             phot_table["background_rms_per_pixel_1_3"], dtype=float
         )
         aperture_area = np.asarray(phot_table["aperture_area_1_3"], dtype=float)
-        centroid_err = np.asarray(
-            phot_table["centroid_flux_err_1_3"], dtype=float
-        )
+        centroid_err = np.asarray(phot_table["centroid_flux_err_1_3"], dtype=float)
         assert_allclose(
             err[good],
             np.sqrt(
@@ -2448,19 +2453,11 @@ class TestPipelineErrorBudget:
         # And it must actually enter the propagated flux error.
         aperture_area = np.asarray(phot_table["aperture_area_1_3"], dtype=float)
         ap_err = np.asarray(phot_table["aperture_sum_err_1_3"], dtype=float)
-        centroid_err = np.asarray(
-            phot_table["centroid_flux_err_1_3"], dtype=float
-        )
-        flux_err = np.asarray(
-            phot_table["aperture_sum_bkg_corr_err_1_3"], dtype=float
-        )
+        centroid_err = np.asarray(phot_table["centroid_flux_err_1_3"], dtype=float)
+        flux_err = np.asarray(phot_table["aperture_sum_bkg_corr_err_1_3"], dtype=float)
         assert_allclose(
             flux_err,
-            np.sqrt(
-                ap_err**2
-                + (5.0 * aperture_area) ** 2
-                + centroid_err**2
-            ),
+            np.sqrt(ap_err**2 + (5.0 * aperture_area) ** 2 + centroid_err**2),
             rtol=1e-9,
         )
 
@@ -2542,9 +2539,9 @@ class TestPipelineErrorBudget:
             assert abs(entry["median_diff"]) < 0.1
         epsf_model = fake_st.session_state.get("epsf_model")
         assert epsf_model is not None
-        assert any(
-            "empirical PSF" in message for message in info_messages
-        ), "the pipeline must report the empirical-PSF aperture correction"
+        assert any("empirical PSF" in message for message in info_messages), (
+            "the pipeline must report the empirical-PSF aperture correction"
+        )
 
         # The stored correction must equal the encircled energy of the returned ePSF.
         radii_pixels = [
@@ -2727,8 +2724,7 @@ class TestDocumentedCatalogColumns:
         )
         still_present = [c for c in legacy_columns if c in catalog.columns]
         assert not still_present, (
-            "legacy column(s) not dropped for a prefixed export: "
-            f"{still_present}"
+            f"legacy column(s) not dropped for a prefixed export: {still_present}"
         )
 
         # Every dropped legacy error column must have a prefixed counterpart.

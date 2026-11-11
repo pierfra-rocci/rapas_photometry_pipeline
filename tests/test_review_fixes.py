@@ -17,8 +17,10 @@ class TestExtractPixelScale:
         c = 1.0 / 3600.0
         theta = np.radians(45)
         hdr = {
-            "CD1_1": c * np.cos(theta), "CD1_2": -c * np.sin(theta),
-            "CD2_1": c * np.sin(theta), "CD2_2": c * np.cos(theta),
+            "CD1_1": c * np.cos(theta),
+            "CD1_2": -c * np.sin(theta),
+            "CD2_1": c * np.sin(theta),
+            "CD2_2": c * np.cos(theta),
         }
         scale, _ = extract_pixel_scale(hdr)
         assert scale == pytest.approx(1.0, rel=1e-6)
@@ -40,5 +42,6 @@ class TestZipPrefix:
         name, path = zip_results_on_exit(obj, str(tmp_path))
         if path:
             import zipfile
+
             names = zipfile.ZipFile(path).namelist()
             assert "img10_cat.csv" not in names

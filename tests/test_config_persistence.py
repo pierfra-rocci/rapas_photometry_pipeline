@@ -71,7 +71,9 @@ def api_client(tmp_path, monkeypatch):
     engine.dispose()
 
 
-def _create_user(session_factory: sessionmaker[Session], username: str, password: str) -> None:
+def _create_user(
+    session_factory: sessionmaker[Session], username: str, password: str
+) -> None:
     """Insert a user into the isolated database."""
     with session_factory() as session:
         session.add(
@@ -189,7 +191,10 @@ def _assigned_subscripts(tree: ast.Module) -> set[tuple[str, ...]]:
             if not isinstance(target, ast.Subscript):
                 continue
             slice_node = target.slice
-            if not (isinstance(slice_node, ast.Constant) and isinstance(slice_node.value, str)):
+            if not (
+                isinstance(slice_node, ast.Constant)
+                and isinstance(slice_node.value, str)
+            ):
                 continue
             value = target.value
             if isinstance(value, ast.Attribute):

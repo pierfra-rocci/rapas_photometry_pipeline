@@ -205,14 +205,17 @@ def test_deleted_account_id_is_not_reused_for_registration(api_client: Any) -> N
         session.execute(text("DELETE FROM users WHERE id = :id"), {"id": original})
         session.commit()
 
-    assert client.post(
-        "/api/register",
-        json={
-            "username": "replacement",
-            "password": PASSWORD,
-            "email": "replacement@example.com",
-        },
-    ).status_code == 201
+    assert (
+        client.post(
+            "/api/register",
+            json={
+                "username": "replacement",
+                "password": PASSWORD,
+                "email": "replacement@example.com",
+            },
+        ).status_code
+        == 201
+    )
     replacement = client.post(
         "/api/login", json={"username": "replacement", "password": PASSWORD}
     ).json()["user_id"]
@@ -236,8 +239,18 @@ def test_existing_accounts_keep_ids_and_credentials_on_upgrade(
     with testing_session() as session:
         session.add_all(
             [
-                User(id=-5, username="negative", email="negative@example.com", password=password_hash),
-                User(id=0, username="zero", email="zero@example.com", password=password_hash),
+                User(
+                    id=-5,
+                    username="negative",
+                    email="negative@example.com",
+                    password=password_hash,
+                ),
+                User(
+                    id=0,
+                    username="zero",
+                    email="zero@example.com",
+                    password=password_hash,
+                ),
                 User(id=41, username=USERNAME, email=EMAIL, password=password_hash),
             ]
         )
@@ -278,14 +291,17 @@ def test_existing_accounts_keep_ids_and_credentials_on_upgrade(
                 assert existing_user.password == password_hash
                 session.delete(existing_user)
                 session.commit()
-            assert client.post(
-                "/api/register",
-                json={
-                    "username": "replacement",
-                    "password": PASSWORD,
-                    "email": "replacement@example.com",
-                },
-            ).status_code == 201
+            assert (
+                client.post(
+                    "/api/register",
+                    json={
+                        "username": "replacement",
+                        "password": PASSWORD,
+                        "email": "replacement@example.com",
+                    },
+                ).status_code
+                == 201
+            )
             response = client.post(
                 "/api/login",
                 json={"username": "replacement", "password": PASSWORD},
@@ -319,36 +335,45 @@ def test_both_backends_share_id_reservations(
         with testing_session() as session:
             session.execute(text("DELETE FROM users WHERE id = :id"), {"id": original})
             session.commit()
-        assert legacy.post(
-            "/register",
-            data={
-                "username": "replacement",
-                "password": PASSWORD,
-                "email": "replacement@example.com",
-            },
-        ).status_code == 201
+        assert (
+            legacy.post(
+                "/register",
+                data={
+                    "username": "replacement",
+                    "password": PASSWORD,
+                    "email": "replacement@example.com",
+                },
+            ).status_code
+            == 201
+        )
         logged_in = legacy.post(
             "/login", data={"username": "replacement", "password": PASSWORD}
         )
         replacement = int(logged_in.headers["X-RPP-User-Id"])
         assert replacement != original
-        assert client.post(
-            "/api/login", json={"username": "replacement", "password": PASSWORD}
-        ).json()["user_id"] == replacement
-        with testing_session() as session:
-            session.execute(text("DELETE FROM users WHERE id = :id"), {"id": replacement})
-            session.commit()
-        assert client.post(
-            "/api/register",
-            json={
-                "username": "third",
-                "password": PASSWORD,
-                "email": "third@example.com",
-            },
-        ).status_code == 201
-        third = legacy.post(
-            "/login", data={"username": "third", "password": PASSWORD}
+        assert (
+            client.post(
+                "/api/login", json={"username": "replacement", "password": PASSWORD}
+            ).json()["user_id"]
+            == replacement
         )
+        with testing_session() as session:
+            session.execute(
+                text("DELETE FROM users WHERE id = :id"), {"id": replacement}
+            )
+            session.commit()
+        assert (
+            client.post(
+                "/api/register",
+                json={
+                    "username": "third",
+                    "password": PASSWORD,
+                    "email": "third@example.com",
+                },
+            ).status_code
+            == 201
+        )
+        third = legacy.post("/login", data={"username": "third", "password": PASSWORD})
         assert third.status_code == 200
         assert int(third.headers["X-RPP-User-Id"]) not in {original, replacement}
 
@@ -471,7 +496,9 @@ def test_legacy_recovery_is_case_insensitive_and_updates_password(legacy_backend
         assert login.status_code == 200
 
 
-def test_legacy_login_returns_distinct_ids_and_unicode_username(legacy_backend: Any) -> None:
+def test_legacy_login_returns_distinct_ids_and_unicode_username(
+    legacy_backend: Any,
+) -> None:
     backend, _ = legacy_backend
     identities = []
     with backend.app.test_client() as client:

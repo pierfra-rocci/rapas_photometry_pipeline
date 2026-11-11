@@ -224,7 +224,7 @@ class TestDatabaseModels:
             has_wcs=True,
         )
         session.add(fits_file2)
-        
+
         with pytest.raises(Exception):  # IntegrityError
             session.commit()
 
@@ -245,7 +245,7 @@ class TestDatabaseModels:
             stored_relpath="rpp_results/result.zip",  # Same stored_relpath
         )
         session.add(archive2)
-        
+
         with pytest.raises(Exception):  # IntegrityError
             session.commit()
 
@@ -263,7 +263,7 @@ class TestPydanticSchemas:
             "created_at": datetime.now(),
         }
         summary = WcsFitsFileSummary(**data)
-        
+
         assert summary.id == 1
         assert summary.original_filename == "science.fits"
         assert summary.has_wcs is True
@@ -277,7 +277,7 @@ class TestPydanticSchemas:
             "created_at": datetime.now(),
         }
         summary = ZipArchiveSummary(**data)
-        
+
         assert summary.id == 1
         assert summary.archive_filename == "result.zip"
 
@@ -298,7 +298,7 @@ class TestPydanticSchemas:
             "zip_archives": [zip_data],
         }
         fits_with_zips = WcsFitsFileWithZips(**fits_data)
-        
+
         assert len(fits_with_zips.zip_archives) == 1
         assert fits_with_zips.zip_archives[0].archive_filename == "result.zip"
 
@@ -321,7 +321,7 @@ class TestDbTrackingModule:
         """Create a temporary database with schema for testing."""
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
-        
+
         # Create tables
         conn = sqlite3.connect(db_path)
         conn.execute("""
@@ -366,28 +366,28 @@ class TestDbTrackingModule:
                 CONSTRAINT uq_wcs_fits_zip UNIQUE (wcs_fits_id, zip_archive_id)
             )
         """)
-        
+
         # Insert test user
         conn.execute(
             "INSERT INTO users (username, password, email) VALUES (?, ?, ?)",
-            ("testuser", "hashed", "test@example.com")
+            ("testuser", "hashed", "test@example.com"),
         )
         conn.commit()
         conn.close()
-        
+
         yield db_path
-        
+
         # Cleanup
         os.unlink(db_path)
 
     def test_get_user_id_by_username(self, temp_db):
         """Test looking up user ID by username."""
         from src.db_tracking import get_user_id_by_username
-        
+
         with patch("src.db_tracking.DB_PATH", temp_db):
             user_id = get_user_id_by_username("testuser")
             assert user_id == 1
-            
+
             # Non-existent user
             user_id = get_user_id_by_username("nonexistent")
             assert user_id is None
@@ -395,35 +395,35 @@ class TestDbTrackingModule:
     def test_record_wcs_fits_file(self, temp_db):
         """Test recording a WCS FITS file."""
         from src.db_tracking import record_wcs_fits_file
-        
+
         with patch("src.db_tracking.DB_PATH", temp_db):
             fits_id = record_wcs_fits_file(
                 username="testuser",
                 original_filename="science.fits",
                 stored_filename="testuser_science_wcs.fits",
-                has_wcs=True
+                has_wcs=True,
             )
             assert fits_id is not None
             assert fits_id > 0
-            
+
             # Recording same file should return existing ID
             fits_id2 = record_wcs_fits_file(
                 username="testuser",
                 original_filename="science.fits",
                 stored_filename="testuser_science_wcs.fits",
-                has_wcs=True
+                has_wcs=True,
             )
             assert fits_id2 == fits_id
 
     def test_record_zip_archive(self, temp_db):
         """Test recording a ZIP archive."""
         from src.db_tracking import record_zip_archive
-        
+
         with patch("src.db_tracking.DB_PATH", temp_db):
             zip_id = record_zip_archive(
                 username="testuser",
                 archive_filename="result_20260109.zip",
-                stored_relpath="rpp_results/result_20260109.zip"
+                stored_relpath="rpp_results/result_20260109.zip",
             )
             assert zip_id is not None
             assert zip_id > 0
@@ -435,23 +435,23 @@ class TestDbTrackingModule:
             record_zip_archive,
             link_fits_to_zip,
         )
-        
+
         with patch("src.db_tracking.DB_PATH", temp_db):
             fits_id = record_wcs_fits_file(
                 username="testuser",
                 original_filename="science.fits",
                 stored_filename="testuser_science_wcs.fits",
-                has_wcs=True
+                has_wcs=True,
             )
             zip_id = record_zip_archive(
                 username="testuser",
                 archive_filename="result.zip",
-                stored_relpath="rpp_results/result.zip"
+                stored_relpath="rpp_results/result.zip",
             )
-            
+
             result = link_fits_to_zip(fits_id, zip_id)
             assert result is True
-            
+
             # Linking again should succeed (idempotent)
             result = link_fits_to_zip(fits_id, zip_id)
             assert result is True
@@ -459,7 +459,7 @@ class TestDbTrackingModule:
     def test_record_analysis_result(self, temp_db):
         """Test the convenience function for recording analysis."""
         from src.db_tracking import record_analysis_result
-        
+
         with patch("src.db_tracking.DB_PATH", temp_db):
             fits_id, zip_id = record_analysis_result(
                 username="testuser",
@@ -467,15 +467,21 @@ class TestDbTrackingModule:
                 stored_fits_filename="testuser_science_wcs.fits",
                 zip_archive_filename="result_20260109.zip",
                 zip_stored_relpath="rpp_results/result_20260109.zip",
-                has_wcs=True
+                has_wcs=True,
             )
-            
+
             assert fits_id is not None
             assert zip_id is not None
 
-    def test_record_analysis_result_reuses_fits_and_links_multiple_archives(self, temp_db):
+    def test_record_analysis_result_reuses_fits_and_links_multiple_archives(
+        self, temp_db
+    ):
         """One stored FITS file should be linkable to multiple result archives."""
-        from src.db_tracking import record_analysis_result, get_fits_for_zip, get_zips_for_fits
+        from src.db_tracking import (
+            record_analysis_result,
+            get_fits_for_zip,
+            get_zips_for_fits,
+        )
 
         with patch("src.db_tracking.DB_PATH", temp_db):
             first_fits_id, first_zip_id = record_analysis_result(
@@ -518,42 +524,42 @@ class TestDbTrackingModule:
     def test_get_fits_files_for_user(self, temp_db):
         """Test getting FITS files for a user."""
         from src.db_tracking import record_wcs_fits_file, get_fits_files_for_user
-        
+
         with patch("src.db_tracking.DB_PATH", temp_db):
             # Record some files
             record_wcs_fits_file(
                 username="testuser",
                 original_filename="image1.fits",
                 stored_filename="testuser_image1_wcs.fits",
-                has_wcs=True
+                has_wcs=True,
             )
             record_wcs_fits_file(
                 username="testuser",
                 original_filename="image2.fits",
                 stored_filename="testuser_image2_wcs.fits",
-                has_wcs=True
+                has_wcs=True,
             )
-            
+
             files = get_fits_files_for_user("testuser")
             assert len(files) == 2
 
     def test_get_zip_archives_for_user(self, temp_db):
         """Test getting ZIP archives for a user."""
         from src.db_tracking import record_zip_archive, get_zip_archives_for_user
-        
+
         with patch("src.db_tracking.DB_PATH", temp_db):
             # Record some archives
             record_zip_archive(
                 username="testuser",
                 archive_filename="result1.zip",
-                stored_relpath="rpp_results/result1.zip"
+                stored_relpath="rpp_results/result1.zip",
             )
             record_zip_archive(
                 username="testuser",
                 archive_filename="result2.zip",
-                stored_relpath="rpp_results/result2.zip"
+                stored_relpath="rpp_results/result2.zip",
             )
-            
+
             archives = get_zip_archives_for_user("testuser")
             assert len(archives) == 2
 
@@ -565,24 +571,24 @@ class TestDbTrackingModule:
             link_fits_to_zip,
             get_zips_for_fits,
         )
-        
+
         with patch("src.db_tracking.DB_PATH", temp_db):
             fits_id = record_wcs_fits_file(
                 username="testuser",
                 original_filename="science.fits",
                 stored_filename="testuser_science_wcs.fits",
-                has_wcs=True
+                has_wcs=True,
             )
-            
+
             # Create multiple ZIPs and link them
             for i in range(3):
                 zip_id = record_zip_archive(
                     username="testuser",
                     archive_filename=f"result_{i}.zip",
-                    stored_relpath=f"rpp_results/result_{i}.zip"
+                    stored_relpath=f"rpp_results/result_{i}.zip",
                 )
                 link_fits_to_zip(fits_id, zip_id)
-            
+
             zips = get_zips_for_fits(fits_id)
             assert len(zips) == 3
 
@@ -594,44 +600,44 @@ class TestDbTrackingModule:
             link_fits_to_zip,
             get_fits_for_zip,
         )
-        
+
         with patch("src.db_tracking.DB_PATH", temp_db):
             zip_id = record_zip_archive(
                 username="testuser",
                 archive_filename="combined_result.zip",
-                stored_relpath="rpp_results/combined_result.zip"
+                stored_relpath="rpp_results/combined_result.zip",
             )
-            
+
             # This is an edge case - normally one ZIP has one FITS
             # But the schema supports many-to-many
             fits_id = record_wcs_fits_file(
                 username="testuser",
                 original_filename="science.fits",
                 stored_filename="testuser_science_wcs.fits",
-                has_wcs=True
+                has_wcs=True,
             )
             link_fits_to_zip(fits_id, zip_id)
-            
+
             fits_files = get_fits_for_zip(zip_id)
             assert len(fits_files) == 1
 
     def test_nonexistent_user(self, temp_db):
         """Test handling of non-existent user."""
         from src.db_tracking import record_wcs_fits_file, record_zip_archive
-        
+
         with patch("src.db_tracking.DB_PATH", temp_db):
             fits_id = record_wcs_fits_file(
                 username="nonexistent",
                 original_filename="science.fits",
                 stored_filename="nonexistent_science_wcs.fits",
-                has_wcs=True
+                has_wcs=True,
             )
             assert fits_id is None
-            
+
             zip_id = record_zip_archive(
                 username="nonexistent",
                 archive_filename="result.zip",
-                stored_relpath="rpp_results/result.zip"
+                stored_relpath="rpp_results/result.zip",
             )
             assert zip_id is None
 
@@ -644,7 +650,7 @@ class TestMigrationScript:
         """Create a temp database with users table (simulating existing DB)."""
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
-        
+
         conn = sqlite3.connect(db_path)
         conn.execute("""
             CREATE TABLE users (
@@ -656,13 +662,13 @@ class TestMigrationScript:
         """)
         conn.execute(
             "INSERT INTO users (username, password, email) VALUES (?, ?, ?)",
-            ("admin", "hashed", "admin@example.com")
+            ("admin", "hashed", "admin@example.com"),
         )
         conn.commit()
         conn.close()
-        
+
         yield db_path
-        
+
         # Cleanup
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -673,12 +679,12 @@ class TestMigrationScript:
     def test_table_exists_function(self, temp_db_with_users):
         """Test table_exists helper function."""
         from scripts.migrate_add_wcs_zip_tables import table_exists
-        
+
         conn = sqlite3.connect(temp_db_with_users)
-        
+
         assert table_exists(conn, "users") is True
         assert table_exists(conn, "nonexistent") is False
-        
+
         conn.close()
 
     def test_create_wcs_fits_files_table(self, temp_db_with_users):
@@ -687,23 +693,23 @@ class TestMigrationScript:
             create_wcs_fits_files_table,
             table_exists,
         )
-        
+
         conn = sqlite3.connect(temp_db_with_users)
-        
+
         # Table shouldn't exist yet
         assert table_exists(conn, "wcs_fits_files") is False
-        
+
         # Create it
         result = create_wcs_fits_files_table(conn)
         conn.commit()
-        
+
         assert result is True
         assert table_exists(conn, "wcs_fits_files") is True
-        
+
         # Second call should skip (idempotent)
         result = create_wcs_fits_files_table(conn)
         assert result is False
-        
+
         conn.close()
 
     def test_create_zip_archives_table(self, temp_db_with_users):
@@ -712,17 +718,17 @@ class TestMigrationScript:
             create_zip_archives_table,
             table_exists,
         )
-        
+
         conn = sqlite3.connect(temp_db_with_users)
-        
+
         assert table_exists(conn, "zip_archives") is False
-        
+
         result = create_zip_archives_table(conn)
         conn.commit()
-        
+
         assert result is True
         assert table_exists(conn, "zip_archives") is True
-        
+
         conn.close()
 
     def test_create_wcs_fits_zip_assoc_table(self, temp_db_with_users):
@@ -733,22 +739,22 @@ class TestMigrationScript:
             create_wcs_fits_zip_assoc_table,
             table_exists,
         )
-        
+
         conn = sqlite3.connect(temp_db_with_users)
-        
+
         # Need to create parent tables first
         create_wcs_fits_files_table(conn)
         create_zip_archives_table(conn)
         conn.commit()
-        
+
         assert table_exists(conn, "wcs_fits_zip_assoc") is False
-        
+
         result = create_wcs_fits_zip_assoc_table(conn)
         conn.commit()
-        
+
         assert result is True
         assert table_exists(conn, "wcs_fits_zip_assoc") is True
-        
+
         conn.close()
 
     def test_verify_migration(self, temp_db_with_users):
@@ -759,112 +765,112 @@ class TestMigrationScript:
             create_wcs_fits_zip_assoc_table,
             verify_migration,
         )
-        
+
         conn = sqlite3.connect(temp_db_with_users)
-        
+
         # Before migration
         result = verify_migration(conn)
         assert result["wcs_fits_files"] is None
         assert result["zip_archives"] is None
         assert result["wcs_fits_zip_assoc"] is None
-        
+
         # After migration
         create_wcs_fits_files_table(conn)
         create_zip_archives_table(conn)
         create_wcs_fits_zip_assoc_table(conn)
         conn.commit()
-        
+
         result = verify_migration(conn)
         assert result["wcs_fits_files"] == 0
         assert result["zip_archives"] == 0
         assert result["wcs_fits_zip_assoc"] == 0
-        
+
         conn.close()
 
     def test_backup_database(self, temp_db_with_users):
         """Test database backup creation."""
         from scripts.migrate_add_wcs_zip_tables import backup_database
-        
+
         backup_path = backup_database(Path(temp_db_with_users))
-        
+
         assert backup_path.exists()
         assert "_backup_" in backup_path.name
-        
+
         # Verify backup has same content
         conn_orig = sqlite3.connect(temp_db_with_users)
         conn_backup = sqlite3.connect(backup_path)
-        
+
         orig_tables = conn_orig.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         ).fetchall()
         backup_tables = conn_backup.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         ).fetchall()
-        
+
         assert orig_tables == backup_tables
-        
+
         conn_orig.close()
         conn_backup.close()
-        
+
         # Cleanup backup
         backup_path.unlink()
 
     def test_full_migration(self, temp_db_with_users):
         """Test complete migration process."""
         from scripts.migrate_add_wcs_zip_tables import run_migration
-        
+
         result = run_migration(Path(temp_db_with_users), skip_backup=True)
-        
+
         assert result == 0  # Success
-        
+
         # Verify all tables exist
         conn = sqlite3.connect(temp_db_with_users)
         cursor = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
         )
         tables = [row[0] for row in cursor.fetchall()]
-        
+
         assert "wcs_fits_files" in tables
         assert "zip_archives" in tables
         assert "wcs_fits_zip_assoc" in tables
         assert "users" in tables  # Original table preserved
-        
+
         conn.close()
 
     def test_migration_preserves_existing_data(self, temp_db_with_users):
         """Test that migration doesn't affect existing data."""
         from scripts.migrate_add_wcs_zip_tables import run_migration
-        
+
         # Add more test data before migration
         conn = sqlite3.connect(temp_db_with_users)
         conn.execute(
             "INSERT INTO users (username, password, email) VALUES (?, ?, ?)",
-            ("user2", "hashed2", "user2@example.com")
+            ("user2", "hashed2", "user2@example.com"),
         )
         conn.commit()
         conn.close()
-        
+
         # Run migration
         result = run_migration(Path(temp_db_with_users), skip_backup=True)
         assert result == 0
-        
+
         # Verify existing data is preserved
         conn = sqlite3.connect(temp_db_with_users)
         cursor = conn.execute("SELECT COUNT(*) FROM users")
         count = cursor.fetchone()[0]
-        
+
         assert count == 2  # Both users still exist
-        
+
         conn.close()
 
     def test_migration_idempotent(self, temp_db_with_users):
         """Test that migration can be run multiple times safely."""
         from scripts.migrate_add_wcs_zip_tables import run_migration
-        
+
         # Run migration twice
         result1 = run_migration(Path(temp_db_with_users), skip_backup=True)
         result2 = run_migration(Path(temp_db_with_users), skip_backup=True)
-        
+
         assert result1 == 0
         assert result2 == 0  # Should succeed even if tables exist
 
@@ -877,7 +883,7 @@ class TestIntegration:
         """Create a fully migrated test database."""
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
-        
+
         # Create all tables
         conn = sqlite3.connect(db_path)
         conn.execute("""
@@ -919,21 +925,21 @@ class TestIntegration:
                 FOREIGN KEY (zip_archive_id) REFERENCES zip_archives(id)
             )
         """)
-        
+
         # Insert test users
         conn.execute(
             "INSERT INTO users (username, password, email) VALUES (?, ?, ?)",
-            ("alice", "hashed", "alice@example.com")
+            ("alice", "hashed", "alice@example.com"),
         )
         conn.execute(
             "INSERT INTO users (username, password, email) VALUES (?, ?, ?)",
-            ("bob", "hashed", "bob@example.com")
+            ("bob", "hashed", "bob@example.com"),
         )
         conn.commit()
         conn.close()
-        
+
         yield db_path
-        
+
         os.unlink(db_path)
 
     def test_full_analysis_workflow(self, temp_db_full):
@@ -944,7 +950,7 @@ class TestIntegration:
             get_zip_archives_for_user,
             get_zips_for_fits,
         )
-        
+
         with patch("src.db_tracking.DB_PATH", temp_db_full):
             # Simulate Alice's analysis
             fits_id, zip_id = record_analysis_result(
@@ -953,20 +959,20 @@ class TestIntegration:
                 stored_fits_filename="alice_ngc7331_r_wcs.fits",
                 zip_archive_filename="ngc7331_r_20260109_120000.zip",
                 zip_stored_relpath="rpp_results/alice_results/ngc7331_r_20260109_120000.zip",
-                has_wcs=True
+                has_wcs=True,
             )
-            
+
             assert fits_id is not None
             assert zip_id is not None
-            
+
             # Verify data was recorded
             fits_files = get_fits_files_for_user("alice")
             assert len(fits_files) == 1
             assert fits_files[0]["original_filename"] == "ngc7331_r.fits"
-            
+
             archives = get_zip_archives_for_user("alice")
             assert len(archives) == 1
-            
+
             # Verify association
             zips = get_zips_for_fits(fits_id)
             assert len(zips) == 1
@@ -977,7 +983,7 @@ class TestIntegration:
             record_analysis_result,
             get_zips_for_fits,
         )
-        
+
         with patch("src.db_tracking.DB_PATH", temp_db_full):
             # First analysis
             fits_id1, zip_id1 = record_analysis_result(
@@ -986,9 +992,9 @@ class TestIntegration:
                 stored_fits_filename="alice_science_wcs.fits",
                 zip_archive_filename="science_run1.zip",
                 zip_stored_relpath="rpp_results/science_run1.zip",
-                has_wcs=True
+                has_wcs=True,
             )
-            
+
             # Second analysis with same FITS but different parameters
             fits_id2, zip_id2 = record_analysis_result(
                 username="alice",
@@ -996,14 +1002,14 @@ class TestIntegration:
                 stored_fits_filename="alice_science_wcs.fits",  # Same file
                 zip_archive_filename="science_run2.zip",
                 zip_stored_relpath="rpp_results/science_run2.zip",
-                has_wcs=True
+                has_wcs=True,
             )
-            
+
             # Should return same FITS ID
             assert fits_id1 == fits_id2
             # But different ZIP IDs
             assert zip_id1 != zip_id2
-            
+
             # FITS should have two associated ZIPs
             zips = get_zips_for_fits(fits_id1)
             assert len(zips) == 2
@@ -1015,7 +1021,7 @@ class TestIntegration:
             get_fits_files_for_user,
             get_zip_archives_for_user,
         )
-        
+
         with patch("src.db_tracking.DB_PATH", temp_db_full):
             # Alice's analysis
             record_analysis_result(
@@ -1024,9 +1030,9 @@ class TestIntegration:
                 stored_fits_filename="alice_image_wcs.fits",
                 zip_archive_filename="alice_result.zip",
                 zip_stored_relpath="rpp_results/alice_result.zip",
-                has_wcs=True
+                has_wcs=True,
             )
-            
+
             # Bob's analysis
             record_analysis_result(
                 username="bob",
@@ -1034,19 +1040,19 @@ class TestIntegration:
                 stored_fits_filename="bob_image_wcs.fits",
                 zip_archive_filename="bob_result.zip",
                 zip_stored_relpath="rpp_results/bob_result.zip",
-                has_wcs=True
+                has_wcs=True,
             )
-            
+
             # Each user should only see their own files
             alice_fits = get_fits_files_for_user("alice")
             bob_fits = get_fits_files_for_user("bob")
-            
+
             assert len(alice_fits) == 1
             assert len(bob_fits) == 1
             assert alice_fits[0]["stored_filename"] != bob_fits[0]["stored_filename"]
-            
+
             alice_zips = get_zip_archives_for_user("alice")
             bob_zips = get_zip_archives_for_user("bob")
-            
+
             assert len(alice_zips) == 1
             assert len(bob_zips) == 1

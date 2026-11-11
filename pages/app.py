@@ -153,6 +153,7 @@ def _build_persisted_upload(temp_path: str, file_name: str) -> SimpleNamespace:
     tmp.name = file_name
     return tmp
 
+
 if "backend_status_message" not in st.session_state:
     st.session_state.backend_status_message = "Determining backend..."
 if "backend_initialized" not in st.session_state:
@@ -195,8 +196,10 @@ if not st.session_state.backend_initialized:
 # is the supported workaround. Matomo handles cross-frame tracking
 # natively, so page views and link clicks are recorded correctly.
 
-def inject_matomo_tracking(site_id: str = "83", 
-                           matomo_url: str = "https://analytics.obspm.fr/"):
+
+def inject_matomo_tracking(
+    site_id: str = "83", matomo_url: str = "https://analytics.obspm.fr/"
+):
     """
     Inject the Matomo JS tracker into the Streamlit page.
 
@@ -228,7 +231,9 @@ def inject_matomo_tracking(site_id: str = "83",
 
 
 st.set_page_config(
-    page_title="RAPAS Photometry Pipeline", page_icon="rapas_logo.png", layout="centered"
+    page_title="RAPAS Photometry Pipeline",
+    page_icon="rapas_logo.png",
+    layout="centered",
 )
 
 # Get the project root directory for logo path
@@ -430,7 +435,9 @@ with st.sidebar.expander("⚙️ Parameters", expanded=False):
         "FWHM Radius Factor",
         min_value=0.5,
         max_value=2.0,
-        value=float(st.session_state.analysis_parameters.get("fwhm_radius_factor", 1.5)),
+        value=float(
+            st.session_state.analysis_parameters.get("fwhm_radius_factor", 1.5)
+        ),
         step=0.1,
         help=(
             "Multiplier applied to the measured FWHM to set the photometry aperture "
@@ -651,11 +658,10 @@ if st.session_state.logged_in:
     )
 
 # Sidebar footer banner
+st.sidebar.markdown("[MIT LICENSE](https://opensource.org/licenses/MIT)")
 st.sidebar.markdown(
-        "[MIT LICENSE](https://opensource.org/licenses/MIT)")
-st.sidebar.markdown(
-        "GDPR: for more details, see the [Privacy Policy](https://eur-lex.europa.eu/eli/reg/2016/679/oj/eng)."
-    )
+    "GDPR: for more details, see the [Privacy Policy](https://eur-lex.europa.eu/eli/reg/2016/679/oj/eng)."
+)
 
 ###########################################################################
 
@@ -738,21 +744,24 @@ if science_file is not None:
             "▶️ Start Analysis",
             key="start_analysis_button",
             use_container_width=True,
-            help="Click to start processing."
+            help="Click to start processing.",
         ):
             st.session_state.run_analysis_pipeline = True
 
 
 catalog_name = f"{st.session_state['base_filename']}_catalog.csv"
 archive_dir = ensure_user_archive_directory(user_id)
-output_dir = ensure_session_output_directory(user_id, st.session_state.get("session_id"))
+output_dir = ensure_session_output_directory(
+    user_id, st.session_state.get("session_id")
+)
 st.session_state["output_dir"] = output_dir
 
 if st.session_state.get("final_phot_table") is not None:
     last_zip_path = st.session_state.get("last_result_zip_path")
     if not (
         isinstance(last_zip_path, str)
-        and os.path.dirname(os.path.realpath(last_zip_path)) == os.path.realpath(archive_dir)
+        and os.path.dirname(os.path.realpath(last_zip_path))
+        == os.path.realpath(archive_dir)
     ):
         last_zip_path = None
     provide_download_buttons(output_dir, archive_path=last_zip_path)
@@ -763,7 +772,12 @@ if st.session_state.get("final_phot_table") is not None:
         st.session_state["last_result_zip_path"] = zip_path
 
     # Record in database if ZIP was created and we have a stored FITS file
-    if zip_filename and zip_path and science_file is not None and st.session_state.get("stored_fits_filename"):
+    if (
+        zip_filename
+        and zip_path
+        and science_file is not None
+        and st.session_state.get("stored_fits_filename")
+    ):
         try:
             record_analysis_result(
                 username=st.session_state.username,
@@ -771,7 +785,7 @@ if st.session_state.get("final_phot_table") is not None:
                 stored_fits_filename=st.session_state["stored_fits_filename"],
                 zip_archive_filename=zip_filename,
                 zip_stored_relpath=zip_path,
-                has_wcs=st.session_state.get("has_wcs", True)
+                has_wcs=st.session_state.get("has_wcs", True),
             )
         except Exception as db_error:
             # Don't fail the app if database tracking fails
@@ -786,9 +800,17 @@ _run_analysis_now = bool(
 st.session_state.run_analysis_pipeline = False
 if _run_analysis_now:
     for key in (
-        "calibrated_header", "wcs_obj", "has_wcs", "stored_fits_filename",
-        "proceed_without_wcs", "pixel_size_arcsec", "mean_fwhm_pixel",
-        "valid_ra", "valid_dec", "final_phot_table", "last_result_zip_path",
+        "calibrated_header",
+        "wcs_obj",
+        "has_wcs",
+        "stored_fits_filename",
+        "proceed_without_wcs",
+        "pixel_size_arcsec",
+        "mean_fwhm_pixel",
+        "valid_ra",
+        "valid_dec",
+        "final_phot_table",
+        "last_result_zip_path",
     ):
         st.session_state.pop(key, None)
     persisted_upload_path = st.session_state.get("uploaded_temp_path")
@@ -846,8 +868,7 @@ if _run_analysis_now:
 
     # Extract filter from header with multiple possible keywords
     filter_raw = None
-    for filter_key in ["FILTER", "FILTERS", "FLT",
-                       "FILTER1", "FILTRE", "INSFLNAM"]:
+    for filter_key in ["FILTER", "FILTERS", "FLT", "FILTER1", "FILTRE", "INSFLNAM"]:
         if filter_key in science_header:
             filter_raw = str(science_header[filter_key]).strip().upper()
             break
@@ -857,7 +878,9 @@ if _run_analysis_now:
 
     # Map the raw filter name to standardized GAIA band using GAIA_BANDS.
     # Normalize by lowercasing and removing spaces so "RAPAS G" matches "RapasG".
-    gaia_band_dict = {label.lower().replace(" ", ""): field for label, field in GAIA_BANDS}
+    gaia_band_dict = {
+        label.lower().replace(" ", ""): field for label, field in GAIA_BANDS
+    }
     filter_mapped = gaia_band_dict.get(filter_raw.lower().replace(" ", ""), filter_raw)
 
     # Get the current selected filter band from analysis parameters
@@ -865,13 +888,11 @@ if _run_analysis_now:
 
     # Check if they match (comparing the mapped value)
     if filter_mapped != selected_filter and filter_raw != "Unknown":
-        st.caption(
-            format_filter_mismatch_message(filter_raw, filter_mapped)
-        )
+        st.caption(format_filter_mismatch_message(filter_raw, filter_mapped))
         write_to_log(
             st.session_state.log_buffer,
             f"Filter matched : Header={filter_raw} (→{filter_mapped}), Selected={selected_filter}",
-            level="INFO"
+            level="INFO",
         )
     else:
         write_to_log(
@@ -921,8 +942,8 @@ if _run_analysis_now:
             )
             with st.spinner("Running astrometry check and plate solving..."):
                 original_science_header = science_header
-                solved_wcs, solved_header, log_messages, error = solve_with_astrometrynet(
-                    science_file_path
+                solved_wcs, solved_header, log_messages, error = (
+                    solve_with_astrometrynet(science_file_path)
                 )
                 handle_log_messages(log_messages)
                 if error:
@@ -930,10 +951,14 @@ if _run_analysis_now:
 
                 wcs_obj = None
                 if solved_wcs is not None and solved_header is not None and not error:
-                    wcs_obj, solved_error, solved_messages = safe_wcs_create(solved_header)
+                    wcs_obj, solved_error, solved_messages = safe_wcs_create(
+                        solved_header
+                    )
                     handle_log_messages(solved_messages)
                     if wcs_obj is None:
-                        st.error(f"Plate solving returned an invalid WCS: {solved_error}")
+                        st.error(
+                            f"Plate solving returned an invalid WCS: {solved_error}"
+                        )
 
                 solution_accepted = wcs_obj is not None
                 if not solution_accepted:
@@ -941,7 +966,9 @@ if _run_analysis_now:
                         science_header = original_science_header
                         wcs_obj = original_wcs
                         use_astrometry = False
-                        st.warning("Plate solving failed; using the original valid WCS.")
+                        st.warning(
+                            "Plate solving failed; using the original valid WCS."
+                        )
                     else:
                         st.error("Plate solving failed. No WCS solution was returned.")
                         proceed_without_wcs = True
@@ -969,20 +996,23 @@ if _run_analysis_now:
                         st.success("Updated WCS header saved")
 
                     # Save the FITS file with updated WCS header
-                    wcs_fits_path, wcs_fits_error, stored_fits_filename = save_fits_with_wcs(
-                        science_file_path,
-                        science_header,
-                        output_dir,
-                        filename_suffix="_wcs",
-                        also_save_to_data_dir=True,
-                        original_filename=science_file.name,
-                        username=st.session_state.get("username", "anonymous"),
-                        user_id=user_id,
+                    wcs_fits_path, wcs_fits_error, stored_fits_filename = (
+                        save_fits_with_wcs(
+                            science_file_path,
+                            science_header,
+                            output_dir,
+                            filename_suffix="_wcs",
+                            also_save_to_data_dir=True,
+                            original_filename=science_file.name,
+                            username=st.session_state.get("username", "anonymous"),
+                            user_id=user_id,
+                        )
                     )
                     if wcs_fits_path:
-                        st.success("WCS-solved FITS saved "
+                        st.success("WCS-solved FITS saved ")
+                        write_to_log(
+                            log_buffer, f"WCS-solved FITS saved to {wcs_fits_path}"
                         )
-                        write_to_log(log_buffer, f"WCS-solved FITS saved to {wcs_fits_path}")
                         st.session_state["stored_fits_filename"] = stored_fits_filename
                         st.session_state["has_wcs"] = True
                         if stored_fits_filename is None:
@@ -992,7 +1022,9 @@ if _run_analysis_now:
                             )
                     elif wcs_fits_error:
                         st.warning(f"Could not save WCS FITS: {wcs_fits_error}")
-                        write_to_log(log_buffer, f"Warning: {wcs_fits_error}", level="WARNING")
+                        write_to_log(
+                            log_buffer, f"Warning: {wcs_fits_error}", level="WARNING"
+                        )
 
                     # Re-extract pixel scale and recalculate seeing with updated header
                     pixel_size_arcsec, pixel_scale_source = extract_pixel_scale(
@@ -1121,7 +1153,9 @@ if _run_analysis_now:
                 if len(data_finite) > 0:
                     vmin, vmax = np.percentile(data_finite, [0.5, 99.5])
                     data_scaled = np.clip(science_data, vmin, vmax)
-                    data_scaled = (data_scaled - vmin) / (vmax - vmin if vmax > vmin else 1.0)
+                    data_scaled = (data_scaled - vmin) / (
+                        vmax - vmin if vmax > vmin else 1.0
+                    )
                     im2 = ax2.imshow(data_scaled, origin="lower", cmap="viridis")
                     fig.colorbar(im2, ax=ax2, label="Normalized Value")
                     ax2.axis("off")
@@ -1236,9 +1270,12 @@ if _run_analysis_now:
             ra_val, dec_val, coord_source = extract_coordinates(science_header)
         if ra_val is not None and dec_val is not None:
             import astropy.units as u
+
             coord = SkyCoord(ra=ra_val, dec=dec_val, unit="deg")
             ra_sex = coord.ra.to_string(unit=u.hour, sep=":", precision=2, pad=True)
-            dec_sex = coord.dec.to_string(sep=":", precision=1, alwayssign=True, pad=True)
+            dec_sex = coord.dec.to_string(
+                sep=":", precision=1, alwayssign=True, pad=True
+            )
             st.write(
                 f"RA={round(ra_val, 4)}° ({ra_sex})\n"
                 f"DEC={round(dec_val, 4)}° ({dec_sex})"
@@ -1370,7 +1407,7 @@ if _run_analysis_now:
                 header_to_process["DEC"] = st.session_state["valid_dec"]
                 write_to_log(
                     log_buffer,
-                    f"Set header RA/DEC from validated coordinates: RA={header_to_process['RA']:.4f}°, DEC={header_to_process['DEC']:.4f}°"
+                    f"Set header RA/DEC from validated coordinates: RA={header_to_process['RA']:.4f}°, DEC={header_to_process['DEC']:.4f}°",
                 )
             # Fallback to CRVAL1/CRVAL2 if available
             elif "CRVAL1" in header_to_process and "CRVAL2" in header_to_process:
@@ -1378,7 +1415,7 @@ if _run_analysis_now:
                 header_to_process["DEC"] = header_to_process["CRVAL2"]
                 write_to_log(
                     log_buffer,
-                    f"Set header RA/DEC from CRVAL: RA={header_to_process['RA']:.4f}°, DEC={header_to_process['DEC']:.4f}°"
+                    f"Set header RA/DEC from CRVAL: RA={header_to_process['RA']:.4f}°, DEC={header_to_process['DEC']:.4f}°",
                 )
 
         # Initialize zero_point variables to avoid undefined variable errors later
@@ -1479,7 +1516,9 @@ if _run_analysis_now:
                                         phot_table_df["ycenter"].to_numpy(),
                                     )
                                     if not isinstance(sky, SkyCoord):
-                                        raise ValueError("Celestial WCS did not return sky coordinates")
+                                        raise ValueError(
+                                            "Celestial WCS did not return sky coordinates"
+                                        )
                                     sky = sky.icrs
                                     phot_table_df["ra"] = sky.ra.degree
                                     phot_table_df["dec"] = sky.dec.degree
@@ -1517,7 +1556,9 @@ if _run_analysis_now:
                             st.error(message)
                         catalog_exported = bool(success_messages)
                     else:
-                        with st.spinner("Cross-matching with Catalogs for Zero Point..."):
+                        with st.spinner(
+                            "Cross-matching with Catalogs for Zero Point..."
+                        ):
                             matched_table, log_messages = cross_match_with_gaia(
                                 phot_table_qtable,
                                 header_to_process,
@@ -1582,9 +1623,16 @@ if _run_analysis_now:
                                         f"C={color_term_result['color_term']:.4f} / "
                                         f"N={color_term_result['n_used']}",
                                     )
-                                    if color_term_result.get("diagnostic_figure") is not None:
-                                        st.pyplot(color_term_result["diagnostic_figure"])
-                                        plt.close(color_term_result["diagnostic_figure"])
+                                    if (
+                                        color_term_result.get("diagnostic_figure")
+                                        is not None
+                                    ):
+                                        st.pyplot(
+                                            color_term_result["diagnostic_figure"]
+                                        )
+                                        plt.close(
+                                            color_term_result["diagnostic_figure"]
+                                        )
                                 elif color_term_result.get("supported"):
                                     st.warning(
                                         "Color term skipped: "
@@ -1747,9 +1795,7 @@ if _run_analysis_now:
                                     "psf_minus_aperture_mag_" in col
                                     for col in display_table.columns
                                 ):
-                                    st.subheader(
-                                        "PSF vs Aperture Magnitude Offsets"
-                                    )
+                                    st.subheader("PSF vs Aperture Magnitude Offsets")
                                     fig_offset = None
                                     try:
                                         fig_offset = plot_photometry_offsets(
@@ -1761,9 +1807,7 @@ if _run_analysis_now:
                                                 "base_filename", "photometry"
                                             )
                                             _offset_dir = output_dir
-                                            offset_filename = (
-                                                f"{_offset_base}_psf_aperture_offset.png"
-                                            )
+                                            offset_filename = f"{_offset_base}_psf_aperture_offset.png"
                                             offset_filepath = os.path.join(
                                                 _offset_dir, offset_filename
                                             )
@@ -1810,7 +1854,9 @@ if _run_analysis_now:
                                 # Keep the photometry-only table so the catalogue can still be
                                 # exported if the cross-match step fails.
                                 photometry_only_table = (
-                                    final_table.copy() if final_table is not None else None
+                                    final_table.copy()
+                                    if final_table is not None
+                                    else None
                                 )
 
                                 if (
@@ -1883,8 +1929,12 @@ if _run_analysis_now:
                                 final_table_export = drop_legacy_magnitude_columns(
                                     final_table.copy(), filter_band
                                 )
-                                final_table_export = ensure_source_ids(final_table_export)
-                                st.session_state["final_phot_table"] = final_table_export
+                                final_table_export = ensure_source_ids(
+                                    final_table_export
+                                )
+                                st.session_state["final_phot_table"] = (
+                                    final_table_export
+                                )
                                 success_messages, error_messages = save_catalog_files(
                                     final_table_export,
                                     base_filename,
@@ -1901,7 +1951,11 @@ if _run_analysis_now:
                 st.error(f"Error during zero point calibration: {str(e)}")
                 st.exception(e)
 
-            if phot_table_df is not None and not phot_table_df.empty and not catalog_exported:
+            if (
+                phot_table_df is not None
+                and not phot_table_df.empty
+                and not catalog_exported
+            ):
                 message = (
                     "Photometric calibration or catalog export failed. "
                     "Saving uncalibrated instrumental photometry; "
@@ -1917,8 +1971,14 @@ if _run_analysis_now:
                         )
                         handle_log_messages(log_messages)
                     except Exception as e:  # noqa: BLE001
-                        st.warning(f"Could not merge PSF photometry into the instrumental catalog: {e}")
-                        write_to_log(log_buffer, f"Instrumental PSF merge failed: {e}", level="WARNING")
+                        st.warning(
+                            f"Could not merge PSF photometry into the instrumental catalog: {e}"
+                        )
+                        write_to_log(
+                            log_buffer,
+                            f"Instrumental PSF merge failed: {e}",
+                            level="WARNING",
+                        )
                 instrumental_table = ensure_source_ids(instrumental_table)
                 success_messages, error_messages = save_catalog_files(
                     instrumental_table,
@@ -1967,7 +2027,10 @@ if _run_analysis_now:
                     if not isinstance(center, SkyCoord):
                         raise ValueError("Celestial WCS did not return sky coordinates")
                     center = center.icrs
-                    ra_center, dec_center = float(center.ra.degree), float(center.dec.degree)
+                    ra_center, dec_center = (
+                        float(center.ra.degree),
+                        float(center.dec.degree),
+                    )
                     if not np.isfinite(ra_center) or not np.isfinite(dec_center):
                         ra_center = dec_center = None
                         st.warning("The WCS image center is not finite.")
@@ -1998,21 +2061,29 @@ if _run_analysis_now:
                                 dec_center=dec_center,
                             )
                         except Exception as e:
-                            st.warning(
-                                f"Could not generate Astro-Colibri cutouts: {e}"
-                            )
+                            st.warning(f"Could not generate Astro-Colibri cutouts: {e}")
 
                 transient_candidates_df = None
 
                 # Run Transient Finder if enabled
-                run_transient_finder = st.session_state.analysis_parameters.get("run_transient_finder")
+                run_transient_finder = st.session_state.analysis_parameters.get(
+                    "run_transient_finder"
+                )
                 if run_transient_finder and instrumental_only:
-                    st.warning("Transient search skipped: calibrated photometry is unavailable.")
+                    st.warning(
+                        "Transient search skipped: calibrated photometry is unavailable."
+                    )
                 elif run_transient_finder and (
                     final_phot_table is None or fwhm_estimate is None
                 ):
-                    st.warning("Transient search skipped: photometry or FWHM is unavailable.")
-                elif run_transient_finder and final_phot_table is not None and fwhm_estimate is not None:
+                    st.warning(
+                        "Transient search skipped: photometry or FWHM is unavailable."
+                    )
+                elif (
+                    run_transient_finder
+                    and final_phot_table is not None
+                    and fwhm_estimate is not None
+                ):
                     if (
                         "science_file_path" in st.session_state
                         and st.session_state["science_file_path"]
@@ -2180,7 +2251,12 @@ if _run_analysis_now and st.session_state.get("final_phot_table") is not None:
     if zip_filename and zip_path:
         st.session_state["last_result_zip_path"] = zip_path
 
-    if zip_filename and zip_path and science_file is not None and st.session_state.get("stored_fits_filename"):
+    if (
+        zip_filename
+        and zip_path
+        and science_file is not None
+        and st.session_state.get("stored_fits_filename")
+    ):
         try:
             record_analysis_result(
                 username=st.session_state.get("username", "anonymous"),
@@ -2188,7 +2264,7 @@ if _run_analysis_now and st.session_state.get("final_phot_table") is not None:
                 stored_fits_filename=st.session_state["stored_fits_filename"],
                 zip_archive_filename=zip_filename,
                 zip_stored_relpath=zip_path,
-                has_wcs=st.session_state.get("has_wcs", True)
+                has_wcs=st.session_state.get("has_wcs", True),
             )
         except Exception as db_error:
             print(f"Warning: Could not record analysis in database: {db_error}")

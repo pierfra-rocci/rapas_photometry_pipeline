@@ -21,8 +21,12 @@ import astropy.units as u
 
 from photutils.utils import calc_total_error
 from photutils.detection import DAOStarFinder
-from photutils.aperture import (CircularAperture, CircularAnnulus,
-                                ApertureStats, aperture_photometry)
+from photutils.aperture import (
+    CircularAperture,
+    CircularAnnulus,
+    ApertureStats,
+    aperture_photometry,
+)
 
 from src.tools_pipeline import (
     safe_wcs_create,
@@ -31,6 +35,7 @@ from src.tools_pipeline import (
 )
 from typing import Any, Union, Optional, Dict, Tuple
 from src.psf import perform_psf_photometry, compute_encircled_energy
+
 MAG_ERR_COEFFICIENT = 2.5 / np.log(10.0)  # 1.0857...
 GAUSSIAN_FWHM_TO_SIGMA = 2.0 * np.sqrt(2.0 * np.log(2.0))  # 2.3548...
 # Optional additive systematic floor (mag) applied to calibrated magnitude errors.
@@ -401,8 +406,7 @@ def resolve_effective_gain(header, image_data, quiet=False):
     if rejected_gain is not None:
         key, raw_value, value = rejected_gain
         shown = (
-            f"{key} = {raw_value:g} (conversion factor, i.e. "
-            f"{value:g} e-/ADU)"
+            f"{key} = {raw_value:g} (conversion factor, i.e. {value:g} e-/ADU)"
             if key == "CVF"
             else f"{key} = {raw_value:g} e-/ADU"
         )
@@ -639,7 +643,9 @@ def fit_color_term_correction(
         result["reason"] = "No matched calibration stars available."
         return result
 
-    color_series, color_metadata = extract_photometric_color_series(matched_table, filter_band)
+    color_series, color_metadata = extract_photometric_color_series(
+        matched_table, filter_band
+    )
     result["supported"] = color_metadata.get("supported", False)
     result["color_label"] = color_metadata.get("color_label")
     if color_series is None:
@@ -651,10 +657,16 @@ def fit_color_term_correction(
     instrumental_mag_col = f"instrumental_mag{radius_suffix}"
     if instrumental_mag_col not in matched_table.columns:
         candidate_cols = sorted(
-            [col for col in matched_table.columns if col.startswith("instrumental_mag_")]
+            [
+                col
+                for col in matched_table.columns
+                if col.startswith("instrumental_mag_")
+            ]
         )
         if not candidate_cols:
-            result["reason"] = "No instrumental magnitude column is available for color fitting."
+            result["reason"] = (
+                "No instrumental magnitude column is available for color fitting."
+            )
             return result
         instrumental_mag_col = candidate_cols[0]
 
@@ -971,10 +983,10 @@ def make_border_mask(
 def detect_and_mask_satellite_trails(image_data, header, temp_fits_path=None):
     """
     Detect and mask satellite trails or airplane trails using ASTRiDE library.
-    
+
     This function uses the ASTRiDE library to detect linear streaks (satellite/airplane trails)
     in astronomical images and creates a boolean mask to exclude these regions from analysis.
-    
+
     Parameters
     ----------
     image_data : numpy.ndarray
@@ -984,12 +996,12 @@ def detect_and_mask_satellite_trails(image_data, header, temp_fits_path=None):
     temp_fits_path : str, optional
         Temporary path to save the image as FITS file for ASTRiDE processing.
         If None, a temporary file will be created and cleaned up.
-        
+
     Returns
     -------
     numpy.ndarray
         Boolean mask where True indicates satellite trail pixels that should be masked
-    
+
     Notes
     -----
     - Uses ASTRiDE library for streak detection
@@ -1002,7 +1014,7 @@ def detect_and_mask_satellite_trails(image_data, header, temp_fits_path=None):
         import os
         from astropy.io import fits
         import astride.detect
-        
+
         # Create temporary FITS file if not provided
         if temp_fits_path is None:
             temp_dir = tempfile.mkdtemp()
@@ -1010,7 +1022,7 @@ def detect_and_mask_satellite_trails(image_data, header, temp_fits_path=None):
             cleanup_temp = True
         else:
             cleanup_temp = False
-            
+
         try:
             # ASTRiDE only needs the pixel data. Copying the science header is
             # harmful: one unparsable card makes writeto() fail and silently
@@ -1061,8 +1073,9 @@ def detect_and_mask_satellite_trails(image_data, header, temp_fits_path=None):
                 )
                 sub_path = os.path.splitext(temp_fits_path)[0] + "_sub.fits"
                 fits.PrimaryHDU(
-                    (np.asarray(image_data, dtype=np.float32) - bkg2d.background)
-                    .astype(np.float32)
+                    (
+                        np.asarray(image_data, dtype=np.float32) - bkg2d.background
+                    ).astype(np.float32)
                 ).writeto(sub_path, overwrite=True)
                 try:
                     streak_detector = _run_streak("constant", sub_path)
@@ -1081,40 +1094,42 @@ def detect_and_mask_satellite_trails(image_data, header, temp_fits_path=None):
 
             # Create mask from detected streaks
             mask = np.zeros_like(image_data, dtype=bool)
-            
+
             if streak_detector.streaks and len(streak_detector.streaks) > 0:
                 # Create mask by drawing lines along the detected streaks
                 # Use a buffer around each streak to ensure complete masking
                 buffer_size = 5  # pixels buffer around each streak
-                
+
                 for streak in streak_detector.streaks:
-                    x_coords = streak['x'].astype(int)
-                    y_coords = streak['y'].astype(int)
-                    
+                    x_coords = streak["x"].astype(int)
+                    y_coords = streak["y"].astype(int)
+
                     # Draw the streak line on the mask
                     for i in range(len(x_coords) - 1):
                         x1, y1 = x_coords[i], y_coords[i]
                         x2, y2 = x_coords[i + 1], y_coords[i + 1]
-                        
+
                         # Draw line between points (Bresenham's line algorithm)
                         dx = abs(x2 - x1)
                         dy = abs(y2 - y1)
                         sx = 1 if x1 < x2 else -1
                         sy = 1 if y1 < y2 else -1
                         err = dx - dy
-                        
+
                         while True:
                             # Mark the pixel and surrounding buffer
                             for bx in range(-buffer_size, buffer_size + 1):
                                 for by in range(-buffer_size, buffer_size + 1):
                                     nx, ny = x1 + bx, y1 + by
-                                    if (0 <= nx < mask.shape[1] and 
-                                        0 <= ny < mask.shape[0]):
+                                    if (
+                                        0 <= nx < mask.shape[1]
+                                        and 0 <= ny < mask.shape[0]
+                                    ):
                                         mask[ny, nx] = True
-                            
+
                             if x1 == x2 and y1 == y2:
                                 break
-                            
+
                             e2 = 2 * err
                             if e2 > -dy:
                                 err -= dy
@@ -1124,9 +1139,9 @@ def detect_and_mask_satellite_trails(image_data, header, temp_fits_path=None):
                                 y1 += sy
             else:
                 st.warning("No satellite trails detected")
-                
+
             return mask
-            
+
         except Exception as e:
             st.warning(f"Error in satellite trail detection: {e}")
             return np.zeros_like(image_data, dtype=bool)
@@ -1139,7 +1154,7 @@ def detect_and_mask_satellite_trails(image_data, header, temp_fits_path=None):
                     shutil.rmtree(os.path.dirname(temp_fits_path), ignore_errors=True)
                 except Exception:
                     pass
-                    
+
     except ImportError:
         st.warning("ASTRiDE library not available. Satellite trail detection disabled.")
         return np.zeros_like(image_data, dtype=bool)
@@ -1230,6 +1245,7 @@ def airmass(
     obs_data = observatory
 
     try:
+
         def _first_present(*keys):
             for key in keys:
                 value = _header.get(key)
@@ -1393,9 +1409,7 @@ def fwhm_fit(
         # used by the error budget and is not inflated by undetected sources in
         # crowded fields (the plain std can over-estimate the noise by up to
         # ~2x at tight source spacing).
-        _, _, clipped_std = sigma_clipped_stats(
-            _img, sigma=3.0, stdfunc="mad_std"
-        )
+        _, _, clipped_std = sigma_clipped_stats(_img, sigma=3.0, stdfunc="mad_std")
 
         daofind = DAOStarFinder(fwhm=1.5 * fwhm, threshold=7 * clipped_std)
         sources = daofind(_img, mask=mask)
@@ -1506,23 +1520,27 @@ def check_psf_aperture_consistency(
         return diagnostics
 
     psf_x_col = next(
-        (c for c in ("x_init", "xcentroid", "x_center", "xcenter")
-         if c in epsf_table.colnames),
+        (
+            c
+            for c in ("x_init", "xcentroid", "x_center", "xcenter")
+            if c in epsf_table.colnames
+        ),
         None,
     )
     psf_y_col = next(
-        (c for c in ("y_init", "ycentroid", "y_center", "ycenter")
-         if c in epsf_table.colnames),
+        (
+            c
+            for c in ("y_init", "ycentroid", "y_center", "ycenter")
+            if c in epsf_table.colnames
+        ),
         None,
     )
     ap_x_col = next(
-        (c for c in ("xcenter", "x_center", "x_centroid")
-         if c in phot_table.colnames),
+        (c for c in ("xcenter", "x_center", "x_centroid") if c in phot_table.colnames),
         None,
     )
     ap_y_col = next(
-        (c for c in ("ycenter", "y_center", "y_centroid")
-         if c in phot_table.colnames),
+        (c for c in ("ycenter", "y_center", "y_centroid") if c in phot_table.colnames),
         None,
     )
     if None in (psf_x_col, psf_y_col, ap_x_col, ap_y_col):
@@ -1577,9 +1595,7 @@ def check_psf_aperture_consistency(
             diff = psf_matched[good] - ap_mag[good]
             median_diff = float(np.median(diff))
             entry["median_diff"] = median_diff
-            entry["scatter"] = float(
-                1.4826 * np.median(np.abs(diff - median_diff))
-            )
+            entry["scatter"] = float(1.4826 * np.median(np.abs(diff - median_diff)))
             if abs(median_diff) > warn_threshold:
                 diagnostics["outliers"].append(suffix)
         diagnostics["per_aperture"][suffix] = entry
@@ -1604,8 +1620,7 @@ def check_psf_aperture_consistency(
         ]
         if reported:
             summary = ", ".join(
-                f"{entry['suffix']} {entry['median_diff']:+.3f}"
-                f" (n={entry['n']})"
+                f"{entry['suffix']} {entry['median_diff']:+.3f} (n={entry['n']})"
                 for entry in reported
             )
             st.info(
@@ -1623,8 +1638,14 @@ def detection_and_photometry(
     detection_mask: int,
     fwhm_radius_factor: float = 1.5,
 ) -> tuple[
-    Table | None, Table | None, DAOStarFinder | None, Any, WCS | None,
-    Figure | None, float | None, np.ndarray | None,
+    Table | None,
+    Table | None,
+    DAOStarFinder | None,
+    Any,
+    WCS | None,
+    Figure | None,
+    float | None,
+    np.ndarray | None,
 ]:
     """
     Perform a complete photometry workflow on an astronomical image.
@@ -1755,8 +1776,7 @@ def detection_and_photometry(
     )
     # Add satellite trail mask to the final mask
     final_mask = np.logical_or(
-        final_mask,
-        _to_bool_mask(satellite_mask, image_data.shape[:2])
+        final_mask, _to_bool_mask(satellite_mask, image_data.shape[:2])
     )
     mask = final_mask
 
@@ -1790,9 +1810,7 @@ def detection_and_photometry(
         st.warning("Failed to estimate FWHM. Using the initial estimate.")
         fwhm_estimate = mean_fwhm_pixel
     if clipped_std is None:
-        _, _, clipped_std = sigma_clipped_stats(
-            image_sub, sigma=3.0, stdfunc="mad_std"
-        )
+        _, _, clipped_std = sigma_clipped_stats(image_sub, sigma=3.0, stdfunc="mad_std")
 
     daofind = DAOStarFinder(
         fwhm=1.5 * fwhm_estimate, threshold=(threshold_sigma) * clipped_std
@@ -1885,9 +1903,7 @@ def detection_and_photometry(
                 # background uncertainty by ~25% (and sigma_flux by ~8% in the
                 # background-limited regime).
                 try:
-                    bkg_median_err = np.asarray(
-                        annulus_stats.median_err, dtype=float
-                    )
+                    bkg_median_err = np.asarray(annulus_stats.median_err, dtype=float)
                 except Exception:
                     bkg_median_err = None
                 annulus_area = np.asarray(
@@ -1988,14 +2004,10 @@ def detection_and_photometry(
                     f"{centroid_error}"
                 )
                 centroid_flux_err = np.zeros(len(bkg_corrected), dtype=float)
-            bkg_corrected_err = np.sqrt(
-                bkg_corrected_err**2 + centroid_flux_err**2
-            )
+            bkg_corrected_err = np.sqrt(bkg_corrected_err**2 + centroid_flux_err**2)
 
             phot_result[f"aperture_sum_bkg_corr{radius_suffix}"] = bkg_corrected
-            phot_result[f"aperture_sum_bkg_corr_err{radius_suffix}"] = (
-                bkg_corrected_err
-            )
+            phot_result[f"aperture_sum_bkg_corr_err{radius_suffix}"] = bkg_corrected_err
             phot_result[f"aperture_area{radius_suffix}"] = aperture_area
             phot_result[f"background{radius_suffix}"] = total_bkg
             phot_result[f"background_per_pixel{radius_suffix}"] = bkg_per_pixel
@@ -2130,9 +2142,7 @@ def detection_and_photometry(
                 quality_flag = np.where(
                     ~np.isfinite(snr),
                     "unknown",
-                    np.where(
-                        snr <= 5, "poor", np.where(snr <= 10, "marginal", "good")
-                    ),
+                    np.where(snr <= 5, "poor", np.where(snr <= 10, "marginal", "good")),
                 )
                 phot_table[f"quality_flag{radius_suffix}"] = quality_flag
             else:
@@ -2185,14 +2195,10 @@ def detection_and_photometry(
         # shape/normalisation or local-background problem worth investigating.
         try:
             st.session_state["psf_aperture_consistency"] = (
-                check_psf_aperture_consistency(
-                    phot_table, epsf_table, aperture_radii
-                )
+                check_psf_aperture_consistency(phot_table, epsf_table, aperture_radii)
             )
         except Exception as consistency_error:
-            st.warning(
-                f"PSF/aperture consistency check failed: {consistency_error}"
-            )
+            st.warning(f"PSF/aperture consistency check failed: {consistency_error}")
 
         # Use the first aperture's columns (since "aperture_sum" was renamed)
         first_aperture_suffix = f"_{str(aperture_radii[0]).replace('.', '_')}"
@@ -2230,7 +2236,9 @@ def detection_and_photometry(
                             epsf_table["x_fit"], epsf_table["y_fit"]
                         )
                         if not isinstance(epsf_sky, SkyCoord):
-                            raise ValueError("Celestial WCS did not return sky coordinates")
+                            raise ValueError(
+                                "Celestial WCS did not return sky coordinates"
+                            )
                         epsf_sky = epsf_sky.icrs
                         epsf_table["ra"] = epsf_sky.ra
                         epsf_table["dec"] = epsf_sky.dec
@@ -2397,8 +2405,7 @@ def calculate_zero_point(
             matched_table[filter_band] - matched_table[instrumental_mag_col]
         ).values
         clipped = sigma_clip(
-            zero_points_raw, sigma=3.0, maxiters=10,
-            cenfunc="median", stdfunc="mad_std"
+            zero_points_raw, sigma=3.0, maxiters=10, cenfunc="median", stdfunc="mad_std"
         )
 
         # np.ma.getmaskarray returns a proper boolean array even when sigma_clip

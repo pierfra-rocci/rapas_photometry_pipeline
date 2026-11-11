@@ -141,7 +141,9 @@ def test_sextractor_failure_with_binary_present_is_reported(monkeypatch, fake_st
 
     assert result == []
     assert len(calls["sep"]) == 1
-    assert any("SExtractor returned no result" in message for message in fake_st.warnings)
+    assert any(
+        "SExtractor returned no result" in message for message in fake_st.warnings
+    )
 
 
 def test_sep_fallback_receives_the_same_detection_parameters(monkeypatch, fake_st):
@@ -174,7 +176,9 @@ def test_sextractor_detection_does_not_call_sep(monkeypatch, fake_st):
 def test_empty_sextractor_detection_is_not_a_fallback_case(monkeypatch, fake_st):
     monkeypatch.setattr(transient, "_sextractor_binary_available", lambda: True)
 
-    result, calls = _run(monkeypatch, _detections(0), AssertionError("SEP must not run"))
+    result, calls = _run(
+        monkeypatch, _detections(0), AssertionError("SEP must not run")
+    )
 
     assert result == []
     assert calls["sep"] == []
@@ -201,12 +205,18 @@ def test_sep_fallback_exception_is_reported(monkeypatch, fake_st):
     result, calls = _run(monkeypatch, None, RuntimeError("sep exploded"))
 
     assert result == []
-    assert any("SEP fallback source detection failed" in message for message in fake_st.errors)
+    assert any(
+        "SEP fallback source detection failed" in message for message in fake_st.errors
+    )
 
 
 def test_sextractor_exception_still_returns_empty(monkeypatch, fake_st):
-    result, calls = _run(monkeypatch, RuntimeError("sextractor exploded"), _detections())
+    result, calls = _run(
+        monkeypatch, RuntimeError("sextractor exploded"), _detections()
+    )
 
     assert result == []
     assert calls["sep"] == []
-    assert any("SExtractor source detection failed" in message for message in fake_st.errors)
+    assert any(
+        "SExtractor source detection failed" in message for message in fake_st.errors
+    )

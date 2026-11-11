@@ -57,9 +57,7 @@ def _create_simbad_client(server: str) -> object:
                 simbad_conf.servers_list.remove(server)
 
 
-def _query_simbad_region(
-    server: str, center_coord: SkyCoord, radius: object
-) -> object:
+def _query_simbad_region(server: str, center_coord: SkyCoord, radius: object) -> object:
     """Run the project's SIMBAD region query against one specified mirror."""
     simbad_client = _create_simbad_client(server)
     simbad_client.add_votable_fields("otype", "main_id", "ids", "B", "V")
@@ -152,7 +150,9 @@ def cross_match_with_gaia(
             w, wcs_error, wcs_messages = safe_wcs_create(science_header)
             log_messages.extend(wcs_messages)
             if w is None:
-                return None, log_messages + [f"ERROR: Invalid celestial WCS: {wcs_error}"]
+                return None, log_messages + [
+                    f"ERROR: Invalid celestial WCS: {wcs_error}"
+                ]
             log_messages.append("INFO: Using header WCS for cross-matching.")
     except Exception as e:
         return None, [f"ERROR: Error creating WCS: {e}"]
@@ -240,12 +240,14 @@ def cross_match_with_gaia(
                             columns=["**", "+_r"]
                         )  # Get all columns plus distance
                         v.ROW_LIMIT = -1  # No row limit
-                        catalog_table, used_vizier_fallback = query_vizier_with_fallback(
-                            v,
-                            "query_region",
-                            center_coord,
-                            radius=radius_query_deg * u.deg,
-                            catalog="II/379/smssdr4",  # SkyMapper DR4
+                        catalog_table, used_vizier_fallback = (
+                            query_vizier_with_fallback(
+                                v,
+                                "query_region",
+                                center_coord,
+                                radius=radius_query_deg * u.deg,
+                                catalog="II/379/smssdr4",  # SkyMapper DR4
+                            )
                         )
                         if used_vizier_fallback:
                             log_messages.append(
@@ -270,12 +272,14 @@ def cross_match_with_gaia(
                             columns=["**", "+_r"]
                         )  # Get all columns plus distance
                         v.ROW_LIMIT = -1  # No row limit
-                        catalog_table, used_vizier_fallback = query_vizier_with_fallback(
-                            v,
-                            "query_region",
-                            center_coord,
-                            radius=radius_query_deg * u.deg,
-                            catalog="II/349/ps1",  # PANSTARRS DR1
+                        catalog_table, used_vizier_fallback = (
+                            query_vizier_with_fallback(
+                                v,
+                                "query_region",
+                                center_coord,
+                                radius=radius_query_deg * u.deg,
+                                catalog="II/349/ps1",  # PANSTARRS DR1
+                            )
                         )
                         if used_vizier_fallback:
                             log_messages.append(
@@ -333,7 +337,7 @@ def cross_match_with_gaia(
                 )
 
             catalog_table = None
-            
+
             # First, try VizieR
             try:
                 log_messages.append(
@@ -433,14 +437,12 @@ def cross_match_with_gaia(
                                 join_type="right",
                             )
                 else:
-                    log_messages.append(
-                        "INFO: Gaia VizieR query returned no results."
-                    )
+                    log_messages.append("INFO: Gaia VizieR query returned no results.")
             except Exception as vizier_error:
-                log_messages.append(f"WARNING: Gaia VizieR query failed: {vizier_error}")
                 log_messages.append(
-                    "INFO: Will try direct GAIA TAP query as fallback."
+                    f"WARNING: Gaia VizieR query failed: {vizier_error}"
                 )
+                log_messages.append("INFO: Will try direct GAIA TAP query as fallback.")
 
             # If VizieR failed or returned no results, try direct GAIA query
             if catalog_table is None or len(catalog_table) == 0:
@@ -470,9 +472,7 @@ def cross_match_with_gaia(
                         )
                     )
                     """
-                    job, used_gaia_fallback = query_gaia_with_fallback(
-                        Gaia, gaia_query
-                    )
+                    job, used_gaia_fallback = query_gaia_with_fallback(Gaia, gaia_query)
                     if used_gaia_fallback:
                         log_messages.append(
                             "INFO: GAIA primary TAP unavailable; using the "
@@ -489,7 +489,11 @@ def cross_match_with_gaia(
                     # Different query strategies based on filter band
                     if (
                         filter_band
-                        not in ["phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"]
+                        not in [
+                            "phot_g_mean_mag",
+                            "phot_bp_mean_mag",
+                            "phot_rp_mean_mag",
+                        ]
                         and catalog_table is not None
                         and len(catalog_table) > 0
                     ):
@@ -528,7 +532,9 @@ def cross_match_with_gaia(
                             )
 
                 except Exception as cone_error:
-                    log_messages.append(f"WARNING: Direct GAIA TAP query failed: {cone_error}")
+                    log_messages.append(
+                        f"WARNING: Direct GAIA TAP query failed: {cone_error}"
+                    )
                     log_messages.append(
                         "ERROR: Both VizieR and direct GAIA queries failed."
                     )
@@ -730,7 +736,11 @@ def cross_match_with_gaia(
             }
             for standard_name, candidates in standardized_sloan_columns.items():
                 source_column = next(
-                    (col for col in candidates if col in catalog_table_filtered.colnames),
+                    (
+                        col
+                        for col in candidates
+                        if col in catalog_table_filtered.colnames
+                    ),
                     None,
                 )
                 if source_column is not None:
@@ -951,9 +961,7 @@ def enhance_catalog(
                 calib_cols.append("match_id")
                 calib_cols = list(dict.fromkeys(calib_cols))
                 gaia_subset = (
-                    matched_table[calib_cols]
-                    .drop_duplicates(subset="match_id")
-                    .copy()
+                    matched_table[calib_cols].drop_duplicates(subset="match_id").copy()
                 )
 
                 rename_dict = {
@@ -1145,9 +1153,9 @@ def enhance_catalog(
                 all_events["date"].append(
                     None
                     if timestamp is None
-                    else datetime.fromtimestamp(timestamp / 1000.0, timezone.utc).strftime(
-                        "%Y-%m-%d %H:%M:%S"
-                    )
+                    else datetime.fromtimestamp(
+                        timestamp / 1000.0, timezone.utc
+                    ).strftime("%Y-%m-%d %H:%M:%S")
                 )
                 redshift = _finite_or_none(event.get("redshift"))
                 all_events["redshift"].append(np.nan if redshift is None else redshift)
@@ -1227,9 +1235,9 @@ def enhance_catalog(
                         "source_name"
                     ]
                     enhanced_table.loc[original_idx, "astrocolibri_type"] = row["type"]
-                    enhanced_table.loc[
-                        original_idx, "astrocolibri_classification"
-                    ] = row["classification"]
+                    enhanced_table.loc[original_idx, "astrocolibri_classification"] = (
+                        row["classification"]
+                    )
 
                 # An event only counts as matched if it is still the label of
                 # its source (a closer event may have replaced it).
@@ -1248,9 +1256,7 @@ def enhance_catalog(
                     tier = astrocolibri_match_radius(sep)
                     if tier is not None:
                         radius_counts[tier] += 1
-                tiers = ", ".join(
-                    f"{r:g}\" x{c}" for r, c in radius_counts.items() if c
-                )
+                tiers = ", ".join(f'{r:g}" x{c}' for r, c in radius_counts.items() if c)
                 log_messages.append(
                     f"INFO: Astro-Colibri: {n_matched} source(s) matched within "
                     f"{ASTROCOLIBRI_MATCH_RADIUS_ARCSEC:g} arcsec"
@@ -1786,12 +1792,12 @@ def enhance_catalog(
                 # Convert to DataFrame
                 pc10_df = pc10_table.to_pandas()
 
-                ra_values = pd.to_numeric(
-                    pc10_df["RAICRS"], errors="coerce"
-                ).to_numpy(dtype=float)
-                dec_values = pd.to_numeric(
-                    pc10_df["DEICRS"], errors="coerce"
-                ).to_numpy(dtype=float)
+                ra_values = pd.to_numeric(pc10_df["RAICRS"], errors="coerce").to_numpy(
+                    dtype=float
+                )
+                dec_values = pd.to_numeric(pc10_df["DEICRS"], errors="coerce").to_numpy(
+                    dtype=float
+                )
                 valid_pc10_positions = np.isfinite(ra_values) & np.isfinite(dec_values)
                 pc10_df = pc10_df.loc[valid_pc10_positions].reset_index(drop=True)
                 ra_values = ra_values[valid_pc10_positions]
@@ -1807,18 +1813,18 @@ def enhance_catalog(
                 except (TypeError, ValueError):
                     observation_time = Time.now()
 
-                epochs = pd.to_numeric(
-                    pc10_df["Epoch"], errors="coerce"
-                ).to_numpy(dtype=float)
-                pm_ra_cosdec = pd.to_numeric(
-                    pc10_df["pmRA"], errors="coerce"
-                ).to_numpy(dtype=float)
-                pm_dec = pd.to_numeric(
-                    pc10_df["pmDE"], errors="coerce"
-                ).to_numpy(dtype=float)
-                parallaxes = pd.to_numeric(
-                    pc10_df["plx"], errors="coerce"
-                ).to_numpy(dtype=float)
+                epochs = pd.to_numeric(pc10_df["Epoch"], errors="coerce").to_numpy(
+                    dtype=float
+                )
+                pm_ra_cosdec = pd.to_numeric(pc10_df["pmRA"], errors="coerce").to_numpy(
+                    dtype=float
+                )
+                pm_dec = pd.to_numeric(pc10_df["pmDE"], errors="coerce").to_numpy(
+                    dtype=float
+                )
+                parallaxes = pd.to_numeric(pc10_df["plx"], errors="coerce").to_numpy(
+                    dtype=float
+                )
                 radial_velocities = pd.to_numeric(
                     pc10_df["RV"], errors="coerce"
                 ).to_numpy(dtype=float)
@@ -1943,19 +1949,25 @@ def enhance_catalog(
     def get_column_order():
         """Generate the desired column order with photometry columns grouped together."""
         column_order = []
-        
+
         # Start with basic identification and position columns
         basic_cols = ["xcenter", "ycenter", "ra", "dec", "catalog_source_id"]
-        column_order.extend([col for col in basic_cols if col in enhanced_table.columns])
-        
+        column_order.extend(
+            [col for col in basic_cols if col in enhanced_table.columns]
+        )
+
         # Add aperture photometry columns (magnitudes, errors, SNR) grouped together
         aperture_cols = []
         # Only select aperture_mag columns that don't contain "err" to avoid including error columns
-        aperture_mag_cols = [col for col in enhanced_table.columns if col.startswith("aperture_mag_") and "err" not in col]
-        
+        aperture_mag_cols = [
+            col
+            for col in enhanced_table.columns
+            if col.startswith("aperture_mag_") and "err" not in col
+        ]
+
         # Sort aperture columns by radius for consistent ordering
         aperture_mag_cols.sort()
-        
+
         # Group aperture magnitudes with their corresponding errors and SNR
         for mag_col in aperture_mag_cols:
             aperture_cols.append(mag_col)
@@ -1974,9 +1986,9 @@ def enhance_catalog(
                 snr_col = snr_col_dot
             if snr_col is not None:
                 aperture_cols.append(snr_col)
-        
+
         column_order.extend(aperture_cols)
-        
+
         # Add PSF photometry columns (magnitudes, errors, SNR) grouped together
         psf_cols = []
         if "psf_mag" in enhanced_table.columns:
@@ -1991,41 +2003,71 @@ def enhance_catalog(
             for col in enhanced_table.columns
             if col.startswith("psf_minus_aperture_mag_")
         )
-        
+
         column_order.extend(psf_cols)
-        
+
         # Add calibration-related columns
         calib_cols = ["calib_star", "zero_point", "zero_point_std", "airmass"]
-        column_order.extend([col for col in calib_cols if col in enhanced_table.columns])
-        
+        column_order.extend(
+            [col for col in calib_cols if col in enhanced_table.columns]
+        )
+
         # Add catalog cross-match columns
         catalog_cols = [
-            "astrocolibri_name", "astrocolibri_type", "astrocolibri_classification",
-            "astrocolibri_ra", "astrocolibri_dec",
-            "tns_name", "tns_type", "tns_ra", "tns_dec",
+            "astrocolibri_name",
+            "astrocolibri_type",
+            "astrocolibri_classification",
+            "astrocolibri_ra",
+            "astrocolibri_dec",
+            "tns_name",
+            "tns_type",
+            "tns_ra",
+            "tns_dec",
             "tns_separation_arcsec",
-            "astrocolibri_ra", "astrocolibri_dec",
-            "tns_name", "tns_type", "tns_ra", "tns_dec",
+            "astrocolibri_ra",
+            "astrocolibri_dec",
+            "tns_name",
+            "tns_type",
+            "tns_ra",
+            "tns_dec",
             "tns_separation_arcsec",
-            "simbad_main_id", "simbad_otype", "simbad_B", "simbad_V",
-            "skybot_NAME", "skybot_OBJECT_TYPE", "skybot_MAGV", "skybot_epoch",
-            "aavso_Name", "aavso_Type", "aavso_Period",
-            "qso_name", "qso_redshift", "qso_Rmag",
-            "pc10_name", "pc10_type", "pc10_Gmag", "pc10_GBPmag", "pc10_GRPmag",
-            "catalog_matches"
+            "simbad_main_id",
+            "simbad_otype",
+            "simbad_B",
+            "simbad_V",
+            "skybot_NAME",
+            "skybot_OBJECT_TYPE",
+            "skybot_MAGV",
+            "skybot_epoch",
+            "aavso_Name",
+            "aavso_Type",
+            "aavso_Period",
+            "qso_name",
+            "qso_redshift",
+            "qso_Rmag",
+            "pc10_name",
+            "pc10_type",
+            "pc10_Gmag",
+            "pc10_GBPmag",
+            "pc10_GRPmag",
+            "catalog_matches",
         ]
-        column_order.extend([col for col in catalog_cols if col in enhanced_table.columns])
-        
+        column_order.extend(
+            [col for col in catalog_cols if col in enhanced_table.columns]
+        )
+
         # Add GAIA-related columns
         gaia_cols = [col for col in enhanced_table.columns if col.startswith("gaia_")]
         column_order.extend(gaia_cols)
-        
+
         # Add any remaining columns not explicitly ordered
-        remaining_cols = [col for col in enhanced_table.columns if col not in column_order]
+        remaining_cols = [
+            col for col in enhanced_table.columns if col not in column_order
+        ]
         column_order.extend(remaining_cols)
-        
+
         return column_order
-    
+
     # Apply the new column order
     try:
         column_order = list(dict.fromkeys(get_column_order()))
@@ -2038,25 +2080,37 @@ def enhance_catalog(
     def round_numeric_columns():
         """Round magnitude, error, and SNR columns to 3 decimal places."""
         columns_rounded = 0
-        
+
         # Round all aperture magnitude columns
-        aperture_mag_cols = [col for col in enhanced_table.columns if col.startswith("aperture_mag_") and "err" not in col]
+        aperture_mag_cols = [
+            col
+            for col in enhanced_table.columns
+            if col.startswith("aperture_mag_") and "err" not in col
+        ]
         for col in aperture_mag_cols:
-            if col in enhanced_table.columns and pd.api.types.is_numeric_dtype(enhanced_table[col]):
+            if col in enhanced_table.columns and pd.api.types.is_numeric_dtype(
+                enhanced_table[col]
+            ):
                 enhanced_table[col] = enhanced_table[col].round(3)
                 columns_rounded += 1
-        
+
         # Round all aperture magnitude error columns
-        aperture_err_cols = [col for col in enhanced_table.columns if col.startswith("aperture_mag_err_")]
+        aperture_err_cols = [
+            col for col in enhanced_table.columns if col.startswith("aperture_mag_err_")
+        ]
         for col in aperture_err_cols:
-            if col in enhanced_table.columns and pd.api.types.is_numeric_dtype(enhanced_table[col]):
+            if col in enhanced_table.columns and pd.api.types.is_numeric_dtype(
+                enhanced_table[col]
+            ):
                 enhanced_table[col] = enhanced_table[col].round(3)
                 columns_rounded += 1
-        
+
         # Round PSF magnitude and error columns
         psf_mag_cols = ["psf_mag", "psf_mag_err"]
         for col in psf_mag_cols:
-            if col in enhanced_table.columns and pd.api.types.is_numeric_dtype(enhanced_table[col]):
+            if col in enhanced_table.columns and pd.api.types.is_numeric_dtype(
+                enhanced_table[col]
+            ):
                 enhanced_table[col] = enhanced_table[col].round(3)
                 columns_rounded += 1
 
@@ -2067,23 +2121,29 @@ def enhance_catalog(
             if col.startswith("psf_minus_aperture_mag_")
         ]
         for col in psf_diff_cols:
-            if col in enhanced_table.columns and pd.api.types.is_numeric_dtype(enhanced_table[col]):
+            if col in enhanced_table.columns and pd.api.types.is_numeric_dtype(
+                enhanced_table[col]
+            ):
                 enhanced_table[col] = enhanced_table[col].round(3)
                 columns_rounded += 1
-        
+
         # Round all SNR columns
         snr_cols = [col for col in enhanced_table.columns if col.startswith("snr")]
         for col in snr_cols:
-            if col in enhanced_table.columns and pd.api.types.is_numeric_dtype(enhanced_table[col]):
+            if col in enhanced_table.columns and pd.api.types.is_numeric_dtype(
+                enhanced_table[col]
+            ):
                 enhanced_table[col] = enhanced_table[col].round(3)
                 columns_rounded += 1
-        
+
         return columns_rounded
-    
+
     try:
         rounded_count = round_numeric_columns()
         if rounded_count > 0:
-            log_messages.append(f"INFO: Rounded {rounded_count} numeric columns to 3 decimal places")
+            log_messages.append(
+                f"INFO: Rounded {rounded_count} numeric columns to 3 decimal places"
+            )
     except Exception as e:
         log_messages.append(f"WARNING: Could not round numeric columns: {e}")
 

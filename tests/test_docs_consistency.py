@@ -99,11 +99,11 @@ def test_shared_user_facing_message_in_code_and_docs(
     message: str, source_path: str, doc_paths: tuple[str, ...]
 ) -> None:
     """A shared message must still be used in code and quoted in the docs."""
-    assert _source_uses_message(
-        source_path, message
-    ), f"{source_path} no longer uses the shared message {message!r}"
+    assert _source_uses_message(source_path, message), (
+        f"{source_path} no longer uses the shared message {message!r}"
+    )
     for doc_path in doc_paths:
         text = (PROJECT_ROOT / doc_path).read_text(encoding="utf-8")
-        assert message in _normalise_whitespace(
-            text
-        ), f"{doc_path} does not contain {message!r}"
+        assert message in _normalise_whitespace(text), (
+            f"{doc_path} does not contain {message!r}"
+        )

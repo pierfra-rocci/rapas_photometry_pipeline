@@ -160,9 +160,7 @@ def filter_skybot_candidates(
             Skybot._parse_result,
         )
         if skybot_problem is not None:
-            st.warning(
-                f"{skybot_problem}. Skipping Solar System object filtering."
-            )
+            st.warning(f"{skybot_problem}. Skipping Solar System object filtering.")
             return candidates
 
         if skybot_results is None or len(skybot_results) == 0:
@@ -473,7 +471,6 @@ def find_candidates(
 
     # Cross-match detections with photometry_table to get PSF magnitudes
     if photometry_table is not None and len(photometry_table) > 0:
-
         # Get coordinates from photometry_table
         phot_ra = photometry_table["ra"]
         phot_dec = photometry_table["dec"]
@@ -549,9 +546,7 @@ def find_candidates(
             obj["mag_calib"] = mag_calib
             obj["mag_calib_err"] = mag_calib_err
         else:
-            st.warning(
-                "No matches found between detections and PSF photometry table"
-            )
+            st.warning("No matches found between detections and PSF photometry table")
             return []
     else:
         st.warning("No photometry_table provided - cannot get PSF magnitudes")
@@ -561,7 +556,11 @@ def find_candidates(
     try:
         cat, used_vizier_fallback = get_vizier_catalog_with_fallback(
             catalogs,
-            ra_center, dec_center, sr, catalog, filters={filter_name + "mag": mag_limit}
+            ra_center,
+            dec_center,
+            sr,
+            catalog,
+            filters={filter_name + "mag": mag_limit},
         )
         if used_vizier_fallback:
             st.info("VizieR primary mirror unavailable; using a fallback mirror.")
@@ -898,7 +897,7 @@ def plot_astrocolibri_cutouts(
         mag_val = select_astrocolibri_magnitude(row)
         mag_err_val = select_astrocolibri_magnitude_error(row)
 
-        name = row.get("astrocolibri_name", f"AC_{i+1}")
+        name = row.get("astrocolibri_name", f"AC_{i + 1}")
         ac_type = row.get("astrocolibri_type", "")
         ac_class = row.get("astrocolibri_classification", "")
 
@@ -960,7 +959,7 @@ def plot_astrocolibri_cutouts(
         # Save PNG to output_dir so it ends up in the ZIP
         try:
             safe_name = sanitize_astrocolibri_name(name)
-            png_filename = f"{base_filename}_astrocolibri_{i+1:02d}_{safe_name}.png"
+            png_filename = f"{base_filename}_astrocolibri_{i + 1:02d}_{safe_name}.png"
             png_path = os.path.join(output_dir, png_filename)
             fig.savefig(png_path, dpi=100, bbox_inches="tight")
             saved_paths.append(png_path)
@@ -1209,7 +1208,21 @@ CALIBRATION_BAND_TO_FILTER = {
     "zmag": "z",
 }
 
-_KNOWN_FILTER_NAMES = ("u", "g", "r", "i", "z", "U", "B", "V", "R", "I", "G", "BP", "RP")
+_KNOWN_FILTER_NAMES = (
+    "u",
+    "g",
+    "r",
+    "i",
+    "z",
+    "U",
+    "B",
+    "V",
+    "R",
+    "I",
+    "G",
+    "BP",
+    "RP",
+)
 
 
 def normalize_calibration_filter(filter_mag, default="r"):

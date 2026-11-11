@@ -154,8 +154,7 @@ def test_key_pipeline_status_messages_use_expected_levels() -> None:
 
     assert "Observatory information updated from FITS header" in success_messages
     assert any(
-        "File '" in message and "is ready." in message
-        for message in success_messages
+        "File '" in message and "is ready." in message for message in success_messages
     )
 
     warning_arg_names = {
@@ -227,7 +226,8 @@ def _load_pixel_scale_helpers(extract, override, stops):
     )
     names = {"_require_pixel_scale", "_user_pixel_scale"}
     funcs = [
-        n for n in _app_tree().body
+        n
+        for n in _app_tree().body
         if isinstance(n, ast.FunctionDef) and n.name in names
     ]
     ns = {"np": np, "st": st, "extract_pixel_scale": extract}
@@ -273,11 +273,13 @@ def test_reset_never_clears_process_wide_streamlit_caches():
     """st.cache_data.clear() wipes the caches of every concurrent user."""
     tree = ast.parse((ROOT_DIR / "src" / "tools_app.py").read_text(encoding="utf-8"))
     func = next(
-        n for n in ast.walk(tree)
+        n
+        for n in ast.walk(tree)
         if isinstance(n, ast.FunctionDef) and n.name == "clear_all_caches"
     )
     clears = [
-        n for n in ast.walk(func)
+        n
+        for n in ast.walk(func)
         if isinstance(n, ast.Call)
         and isinstance(n.func, ast.Attribute)
         and n.func.attr == "clear"
