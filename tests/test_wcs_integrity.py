@@ -338,7 +338,14 @@ def test_catalog_query_uses_wcs_image_center_in_icrs(
     def fail_tap(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError("offline")
 
+    class FailingGaiaMirror:
+        def launch_job(self, *_args: object, **_kwargs: object) -> None:
+            raise RuntimeError("offline")
+
     monkeypatch.setattr("src.xmatch_catalogs.Gaia.launch_job", fail_tap)
+    monkeypatch.setattr(
+        "src.catalog_mirrors._gaia_mirror_client", lambda: FailingGaiaMirror()
+    )
     cross_match_with_gaia(
         Table({"xcenter": [40.0], "ycenter": [40.0]}),
         header, 1.0, 3.0, "phot_g_mean_mag", 21.0,

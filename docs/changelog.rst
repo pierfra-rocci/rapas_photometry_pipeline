@@ -48,9 +48,10 @@ Version 1.9.3
 
 **Catalog service and local astrometry resilience**
 
-*   VizieR and SIMBAD requests retry on their Harvard mirrors after a primary
-    service failure. These are mirrors of the same services, not automatic
-    switches to a different calibration catalog.
+*   VizieR and SIMBAD requests retry on the Harvard and IDIA mirrors, and
+    Gaia TAP queries on the Heidelberg mirror, following the alternatives
+    listed at https://cds.unistra.fr/. These are mirrors of the same services,
+    not automatic switches to a different calibration catalog.
 *   Local plate-solving attempts share a 180-second budget, configurable with
     ``RPP_LOCAL_ASTROMETRY_TIMEOUT_SECONDS``, before the existing online
     fallback is attempted when configured.
@@ -71,7 +72,15 @@ Version 1.9.3
 *   If the Aladin Lite script cannot be downloaded from CDS, the viewer retries
     with the pinned v3.8.2 module from jsDelivr. If neither source is
     reachable, the widget reports the failure and the source-coordinate table
-    remains available; HiPS imagery still requires access to the tile server.
+    remains available.
+
+**Aladin HiPS mirror fallback**
+
+*   When a survey ``properties`` document cannot be read from CDS, the viewer
+    now probes the CDS-listed mirror servers for the same HiPS (ESA Sky,
+    CASDA, STPub and China-VO; see https://cds.unistra.fr/) and switches the
+    base layer to the first reachable one. The second survey is only used when
+    the mirrors fail too, and the status line reports which server was used.
 
 **VOTable export with Astro-Colibri and TNS columns**
 
@@ -253,17 +262,6 @@ Version 1.9.0
 *   **Transient finder at 1.5 sigma.** Detection now starts directly at
     1.5 sigma (``TRANSIENT_DETECT_THRESH``) with a minimum S/N of 2 (3 above
     2 sigma) to be more sensitive to faint sources. Candidates are still
-    required to match the photometry table.
-*   **Transient finder without PSF photometry.** When the photometry table has
-    no PSF magnitude columns, or when the matched detections have no finite
-    PSF value, ``find_candidates()`` now falls back to the calibrated
-    1.1 x FWHM aperture magnitude (``aperture_mag_1_1`` and its error) instead
-    of aborting with "No transient candidates found". The app displays a
-    warning when candidates rely on this fallback, using the same
-    PSF-unavailable wording as the main pipeline. The shared warning is
-    ``PSF photometry is not available; using calibrated aperture photometry instead.``;
-    the full transient variant is
-    ``PSF photometry is not available; using calibrated aperture photometry instead. Transient candidates use the calibrated 1.1 x FWHM aperture magnitude.``
     required to match the photometry table.
 *   **Transient finder without PSF photometry.** When the photometry table has
     no PSF magnitude columns, or when the matched detections have no finite

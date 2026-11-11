@@ -19,15 +19,20 @@ from astroquery.simbad import conf as simbad_conf
 from astroquery.vizier import Vizier
 from astroquery.imcce import Skybot
 
-from src.catalog_mirrors import query_vizier_with_fallback
+from src.catalog_mirrors import (
+    SIMBAD_SERVERS,
+    query_gaia_with_fallback,
+    query_vizier_with_fallback,
+)
 from src.tns_catalog import cross_match_tns
 from src.tools_pipeline import URL, safe_wcs_create
 from src.utils import safe_catalog_query, skybot_cone_search
 
 # Timeout (seconds) for outbound HTTP requests so a slow service cannot hang a run
 HTTP_TIMEOUT_SECONDS = 30
-SIMBAD_PRIMARY_SERVER = "simbad.cds.unistra.fr"
-SIMBAD_FALLBACK_SERVER = "simbad.cfa.harvard.edu"
+# Kept as module-level names for callers that refer to them here.
+SIMBAD_PRIMARY_SERVER = SIMBAD_SERVERS[0]
+SIMBAD_FALLBACK_SERVER = SIMBAD_SERVERS[1]
 _SIMBAD_CLIENT_CREATION_LOCK = threading.Lock()
 
 # astroquery clients are process-wide singletons shared by every Streamlit session.
@@ -64,32 +69,21 @@ def _query_simbad_region(
 def query_simbad_region_with_fallback(
     center_coord: SkyCoord, radius: object
 ) -> tuple[object | None, bool, str | None]:
-    """Query SIMBAD, retrying on the Harvard mirror after a primary failure."""
-    result, primary_error = safe_catalog_query(
-        _query_simbad_region,
-        "SIMBAD query failed",
-        SIMBAD_PRIMARY_SERVER,
-        center_coord,
-        radius,
-    )
-    if primary_error is None:
-        return result, False, None
+    """Query SIMBAD, retrying on the next mirror after a primary failure."""
+    errors: list[str] = []
+    for index, server in enumerate(SIMBAD_SERVERS):
+        result, error = safe_catalog_query(
+            _query_simbad_region,
+            f"SIMBAD query failed ({server})",
+            server,
+            center_coord,
+            radius,
+        )
+        if error is None:
+            return result, index > 0, None
+        errors.append(error)
 
-    result, fallback_error = safe_catalog_query(
-        _query_simbad_region,
-        "SIMBAD Harvard mirror query failed",
-        SIMBAD_FALLBACK_SERVER,
-        center_coord,
-        radius,
-    )
-    if fallback_error is None:
-        return result, True, None
-
-    return (
-        None,
-        True,
-        f"{primary_error}; {fallback_error}",
-    )
+    return None, True, "; ".join(errors)
 
 
 def cross_match_with_gaia(
@@ -255,7 +249,7 @@ def cross_match_with_gaia(
                         )
                         if used_vizier_fallback:
                             log_messages.append(
-                                "INFO: VizieR primary mirror unavailable; using the Harvard mirror."
+                                "INFO: VizieR primary mirror unavailable; using a fallback mirror."
                             )
                         if len(catalog_table) > 0:
                             catalog_table = catalog_table[0]
@@ -285,7 +279,7 @@ def cross_match_with_gaia(
                         )
                         if used_vizier_fallback:
                             log_messages.append(
-                                "INFO: VizieR primary mirror unavailable; using the Harvard mirror."
+                                "INFO: VizieR primary mirror unavailable; using a fallback mirror."
                             )
                         if len(catalog_table) > 0:
                             catalog_table = catalog_table[0]
@@ -369,7 +363,7 @@ def cross_match_with_gaia(
                 )
                 if used_vizier_fallback:
                     log_messages.append(
-                        "INFO: VizieR primary mirror unavailable; using the Harvard mirror."
+                        "INFO: VizieR primary mirror unavailable; using a fallback mirror."
                     )
 
                 if vizier_result and len(vizier_result) > 0:
@@ -418,7 +412,14 @@ def cross_match_with_gaia(
                         FROM gaiadr3.synthetic_photometry_gspc
                         WHERE source_id IN ({source_ids_str})
                         """
-                        synth_job = Gaia.launch_job(query=synth_query)
+                        synth_job, used_gaia_fallback = query_gaia_with_fallback(
+                            Gaia, synth_query
+                        )
+                        if used_gaia_fallback:
+                            log_messages.append(
+                                "INFO: GAIA primary TAP unavailable; using the "
+                                "Heidelberg mirror."
+                            )
                         synth_table = synth_job.get_results()
 
                         if synth_table is not None and len(synth_table) > 0:
@@ -469,7 +470,14 @@ def cross_match_with_gaia(
                         )
                     )
                     """
-                    job = Gaia.launch_job(query=gaia_query)
+                    job, used_gaia_fallback = query_gaia_with_fallback(
+                        Gaia, gaia_query
+                    )
+                    if used_gaia_fallback:
+                        log_messages.append(
+                            "INFO: GAIA primary TAP unavailable; using the "
+                            "Heidelberg mirror."
+                        )
                     catalog_table = job.get_results()
 
                     log_messages.append(
@@ -497,7 +505,14 @@ def cross_match_with_gaia(
                         FROM gaiadr3.synthetic_photometry_gspc
                         WHERE source_id IN ({source_ids_str})
                         """
-                        synth_job = Gaia.launch_job(query=synth_query)
+                        synth_job, used_gaia_fallback = query_gaia_with_fallback(
+                            Gaia, synth_query
+                        )
+                        if used_gaia_fallback:
+                            log_messages.append(
+                                "INFO: GAIA primary TAP unavailable; using the "
+                                "Heidelberg mirror."
+                            )
                         synth_table = synth_job.get_results()
 
                         # Join the two tables
@@ -1287,7 +1302,7 @@ def enhance_catalog(
         else:
             if used_simbad_fallback:
                 log_messages.append(
-                    "INFO: SIMBAD primary mirror unavailable; using the Harvard CFA mirror."
+                    "INFO: SIMBAD primary mirror unavailable; using a fallback mirror."
                 )
             if simbad_result is not None and len(simbad_result) > 0:
                 enhanced_table["simbad_main_id"] = None
@@ -1587,7 +1602,7 @@ def enhance_catalog(
             )
             if used_vizier_fallback:
                 log_messages.append(
-                    "INFO: VizieR primary mirror unavailable; using the Harvard mirror."
+                    "INFO: VizieR primary mirror unavailable; using a fallback mirror."
                 )
 
             if (
@@ -1663,7 +1678,7 @@ def enhance_catalog(
             )
             if used_vizier_fallback:
                 log_messages.append(
-                    "INFO: VizieR primary mirror unavailable; using the Harvard mirror."
+                    "INFO: VizieR primary mirror unavailable; using a fallback mirror."
                 )
 
             if result and len(result) > 0:
@@ -1762,7 +1777,7 @@ def enhance_catalog(
             )
             if used_vizier_fallback:
                 log_messages.append(
-                    "INFO: VizieR primary mirror unavailable; using the Harvard mirror."
+                    "INFO: VizieR primary mirror unavailable; using a fallback mirror."
                 )
 
             if result and len(result) > 0:

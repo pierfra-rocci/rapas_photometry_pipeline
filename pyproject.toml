@@ -198,7 +198,8 @@ dev = [
     "sphinx_rtd_theme",
     "sphinx",
     "sphinx_rtd_theme",
-    "sphinx"
+    "sphinx",
+    "myst-parser>=4"
 ]
 
 build = [

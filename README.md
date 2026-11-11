@@ -14,6 +14,16 @@
 
 A comprehensive astronomical photometry pipeline built with Streamlit, featuring local astrometric plate solving with an optional online fallback, multi-catalog cross-matching, and advanced photometric analysis capabilities.
 
+## Documentation
+
+- **Published manual**: <https://pierfra-rocci.github.io/rapas_photometry_pipeline/>
+  (sources in `docs/`: user guide, features, usage, API reference, troubleshooting,
+  changelog)
+- **Tutorials**: [English](docs/TUTORIAL.md) and [French](docs/TUTORIAL_FR.md)
+  step-by-step walkthroughs of a full analysis session
+- **Formulas and error budget**: `docs/PHOTOMETRY_FORMULAS.md` and
+  `docs/ERROR_BUDGET_REVIEW.md`
+
 ## Features
 
 ### 🔭 Core Photometry
@@ -332,12 +342,6 @@ and are not included in the ZIP.
   filtering is not blocked. The app then shows the shared PSF warning
   `PSF photometry is not available; using calibrated aperture photometry instead. Transient candidates use the calibrated 1.1 x FWHM aperture magnitude.`
   The main pipeline uses only the first sentence.
-- Matched detections use the calibrated PSF magnitude. When PSF photometry is
-  unavailable (missing columns or no finite value for the matched detections),
-  the calibrated 1.1 x FWHM aperture magnitude is used instead, so transient
-  filtering is not blocked. The app then shows the shared PSF warning
-  `PSF photometry is not available; using calibrated aperture photometry instead. Transient candidates use the calibrated 1.1 x FWHM aperture magnitude.`
-  The main pipeline uses only the first sentence.
 - Detections coincident with a reference-survey or Vizier source are rejected
   within half the seeing FWHM, unless they are a genuine brightness excess
   (`mag_threshold`, default 2.0 mag brighter than the catalog counterpart)
@@ -389,15 +393,17 @@ is accepted; refinement failure keeps the best available WCS.
 
 ## Generated Files
 
-The pipeline generates comprehensive output files, available as a ZIP download:
+The pipeline generates comprehensive output files. The catalogs, log, plots and
+headers are bundled in the ZIP download; FITS products are written to the
+per-user results directory and stay out of the ZIP (see **Output Files** above):
 
 - **Photometry Catalog** (CSV and VOTable): Curated source catalog (`id`, coordinates, Astro-Colibri/SIMBAD/SkyBoT/AAVSO matches, S/N, multi-aperture and PSF photometry with errors and quality flags)
 - **Log File**: Detailed processing log with timestamps
-- **Background Model** (FITS): 2D background and RMS maps
-- **PSF Model** (FITS): Empirical PSF (or Gaussian fallback) for the field
+- **Background Model** (FITS): 2D background and RMS maps, results directory only
+- **PSF Model** (FITS): Empirical PSF (or Gaussian fallback) for the field, results directory only
 - **Plots**: FWHM analysis, magnitude distributions, zero-point calibration
 - **WCS Header** (TXT): Updated astrometric solution
-- **WCS-Solved FITS**: Original image with refined WCS embedded in header (saved to `rpp_data/fits/`)
+- **WCS-Solved FITS**: Original image with refined WCS embedded in header (saved to the results directory and `rpp_data/fits/`, not in the ZIP)
 
 ## Data and Tracking
 
@@ -449,8 +455,8 @@ of the normal end-user pipeline:
 **Aladin Lite viewer stays empty (any browser)**:
 
 Aladin Lite v3 paints the sky with WebGL2 and fetches its HiPS tiles from CDS
-(`alasky.cds.unistra.fr`), so an empty viewer is usually a WebGL2 or a network
-issue, not a caching one.
+(`alasky.cds.unistra.fr`) or one of the CDS-listed mirror servers, so an empty
+viewer is usually a WebGL2 or a network issue, not a caching one.
 
 - **Read the red line above the viewer**: the widget now names the cause (no
   WebGL2 context, or `aladin.js` could not be downloaded) instead of showing
@@ -466,9 +472,10 @@ issue, not a caching one.
 - **Tiles blocked**: check the browser console for failed requests to
   `alasky.cds.unistra.fr` (proxy, firewall, HTTPS-Only mode); the viewer then
   falls back to `CDS/P/DSS2/red` on its own.
-- **Note**: the jsDelivr fallback provides the Aladin Lite JavaScript library;
-  survey imagery still requires access to the HiPS tile server. Both default
-  surveys use CDS, so a CDS-wide outage can affect both.
+- **Note**: the jsDelivr fallback provides the Aladin Lite JavaScript library.
+  If CDS HiPS imagery is unreachable, the viewer probes the CDS-listed mirror
+  servers (ESA Sky, CASDA, STPub, China-VO) for the same survey before
+  switching to the second survey.
 - **Alternative browsers**: use Chrome or Edge when WebGL2 cannot be enabled.
 - **Full details**: `docs/troubleshooting.rst`, section *Aladin Lite Viewer
   Issues*.
@@ -527,8 +534,8 @@ issue, not a caching one.
 - **TNS cache cleanup**: the download lock and any half-written `tns_public_objects.csv.<pid>.tmp` left by an interrupted download are removed by the next catalogue load once they are older than 10 minutes, reported as one `INFO: TNS: removed stale cache file(s) ...` line.
 - **TNS status line**: the TNS status panel reports the catalogue state — how long ago it was downloaded, when the next refresh is due, and whether a background download is running.
 - **Partial results and downloads**: when calibration is unavailable, the pipeline exports instrumental CSV and VOTable catalogs instead of calibrated results and skips transient finding. A failed later cross-match or transient search does not prevent the photometry catalog from being exported. The archived ZIP remains downloadable after a Streamlit rerun.
-- **Aladin Lite resilience**: if the CDS script fails, the viewer tries the pinned jsDelivr module; a source-coordinate table remains available without the viewer. The default HiPS imagery still requires access to CDS.
-- **Catalog service mirrors**: failed VizieR and SIMBAD requests can retry on Harvard mirrors. This retries the same service, not a different photometric catalog.
+- **Aladin Lite resilience**: if the CDS script fails, the viewer tries the pinned jsDelivr module; a source-coordinate table remains available without the viewer. If CDS HiPS imagery is unreachable, the survey layer falls back to the CDS-listed mirrors (ESA Sky, CASDA, STPub, China-VO) before switching surveys.
+- **Catalog service mirrors**: failed VizieR and SIMBAD requests retry on the Harvard and IDIA mirrors, and Gaia TAP queries on the Heidelberg mirror (following https://cds.unistra.fr/). This retries the same service, not a different photometric catalog.
 - **Private account storage**: new archives and WCS FITS files use account-ID-based paths; global in-app logs are restricted to configured administrator IDs.
 - **Local astrometry timeout**: local plate-solving attempts share a configurable 180-second budget before the existing fallback is attempted.
 - **VOTable export**: duplicate catalog columns are removed before CSV and VOTable export.

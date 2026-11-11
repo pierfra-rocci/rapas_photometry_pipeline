@@ -47,6 +47,8 @@
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide.html">User Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="TUTORIAL.html">Step-by-Step Photometry Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="TUTORIAL_FR.html">Tutoriel pas à pas – Pipeline de Photométrie RAPAS</a></li>
 <li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
 <li class="toctree-l1"><a class="reference internal" href="advanced_features.html">Advanced Features</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a></li>
@@ -152,9 +154,10 @@ If PSF merging fails, aperture photometry is retained.</p></li>
 </ul>
 <p><strong>Catalog service and local astrometry resilience</strong></p>
 <ul class="simple">
-<li><p>VizieR and SIMBAD requests retry on their Harvard mirrors after a primary
-service failure. These are mirrors of the same services, not automatic
-switches to a different calibration catalog.</p></li>
+<li><p>VizieR and SIMBAD requests retry on the Harvard and IDIA mirrors, and
+Gaia TAP queries on the Heidelberg mirror, following the alternatives
+listed at <a class="reference external" href="https://cds.unistra.fr/">https://cds.unistra.fr/</a>. These are mirrors of the same services,
+not automatic switches to a different calibration catalog.</p></li>
 <li><p>Local plate-solving attempts share a 180-second budget, configurable with
 <code class="docutils literal notranslate"><span class="pre">RPP_LOCAL_ASTROMETRY_TIMEOUT_SECONDS</span></code>, before the existing online
 fallback is attempted when configured.</p></li>
@@ -175,7 +178,15 @@ intact. Upgrade both backends and the frontend together.</p></li>
 <li><p>If the Aladin Lite script cannot be downloaded from CDS, the viewer retries
 with the pinned v3.8.2 module from jsDelivr. If neither source is
 reachable, the widget reports the failure and the source-coordinate table
-remains available; HiPS imagery still requires access to the tile server.</p></li>
+remains available.</p></li>
+</ul>
+<p><strong>Aladin HiPS mirror fallback</strong></p>
+<ul class="simple">
+<li><p>When a survey <code class="docutils literal notranslate"><span class="pre">properties</span></code> document cannot be read from CDS, the viewer
+now probes the CDS-listed mirror servers for the same HiPS (ESA Sky,
+CASDA, STPub and China-VO; see <a class="reference external" href="https://cds.unistra.fr/">https://cds.unistra.fr/</a>) and switches the
+base layer to the first reachable one. The second survey is only used when
+the mirrors fail too, and the status line reports which server was used.</p></li>
 </ul>
 <p><strong>VOTable export with Astro-Colibri and TNS columns</strong></p>
 <ul class="simple">
@@ -353,17 +364,6 @@ checking, next to the red Astro-Colibri squares.</p></li>
 <li><p><strong>Transient finder at 1.5 sigma.</strong> Detection now starts directly at
 1.5 sigma (<code class="docutils literal notranslate"><span class="pre">TRANSIENT_DETECT_THRESH</span></code>) with a minimum S/N of 2 (3 above
 2 sigma) to be more sensitive to faint sources. Candidates are still
-required to match the photometry table.</p></li>
-<li><p><strong>Transient finder without PSF photometry.</strong> When the photometry table has
-no PSF magnitude columns, or when the matched detections have no finite
-PSF value, <code class="docutils literal notranslate"><span class="pre">find_candidates()</span></code> now falls back to the calibrated
-1.1 x FWHM aperture magnitude (<code class="docutils literal notranslate"><span class="pre">aperture_mag_1_1</span></code> and its error) instead
-of aborting with “No transient candidates found”. The app displays a
-warning when candidates rely on this fallback, using the same
-PSF-unavailable wording as the main pipeline. The shared warning is
-<code class="docutils literal notranslate"><span class="pre">PSF</span> <span class="pre">photometry</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">available;</span> <span class="pre">using</span> <span class="pre">calibrated</span> <span class="pre">aperture</span> <span class="pre">photometry</span> <span class="pre">instead.</span></code>;
-the full transient variant is
-<code class="docutils literal notranslate"><span class="pre">PSF</span> <span class="pre">photometry</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">available;</span> <span class="pre">using</span> <span class="pre">calibrated</span> <span class="pre">aperture</span> <span class="pre">photometry</span> <span class="pre">instead.</span> <span class="pre">Transient</span> <span class="pre">candidates</span> <span class="pre">use</span> <span class="pre">the</span> <span class="pre">calibrated</span> <span class="pre">1.1</span> <span class="pre">x</span> <span class="pre">FWHM</span> <span class="pre">aperture</span> <span class="pre">magnitude.</span></code>
 required to match the photometry table.</p></li>
 <li><p><strong>Transient finder without PSF photometry.</strong> When the photometry table has
 no PSF magnitude columns, or when the matched detections have no finite

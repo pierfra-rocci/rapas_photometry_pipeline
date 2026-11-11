@@ -307,14 +307,9 @@ Catalog Query Issues (SIMBAD, SkyBoT, etc.)
     service is down or slow.
 *   **Solution**:
 
-    *   VizieR queries automatically retry through the Harvard mirror
-        (``vizier.cfa.harvard.edu``), and SIMBAD region queries retry through
-        ``simbad.cfa.harvard.edu``. The log records when either fallback is
-        used.
-    *   VizieR queries automatically retry through the Harvard mirror
-        (``vizier.cfa.harvard.edu``), and SIMBAD region queries retry through
-        ``simbad.cfa.harvard.edu``. The log records when either fallback is
-        used.
+    *   VizieR and SIMBAD queries automatically retry through the Harvard and
+        IDIA mirrors, and Gaia TAP queries through the Heidelberg mirror. The
+        log records when a fallback is used.
     *   Wait and try processing the image again later.
     *   Check your internet connection.
     *   Review the generated log file to see which catalog step timed out or was
@@ -474,8 +469,9 @@ Aladin Lite Viewer Issues
         ``https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js``.
         If both sources fail, the red line reports the failure; check the
         proxy, firewall, HTTPS-Only mode, or connection.
-        The fallback covers the JavaScript library only; the sky imagery still
-        requires access to the HiPS tile server.
+        The fallback covers the JavaScript library only; sky imagery still
+        needs a reachable HiPS server, but the CDS-listed mirrors of the survey
+        are tried before the viewer switches surveys.
     *   Expand ``Source coordinates (available without Aladin)`` above the
         viewer to inspect positions without the library or sky imagery. The
         science-image preview also remains available.
@@ -487,22 +483,26 @@ Aladin Lite Viewer Issues
         (``.../api/v3/latest/aladin.js``), then the pinned jsDelivr v3.8.2
         module if the CDS download or initialization fails or times out.
 
-**Aladin falls back to a second survey, or shows none at all**
+**Aladin falls back to a mirror or a second survey, or shows none at all**
 
 *   **Problem**: The requested HiPS (``CDS/P/DSS2/color`` by default) cannot be
     fetched or is too slow, so the view stays empty.
 *   **Solution**: The widget probes the HiPS ``properties`` document with a
-    12 second timeout and, when it cannot be read, switches the base layer to
-    ``CDS/P/DSS2/red``:
+    12 second timeout. When the CDS server cannot be read, the CDS-listed
+    mirror servers are probed for the same survey (DSS, 2MASS, SDSS9,
+    PanSTARRS and AllWISE); the first reachable mirror replaces the base layer.
+    Only if every mirror fails does it switch to ``CDS/P/DSS2/red``:
 
-    *   A warning is shown above the viewer
-        (``Survey <survey> could not be loaded; trying <fallback> instead.``)
-        and mirrored in the console.
-    *   When the fallback is unreachable too, the message says so instead of
-        leaving a blank canvas. Both defaults use CDS and may fail together.
+    *   A warning is shown above the viewer (``Survey <survey> is unavailable;
+        loaded the mirrored copy from <url>.``), and the switch to the second
+        survey is reported as ``Survey <survey> could not be loaded; trying
+        <fallback> instead.`` Both messages are mirrored in the console.
+    *   When the mirrors and the fallback are unreachable too, the message says
+        so instead of leaving a blank canvas.
     *   Change the second survey with the ``fallback_survey`` argument of
         ``display_catalog_in_aladin``. An empty string disables the fallback.
-        The two default identifiers and full HiPS URLs can be checked; other
+        The known survey identifiers and full HiPS URLs can be checked; other
         identifiers are not guessed as paths, and an uncheckable survey is
-        reported. A primary survey passed as a full URL is not probed.
-        A third-party HiPS URL must allow cross-origin browser requests.
+        reported. A survey passed as a full URL is probed and gets the known
+        mirrors when its URL matches a CDS root. A third-party HiPS URL must
+        allow cross-origin browser requests.

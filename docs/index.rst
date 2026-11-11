@@ -31,6 +31,8 @@ Highlights
    installation
    usage
    user_guide
+   TUTORIAL
+   TUTORIAL_FR
    features
    advanced_features
    api
@@ -49,6 +51,16 @@ Quick Start
 4. Start the frontend with ``streamlit run frontend.py`` or ``streamlit run pages/app.py``.
 5. Log in, upload a FITS file, configure parameters in the sidebar, and click **Start Analysis**.
 6. Review the plots, tables, and logs, then download the ZIP archive or revisit archived results later.
+
+
+Tutorials
+---------
+
+Step-by-step walkthroughs of a complete analysis session are available in two
+languages:
+
+- :doc:`English tutorial <TUTORIAL>`
+- :doc:`Tutoriel en français <TUTORIAL_FR>`
 
 
 System Architecture
@@ -72,7 +84,8 @@ System Architecture
    - Graceful handling of remote-service timeouts and partial-result returns
 
 **External Integration:**
-   - Astrometry.net and optional SCAMP for astrometric workflows    - GAIA, SIMBAD, SkyBoT, VSX, Milliquas, Astro-Colibri and TNS services
+   - Astrometry.net and optional SCAMP for astrometric workflows
+   - GAIA, SIMBAD, SkyBoT, VSX, Milliquas, Astro-Colibri and TNS services
    - Aladin Lite for interactive sky visualization
 
 

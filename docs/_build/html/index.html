@@ -47,6 +47,8 @@
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide.html">User Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="TUTORIAL.html">Step-by-Step Photometry Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="TUTORIAL_FR.html">Tutoriel pas à pas – Pipeline de Photométrie RAPAS</a></li>
 <li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
 <li class="toctree-l1"><a class="reference internal" href="advanced_features.html">Advanced Features</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a></li>
@@ -139,6 +141,30 @@ or download the generated results.</p>
 <li class="toctree-l2"><a class="reference internal" href="user_guide.html#results-and-downloads">Results and Downloads</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user_guide.html#saved-settings-and-archives">Saved Settings and Archives</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user_guide.html#practical-tips">Practical Tips</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="TUTORIAL.html">Step-by-Step Photometry Tutorial</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="TUTORIAL.html#upload-a-fits-file">1. Upload a FITS File</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TUTORIAL.html#configure-observatory">2. Configure Observatory</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TUTORIAL.html#set-analysis-parameters">3. Set Analysis Parameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TUTORIAL.html#optional-astro-colibri-api-key">4. (Optional) Astro-Colibri API Key</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TUTORIAL.html#optional-transient-candidates">5. (Optional) Transient Candidates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TUTORIAL.html#run-the-analysis">6. Run the Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TUTORIAL.html#download-and-interpret-results">7. Download and Interpret Results</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TUTORIAL.html#ra-dec-coordinates">RA/DEC Coordinates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TUTORIAL.html#support">Support</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="TUTORIAL_FR.html">Tutoriel pas à pas – Pipeline de Photométrie RAPAS</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="TUTORIAL_FR.html#charger-un-fichier-fits">1. Charger un Fichier FITS</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TUTORIAL_FR.html#configurer-l-observatoire">2. Configurer l’Observatoire</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TUTORIAL_FR.html#definir-les-parametres-d-analyse">3. Définir les Paramètres d’Analyse</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TUTORIAL_FR.html#optionnel-cle-api-astro-colibri">4. (Optionnel) Clé API Astro-Colibri</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TUTORIAL_FR.html#optionnel-candidats-transitoires">5. (Optionnel) Candidats Transitoires</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TUTORIAL_FR.html#lancer-l-analyse">6. Lancer l’Analyse</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TUTORIAL_FR.html#telecharger-et-interpreter-les-resultats">7. Télécharger et Interpréter les Résultats</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TUTORIAL_FR.html#coordonnees-ra-dec">Coordonnées RA/DEC</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TUTORIAL_FR.html#support">Support</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="features.html">Features</a><ul>
@@ -246,6 +272,15 @@ or download the generated results.</p>
 <li><p>Review the plots, tables, and logs, then download the ZIP archive or revisit archived results later.</p></li>
 </ol>
 </section>
+<section id="tutorials">
+<h2>Tutorials<a class="headerlink" href="#tutorials" title="Link to this heading"></a></h2>
+<p>Step-by-step walkthroughs of a complete analysis session are available in two
+languages:</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="TUTORIAL.html"><span class="doc">English tutorial</span></a></p></li>
+<li><p><a class="reference internal" href="TUTORIAL_FR.html"><span class="doc">Tutoriel en français</span></a></p></li>
+</ul>
+</section>
 <section id="system-architecture">
 <h2>System Architecture<a class="headerlink" href="#system-architecture" title="Link to this heading"></a></h2>
 <dl class="simple">
@@ -270,7 +305,8 @@ timestamp and the pipeline version</p></li>
 </ul>
 </dd>
 <dt><strong>External Integration:</strong></dt><dd><ul class="simple">
-<li><p>Astrometry.net and optional SCAMP for astrometric workflows    - GAIA, SIMBAD, SkyBoT, VSX, Milliquas, Astro-Colibri and TNS services</p></li>
+<li><p>Astrometry.net and optional SCAMP for astrometric workflows</p></li>
+<li><p>GAIA, SIMBAD, SkyBoT, VSX, Milliquas, Astro-Colibri and TNS services</p></li>
 <li><p>Aladin Lite for interactive sky visualization</p></li>
 </ul>
 </dd>

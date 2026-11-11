@@ -564,7 +564,7 @@ def find_candidates(
             ra_center, dec_center, sr, catalog, filters={filter_name + "mag": mag_limit}
         )
         if used_vizier_fallback:
-            st.info("VizieR primary mirror unavailable; using the Harvard mirror.")
+            st.info("VizieR primary mirror unavailable; using a fallback mirror.")
 
         # Debug: show what columns we got
         if cat is not None and len(cat) > 0:
@@ -1391,9 +1391,9 @@ def guess_catalogue_mag_columns(fname, cat, augmented_only=False):
     ):
         if fname in ["B", "U", "u"]:
             cat_col_mag = "phot_bp_mean_mag"  # BP is blue photometer
-        elif fname in ["r", "R", "I", "i", "z"]:
+        elif fname in ["I", "i", "z"]:
             cat_col_mag = "phot_rp_mean_mag"  # RP is red photometer
-        elif fname in ["g", "G", "V"]:
+        elif fname in ["g", "G", "V", "r", "R"]:
             cat_col_mag = "phot_g_mean_mag"  # G band (green) matches optical g,r
         elif fname == "BP":
             cat_col_mag = "phot_bp_mean_mag"

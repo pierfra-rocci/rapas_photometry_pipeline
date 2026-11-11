@@ -1,6 +1,8 @@
 
 # Step-by-Step Photometry Tutorial
 
+> **Français** : ce tutoriel est aussi disponible en [français](TUTORIAL_FR.md).
+
 This tutorial guides you through a typical analysis session.
 
 Use a science FITS image with numeric image data. The loader accepts supported
@@ -35,7 +37,7 @@ In the sidebar, adjust:
 - **Border Mask**: Pixels to exclude at the image edge
 - **Max Magnitude Error**: Last-resort cut on the calibrated magnitude error. A source is dropped only when *every* photometry method reports an error at or above this value; set it to 0 to disable the cut entirely
 - **Detector Gain**: Effective gain in e-/ADU used for the Poisson term. A valid FITS `EGAIN`/`CCDGAIN` value, or the `CVF` conversion factor (`gain = 1/CVF`), takes precedence; a bare `GAIN` is used only when it looks like a genuine conversion factor (0.02–100 e-/ADU and not a QHY/ZWO driver-gain camera, where `GAIN` is an abstract setting). When none is available, a nonzero configured gain is used. At 0, the pipeline estimates the gain from the frame and falls back to 1 e-/ADU if it cannot make a reliable estimate. The Poisson term is only added when the resolved gain matches the units of the data: if it would predict a sky noise far above the measured background RMS (for example on a normalised float stack whose sky level is ~0.01), the gain is re-derived from the sky level and that RMS (`gain = sky level / RMS²`) and an informational message reports the rescaling. A frame that is already sky-subtracted cannot be checked this way, so supply the gain in the data's units (or a frame in counts) in that case.
-- **Calibration Filter Band**: Choose the photometric band for calibration (e.g. g, r, i)
+- **Filter Band**: Choose the photometric band for calibration (e.g. g, r, i)
 - **Astrometry Check**: Enable to force plate solving/WCS refinement
 
 For an optional online fallback, configure `ASTROMETRY_API_KEY` in the
@@ -92,10 +94,12 @@ even when a valid WCS is already present. If local solving fails and an online
 key is configured, the app tries Astrometry.net online. If both attempts fail,
 it tries to restore and continue with the original WCS when possible.
 
-The plate solver aims for at least 20 detected stars. When fewer are found (small
-or sparse field), the detection threshold is lowered from 3 to 2 and then 1 sigma;
-if the solve still fails, it is retried with the deeper detection before falling
-back to the online solver.
+The plate solver aims for at least 20 detected stars. If the 3 sigma detection
+yields fewer than 100 sources, the 2 sigma detection is tried first and kept when
+it finds more sources. When fewer than 20 stars are found (small or sparse
+field), the detection threshold is lowered from 3 to 2 and then 1 sigma; if the
+solve still fails, it is retried with the deeper detection before falling back
+to the online solver.
 
 ## 7. Download and Interpret Results
 
@@ -174,7 +178,7 @@ visible directly in the run. The per-source offset is exported as
 method), and the results view plots it against the calibrated PSF magnitude
 (with per-aperture median and zero lines) alongside its histogram.
 
-**Interactive Analysis**: Use the embedded Aladin Lite viewer for real-time exploration, or export coordinates to ESA SkyView. If the CDS-hosted Aladin script fails or times out, the viewer imports the pinned v3.8.2 module from jsDelivr. This fallback loads the viewer library; the sky imagery still requires access to a HiPS tile server, and both default surveys use CDS. Expand **Source coordinates (available without Aladin)** above the viewer to inspect positions even when the viewer or imagery is unavailable.
+**Interactive Analysis**: Use the embedded Aladin Lite viewer for real-time exploration, or export coordinates to ESA SkyView. If the CDS-hosted Aladin script fails or times out, the viewer imports the pinned v3.8.2 module from jsDelivr. This fallback loads the viewer library; the sky imagery still requires a reachable HiPS server, so the viewer first tries the CDS-listed mirrors of the selected survey (ESA Sky, CASDA, STPub, China-VO) before switching to the fallback survey. Expand **Source coordinates (available without Aladin)** above the viewer to inspect positions even when the viewer or imagery is unavailable.
 
 ### External Services and Partial Results
 
@@ -183,6 +187,12 @@ SkyBoT, Astro-Colibri and the TNS. Network errors, timeouts, or empty catalog re
 not necessarily stop the full analysis. In many cases the pipeline continues with
 partial results and records warnings in the log. The same applies when SkyBoT
 returns a malformed or unreadable response payload.
+
+## RA/DEC Coordinates
+
+The target field center coordinates are shown in the **Statistics** section in
+both decimal degrees and sexagesimal format (HH:MM:SS / ±DD:MM:SS). The same
+values are written to the processing log.
 
 ## Support
 

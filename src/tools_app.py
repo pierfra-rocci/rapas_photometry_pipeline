@@ -33,13 +33,60 @@ from src.utils import (
 
 warnings.filterwarnings("ignore")
 
+# HiPS survey roots and the alternative servers listed by CDS
+# (https://cds.unistra.fr/ -> "HiPS surveys"). A survey ID is resolved to its
+# CDS root for the availability probe, and the mirrors are tried before the
+# viewer switches to a different survey.
+ALADIN_HIPS_SURVEY_ROOTS = {
+    "CDS/P/DSS2/color": "https://alasky.cds.unistra.fr/DSS/DSSColor",
+    "CDS/P/DSS2/red": "https://alasky.cds.unistra.fr/DSS/DSS2Merged",
+    "CDS/P/2MASS/color": "https://alasky.cds.unistra.fr/2MASS/Color",
+    "CDS/P/SDSS9/color": "https://alasky.cds.unistra.fr/SDSS/DR9/color",
+    "CDS/P/PanSTARRS/DR1/color-i-r-g": (
+        "https://alasky.cds.unistra.fr/PanSTARRS/DR1/color-i-r-g"
+    ),
+    "CDS/P/allWISE/color": "https://alasky.cds.unistra.fr/allWISE/color",
+}
+
+ALADIN_HIPS_SURVEY_MIRRORS = {
+    "CDS/P/DSS2/color": (
+        "https://skies.esac.esa.int/DSSColor",
+        "https://stpubdata.s3.us-east-1.amazonaws.com/mast/skybackgrounds/DSSColor",
+        "https://casda.csiro.au/hips/DSS2/color",
+        "https://hips.china-vo.org/m/CDS_P_DSS2_color",
+    ),
+    "CDS/P/2MASS/color": (
+        "https://skies.esac.esa.int/2MASSColor",
+        "https://casda.csiro.au/hips/2MASS/Color",
+        "https://hips.china-vo.org/m/CDS_P_2MASS_color",
+    ),
+    "CDS/P/SDSS9/color": (
+        "https://skies.esac.esa.int/SDSS9Color",
+        "https://hips.china-vo.org/m/CDS_P_SDSS9_color",
+    ),
+    "CDS/P/PanSTARRS/DR1/color-i-r-g": (
+        "https://stpubdata.s3.us-east-1.amazonaws.com/mast/skybackgrounds/PanSTARRS",
+    ),
+    "CDS/P/allWISE/color": (
+        "https://skies.esac.esa.int/AllWISEColor",
+        "https://hips.china-vo.org/m/CDS_P_allWISE_color",
+    ),
+}
+
 
 @st.cache_data(ttl=300, show_spinner=False)
 def _gaia_server_available() -> bool:
     """Check Gaia service availability with a short TTL cache."""
     from astroquery.gaia import Gaia
 
-    Gaia.load_tables(only_names=True)
+    from src.catalog_mirrors import query_gaia_with_fallback
+
+    # A table-list request is not portable to the Heidelberg mirror (its TAP
+    # /tables document lacks the eSA TAP+ column flags astroquery parses), so
+    # probe with a one-row query that both endpoints answer.
+    query_gaia_with_fallback(
+        Gaia, "SELECT TOP 1 source_id FROM gaiadr3.gaia_source"
+    )
     return True
 
 
@@ -430,9 +477,9 @@ def display_catalog_in_aladin(
     survey : str, optional
         The initial sky survey to display in Aladin Lite, default="CDS/P/DSS2/color"
     fallback_survey : str, optional
-        Second HiPS switched to when the base survey cannot be loaded,
-        default="CDS/P/DSS2/red". The default surveys and full HiPS URLs can
-        be checked via their ``properties`` documents.
+        Second HiPS switched to when the base survey and its CDS-listed mirror
+        servers cannot be loaded, default="CDS/P/DSS2/red". The default surveys
+        and full HiPS URLs can be checked via their ``properties`` documents.
     transient_table : pandas.DataFrame, optional
         Transient candidates (``ra``/``dec`` and optionally ``id``/PSF
         magnitude); drawn as yellow stars in a dedicated overlay so they can be
@@ -654,6 +701,17 @@ def display_catalog_in_aladin(
             ].to_html(index=False, escape=True)
             survey_json = json.dumps(survey).replace("<", "\\u003c")
             fallback_survey_json = json.dumps(fallback_survey).replace("<", "\\u003c")
+            survey_roots_json = json.dumps(ALADIN_HIPS_SURVEY_ROOTS).replace(
+                "<", "\\u003c"
+            )
+            # Key the mirrors by survey ID and by CDS root URL, so a caller that
+            # passes a full HiPS URL gets the same fallbacks.
+            survey_mirrors = dict(ALADIN_HIPS_SURVEY_MIRRORS)
+            for survey_id, mirror_urls in ALADIN_HIPS_SURVEY_MIRRORS.items():
+                survey_root = ALADIN_HIPS_SURVEY_ROOTS.get(survey_id)
+                if survey_root:
+                    survey_mirrors[survey_root] = mirror_urls
+            survey_mirrors_json = json.dumps(survey_mirrors).replace("<", "\\u003c")
 
             html_content = f"""
 <!DOCTYPE html>
@@ -746,48 +804,31 @@ def display_catalog_in_aladin(
                     ', survey ' + {survey_json}
                 );
 
-                // Fall back to a second HiPS when the base survey cannot be
-                // loaded. Aladin Lite has no image-layer error event, so probe
-                // the HiPS `properties` document (the first thing Aladin needs)
-                // and swap the base layer if it is unreachable or too slow.
+                // Try the CDS-listed mirrors of the same HiPS before switching
+                // to a different survey. Aladin Lite has no image-layer error
+                // event, so probe the HiPS `properties` document (the first
+                // thing Aladin needs) and swap the base layer when unreachable.
                 (function () {{
                     const primary = {survey_json};
                     const fallback = {fallback_survey_json};
-                    if (!fallback || fallback === primary || primary.indexOf('http') === 0) {{
-                        return;
-                    }}
+                    const roots = {survey_roots_json};
+                    const mirrors = {survey_mirrors_json};
+
+                    const surveyKey = function (id) {{
+                        return /^https?:\\/\\//i.test(id)
+                            ? id.replace(/\\/+$/, '')
+                            : id;
+                    }};
                     const propertiesUrl = function (id) {{
                         if (/^https?:\\/\\//i.test(id)) {{
                             return id.replace(/\\/+$/, '') + '/properties';
                         }}
-                        const roots = {{
-                            'CDS/P/DSS2/color': 'https://alasky.cds.unistra.fr/DSS/DSSColor',
-                            'CDS/P/DSS2/red': 'https://alasky.cds.unistra.fr/DSS/DSS2Merged'
-                        }};
                         return roots[id] ? roots[id] + '/properties' : null;
                     }};
-                    const switchToFallback = function (broken) {{
-                        if (typeof aladin.setBaseImageLayer !== 'function') {{
-                            return;
-                        }}
-                        console.warn(
-                            '[RPP Aladin] survey ' + broken +
-                            ' could not be loaded, switching to ' + fallback
-                        );
-                        aladinShowProblem(
-                            'Survey ' + broken + ' could not be loaded; trying ' +
-                            fallback + ' instead.'
-                        );
-                        try {{
-                            aladin.setBaseImageLayer(fallback);
-                        }} catch (e) {{
-                            aladinShowProblem(
-                                'Could not load survey ' + broken +
-                                ' nor the fallback ' + fallback + ': ' + e
-                            );
-                        }}
+                    const mirrorsFor = function (id) {{
+                        return mirrors[surveyKey(id)] || [];
                     }};
-                    const probe = function (id, onFail) {{
+                    const probe = function (id, onSuccess, onFail) {{
                         const url = propertiesUrl(id);
                         if (!url) {{
                             aladinShowProblem(
@@ -802,21 +843,93 @@ def display_catalog_in_aladin(
                         fetch(url, {{ cache: 'no-store', signal: controller.signal }})
                             .then(function (response) {{
                                 clearTimeout(timer);
-                                if (!response.ok) {{ onFail(); }}
+                                if (response.ok) {{ onSuccess(); }} else {{ onFail(); }}
                             }})
                             .catch(function () {{
                                 clearTimeout(timer);
                                 onFail();
                             }});
                     }};
-                    probe(primary, function () {{
-                        switchToFallback(primary);
-                        probe(fallback, function () {{
-                            aladinShowProblem(
-                                'Neither ' + primary + ' nor ' + fallback +
-                                ' could be reached from this network. ' +
-                                'Source coordinates remain available above.'
+                    const setBaseLayer = function (target) {{
+                        if (typeof aladin.setBaseImageLayer !== 'function') {{
+                            return false;
+                        }}
+                        try {{
+                            aladin.setBaseImageLayer(target);
+                            return true;
+                        }} catch (e) {{
+                            console.warn(
+                                '[RPP Aladin] could not switch to ' + target + ':', e
                             );
+                            return false;
+                        }}
+                    }};
+                    const tryMirrors = function (id, index, onFail) {{
+                        const urls = mirrorsFor(id);
+                        if (index >= urls.length) {{
+                            onFail();
+                            return;
+                        }}
+                        const mirror = urls[index];
+                        probe(mirror, function () {{
+                            if (setBaseLayer(mirror)) {{
+                                console.info(
+                                    '[RPP Aladin] survey ' + id +
+                                    ' unavailable, using mirror ' + mirror
+                                );
+                                aladinShowProblem(
+                                    'Survey ' + id + ' is unavailable; loaded ' +
+                                    'the mirrored copy from ' + mirror + '.'
+                                );
+                            }} else {{
+                                tryMirrors(id, index + 1, onFail);
+                            }}
+                        }}, function () {{
+                            tryMirrors(id, index + 1, onFail);
+                        }});
+                    }};
+                    const trySurvey = function (id, onFail) {{
+                        probe(id, function () {{
+                            // The primary server answered: Aladin already shows
+                            // the survey named by its ID (or its URL).
+                        }}, function () {{
+                            tryMirrors(id, 0, onFail);
+                        }});
+                    }};
+                    const showAllFailed = function (first, second) {{
+                        const label = second && second !== first
+                            ? 'Neither ' + first + ' nor ' + second
+                            : 'Neither ' + first + ' nor its mirror servers';
+                        aladinShowProblem(
+                            label + ' could be reached from this network. ' +
+                            'Source coordinates remain available above.'
+                        );
+                    }};
+
+                    trySurvey(primary, function () {{
+                        if (!fallback || fallback === primary) {{
+                            showAllFailed(primary);
+                            return;
+                        }}
+                        if (typeof aladin.setBaseImageLayer !== 'function') {{
+                            showAllFailed(primary, fallback);
+                            return;
+                        }}
+                        console.warn(
+                            '[RPP Aladin] survey ' + primary +
+                            ' and its mirrors could not be loaded, switching to ' +
+                            fallback
+                        );
+                        if (!setBaseLayer(fallback)) {{
+                            showAllFailed(primary, fallback);
+                            return;
+                        }}
+                        aladinShowProblem(
+                            'Survey ' + primary + ' could not be loaded; trying ' +
+                            fallback + ' instead.'
+                        );
+                        trySurvey(fallback, function () {{
+                            showAllFailed(primary, fallback);
                         }});
                     }});
                 }})();

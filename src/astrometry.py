@@ -1471,7 +1471,7 @@ def solve_with_astrometrynet(
                     )
                     if used_vizier_fallback:
                         log_messages.append(
-                            "INFO: VizieR primary mirror unavailable; using the Harvard mirror."
+                            "INFO: VizieR primary mirror unavailable; using a fallback mirror."
                         )
 
                     if cat is not None and len(cat) > 10:

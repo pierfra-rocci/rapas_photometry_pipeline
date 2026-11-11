@@ -347,7 +347,14 @@ def test_cross_match_with_gaia_returns_none_after_vizier_and_tap_failures(monkey
     def _raise_tap_failure(*_args, **_kwargs):
         raise RuntimeError("tap failure")
 
+    class FailingGaiaMirror:
+        def launch_job(self, *_args, **_kwargs):
+            raise RuntimeError("mirror failure")
+
     monkeypatch.setattr("src.xmatch_catalogs.Gaia.launch_job", _raise_tap_failure)
+    monkeypatch.setattr(
+        "src.catalog_mirrors._gaia_mirror_client", lambda: FailingGaiaMirror()
+    )
 
     matched_table, log_messages = cross_match_with_gaia(
         phot_table,
@@ -989,7 +996,7 @@ def test_aladin_falls_back_when_primary_script_download_fails(monkeypatch: pytes
     "scenario",
     [
         "primary", "fallback", "timeout", "init_failure", "both_fail",
-        "no_webgl", "surveys_fail", "fallback_url", "unknown_survey",
+        "no_webgl", "surveys_fail", "mirror", "fallback_url", "unknown_survey",
     ],
 )
 def test_aladin_javascript_failure_paths(monkeypatch: pytest.MonkeyPatch, scenario: str) -> None:
@@ -1053,8 +1060,13 @@ const context = {
     },
     fetch: url => {
         events.urls.push(url);
-        const fails = input.scenario === 'surveys_fail'
-            || (['fallback_url', 'unknown_survey'].includes(input.scenario) && events.urls.length === 1);
+        let fails = input.scenario === 'surveys_fail'
+            || input.scenario === 'unknown_survey';
+        if (input.scenario === 'fallback_url') {
+            fails = !url.includes('mirror.example');
+        } else if (input.scenario === 'mirror') {
+            fails = url.includes('alasky.cds.unistra.fr');
+        }
         return Promise.resolve({ok: !fails});
     },
     AbortController,
@@ -1095,12 +1107,24 @@ setTimeout(() => console.log(JSON.stringify({events, status: status.textContent}
             assert "Neither CDS/P/DSS2/color nor CDS/P/DSS2/red" in output["status"]
             assert events["urls"] == [
                 "https://alasky.cds.unistra.fr/DSS/DSSColor/properties",
+                "https://skies.esac.esa.int/DSSColor/properties",
+                "https://stpubdata.s3.us-east-1.amazonaws.com/mast/skybackgrounds/DSSColor/properties",
+                "https://casda.csiro.au/hips/DSS2/color/properties",
+                "https://hips.china-vo.org/m/CDS_P_DSS2_color/properties",
                 "https://alasky.cds.unistra.fr/DSS/DSS2Merged/properties",
             ]
+        elif scenario == "mirror":
+            assert events["switches"] == 1
+            assert "mirrored copy from https://skies.esac.esa.int/DSSColor" in output["status"]
+            assert events["urls"] == [
+                "https://alasky.cds.unistra.fr/DSS/DSSColor/properties",
+                "https://skies.esac.esa.int/DSSColor/properties",
+            ]
         elif scenario == "fallback_url":
+            assert events["switches"] == 1
             assert events["urls"][-1] == "https://mirror.example/hips/properties"
         elif scenario == "unknown_survey":
-            assert len(events["urls"]) == 1
+            assert len(events["urls"]) == 5
             assert "Cannot automatically check survey CDS/P/other" in output["status"]
 
 
@@ -1161,3 +1185,90 @@ def test_skybot_cone_search_rejects_out_of_range_epoch_and_http_errors(monkeypat
     monkeypatch.setattr("requests.get", lambda *_a, **_k: BadRequest())
     result, problem = skybot_cone_search(10.0, 20.0, 0.1, 2461000.5, lambda _r: None)
     assert result is None and "HTTP 400" in problem
+
+
+def test_vizier_query_reaches_later_mirrors_and_restores_server():
+    """VizieR should try every mirror and restore the client's server after."""
+    from src.catalog_mirrors import VIZIER_SERVERS
+
+    class MirrorAwareVizier:
+        def __init__(self):
+            self.VIZIER_SERVER = VIZIER_PRIMARY_SERVER
+            self.servers = []
+
+        def query_region(self, *_args, **_kwargs):
+            self.servers.append(self.VIZIER_SERVER)
+            if self.VIZIER_SERVER != VIZIER_SERVERS[2]:
+                raise requests.exceptions.ConnectTimeout("mirror unavailable")
+            return ["third mirror result"]
+
+    vizier = MirrorAwareVizier()
+    result, used_fallback = query_vizier_with_fallback(
+        vizier, "query_region", object()
+    )
+
+    assert result == ["third mirror result"]
+    assert used_fallback is True
+    assert vizier.servers == list(VIZIER_SERVERS[:3])
+    assert vizier.VIZIER_SERVER == VIZIER_PRIMARY_SERVER
+
+
+def test_simbad_query_reaches_later_mirrors(monkeypatch):
+    """A SIMBAD failure should keep retrying after the Harvard mirror."""
+    from src.catalog_mirrors import SIMBAD_SERVERS
+
+    requested_servers = []
+
+    class FakeSimbad:
+        def __init__(self, server):
+            self.server = server
+
+        def add_votable_fields(self, *_fields):
+            pass
+
+        def query_region(self, *_args, **_kwargs):
+            if self.server != SIMBAD_SERVERS[2]:
+                raise requests.exceptions.ConnectTimeout("mirror unavailable")
+            return ["third mirror result"]
+
+    def _create_simbad_client(server):
+        requested_servers.append(server)
+        return FakeSimbad(server)
+
+    monkeypatch.setattr(xmatch_catalogs, "_create_simbad_client", _create_simbad_client)
+
+    result, used_fallback, error = xmatch_catalogs.query_simbad_region_with_fallback(
+        SkyCoord(ra=1.0, dec=2.0, unit="deg"),
+        1.0 * u.arcmin,
+    )
+
+    assert result == ["third mirror result"]
+    assert used_fallback is True
+    assert error is None
+    assert requested_servers == list(SIMBAD_SERVERS[:3])
+
+
+def test_gaia_query_uses_heidelberg_mirror(monkeypatch):
+    """A Gaia TAP failure should retry on the Heidelberg mirror in VOTable."""
+    from src.catalog_mirrors import query_gaia_with_fallback
+
+    class FailingPrimary:
+        def launch_job(self, **_kwargs):
+            raise requests.exceptions.ConnectTimeout("ESA archive unavailable")
+
+    class FakeJob:
+        def get_results(self):
+            return "mirror table"
+
+    class Mirror:
+        def launch_job(self, *, query, output_format):
+            assert query == "SELECT 1"
+            assert output_format == "votable"
+            return FakeJob()
+
+    monkeypatch.setattr("src.catalog_mirrors._gaia_mirror_client", lambda: Mirror())
+
+    job, used_fallback = query_gaia_with_fallback(FailingPrimary(), "SELECT 1")
+
+    assert job.get_results() == "mirror table"
+    assert used_fallback is True

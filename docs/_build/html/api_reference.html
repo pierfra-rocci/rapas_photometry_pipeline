@@ -48,6 +48,8 @@
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide.html">User Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="TUTORIAL.html">Step-by-Step Photometry Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="TUTORIAL_FR.html">Tutoriel pas à pas – Pipeline de Photométrie RAPAS</a></li>
 <li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
 <li class="toctree-l1"><a class="reference internal" href="advanced_features.html">Advanced Features</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a></li>
@@ -115,10 +117,6 @@ photometry, cross-matching, result export, and transient finding.</p>
 <dt><code class="docutils literal notranslate"><span class="pre">pages/login.py</span></code></dt><dd><p>Login, registration, password recovery, and backend selection workflow. Every
 successful sign-in is written to the Streamlit log as
 <code class="docutils literal notranslate"><span class="pre">[YYYY-MM-DD</span> <span class="pre">HH:MM:SS]</span> <span class="pre">RPP</span> <span class="pre">vX.Y.Z</span> <span class="pre">-</span> <span class="pre">User</span> <span class="pre">'&lt;username&gt;'</span> <span class="pre">logged</span> <span class="pre">in</span>
-<span class="pre">successfully</span> <span class="pre">(frontend,</span> <span class="pre">&lt;backend&gt;</span> <span class="pre">backend).</span></code>
-Login, registration, password recovery, and backend selection workflow. Every
-successful sign-in is written to the Streamlit log as
-<code class="docutils literal notranslate"><span class="pre">[YYYY-MM-DD</span> <span class="pre">HH:MM:SS]</span> <span class="pre">RPP</span> <span class="pre">vX.Y.Z</span> <span class="pre">-</span> <span class="pre">User</span> <span class="pre">'&lt;username&gt;'</span> <span class="pre">logged</span> <span class="pre">in</span>
 <span class="pre">successfully</span> <span class="pre">(frontend,</span> <span class="pre">&lt;backend&gt;</span> <span class="pre">backend).</span></code></p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">pages/api_client.py</span></code></dt><dd><p>Thin HTTP client used by the Streamlit frontend to talk to the FastAPI
@@ -174,10 +172,6 @@ results view.</p>
 <h3>Database and API Modules<a class="headerlink" href="#database-and-api-modules" title="Link to this heading"></a></h3>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">api/main.py</span></code></dt><dd><p>FastAPI application with health, authentication, config persistence, and
-FITS upload/listing endpoints. A successful <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/login</span></code> writes
-<code class="docutils literal notranslate"><span class="pre">[YYYY-MM-DD</span> <span class="pre">HH:MM:SS]</span> <span class="pre">RPP</span> <span class="pre">vX.Y.Z</span> <span class="pre">-</span> <span class="pre">User</span> <span class="pre">'&lt;username&gt;'</span> <span class="pre">logged</span> <span class="pre">in</span>
-<span class="pre">successfully</span> <span class="pre">(FastAPI</span> <span class="pre">backend).</span></code> to the service log; the legacy backend
-(<code class="docutils literal notranslate"><span class="pre">backend.py</span></code>) emits the same line tagged <code class="docutils literal notranslate"><span class="pre">(legacy</span> <span class="pre">backend)</span></code>.
 FITS upload/listing endpoints. A successful <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/login</span></code> writes
 <code class="docutils literal notranslate"><span class="pre">[YYYY-MM-DD</span> <span class="pre">HH:MM:SS]</span> <span class="pre">RPP</span> <span class="pre">vX.Y.Z</span> <span class="pre">-</span> <span class="pre">User</span> <span class="pre">'&lt;username&gt;'</span> <span class="pre">logged</span> <span class="pre">in</span>
 <span class="pre">successfully</span> <span class="pre">(FastAPI</span> <span class="pre">backend).</span></code> to the service log; the legacy backend

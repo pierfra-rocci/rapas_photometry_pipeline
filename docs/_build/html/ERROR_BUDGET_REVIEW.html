@@ -1,0 +1,569 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Error Budget and Error Propagation Review &mdash; RAPAS Photometry Pipeline (RPP) v1.9.3 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=f333a941"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #2980b9" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            RAPAS Photometry Pipeline (RPP)
+              <img src="_static/rapas_logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="user_guide.html">User Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="TUTORIAL.html">Step-by-Step Photometry Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="TUTORIAL_FR.html">Tutoriel pas à pas – Pipeline de Photométrie RAPAS</a></li>
+<li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced_features.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #2980b9" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">RAPAS Photometry Pipeline (RPP)</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Error Budget and Error Propagation Review</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/ERROR_BUDGET_REVIEW.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="error-budget-and-error-propagation-review">
+<h1>Error Budget and Error Propagation Review<a class="headerlink" href="#error-budget-and-error-propagation-review" title="Link to this heading"></a></h1>
+<p><strong>Scope:</strong> <code class="docutils literal notranslate"><span class="pre">src/pipeline.py</span></code> (<code class="docutils literal notranslate"><span class="pre">detection_and_photometry</span></code>, <code class="docutils literal notranslate"><span class="pre">calculate_zero_point</span></code>,
+<code class="docutils literal notranslate"><span class="pre">estimate_background</span></code> in <code class="docutils literal notranslate"><span class="pre">src/tools_pipeline.py</span></code>), <code class="docutils literal notranslate"><span class="pre">src/psf.py</span></code>
+(<code class="docutils literal notranslate"><span class="pre">perform_psf_photometry</span></code>) and the calibration helpers in <code class="docutils literal notranslate"><span class="pre">src/tools_pipeline.py</span></code>
+(<code class="docutils literal notranslate"><span class="pre">add_calibrated_magnitudes</span></code>, <code class="docutils literal notranslate"><span class="pre">apply_color_term_correction</span></code>).</p>
+<p><strong>Method:</strong> read the implementation end to end, cross-checked against the
+published <code class="docutils literal notranslate"><span class="pre">photutils</span></code> formulas/source and against the current
+<code class="docutils literal notranslate"><span class="pre">docs/PHOTOMETRY_FORMULAS.md</span></code>, <code class="docutils literal notranslate"><span class="pre">docs/features.rst</span></code> and the README changelog.
+Line references are approximate and intended as signposts, not exact anchors.</p>
+<hr class="docutils" />
+<section id="executive-summary">
+<h2>1. Executive summary<a class="headerlink" href="#executive-summary" title="Link to this heading"></a></h2>
+<p>The error budget is, overall, well constructed and internally consistent. The
+core chain</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">per</span><span class="o">-</span><span class="n">pixel</span> <span class="n">error</span> <span class="o">-&gt;</span> <span class="n">aperture</span> <span class="n">flux</span> <span class="n">error</span> <span class="o">-&gt;</span> <span class="n">local</span><span class="o">-</span><span class="n">background</span> <span class="n">term</span> <span class="o">-&gt;</span> <span class="n">sigma_flux</span>
+                <span class="o">-&gt;</span> <span class="n">S</span><span class="o">/</span><span class="n">N</span><span class="p">,</span> <span class="n">sigma_mag</span> <span class="o">-&gt;</span> <span class="n">sigma_mag_calib</span> <span class="p">(</span><span class="o">+</span> <span class="n">zero</span> <span class="n">point</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>uses a <strong>single flux</strong> for the magnitude, its error and the S/N, and each
+propagated term is dimensionally correct. The most important known failure modes
+(raw aperture sum used for the error while the magnitude used the
+background-corrected flux, missing local-background variance, rounded zero
+point, no zero-point error) have all been addressed and are covered by tests.</p>
+<p>The remaining gaps are of two kinds:</p>
+<ol class="arabic simple">
+<li><p><strong>a small statistical inconsistency</strong> in the local-background term (a median
+is used for the value but the mean’s standard error for its uncertainty);</p></li>
+<li><p><strong>unmodeled systematics</strong> that are not represented in any exported error at
+all: the aperture correction, the color-term correction, and the correlated
+nature of the zero-point error.</p></li>
+</ol>
+<p>None of these invalidates the pipeline. They are worth fixing because they
+affect the same background-limited regime the project already invested in, and
+because two of them (aperture and color-term corrections) are the largest
+remaining contributions to the total photometric error budget at high S/N.</p>
+</section>
+<hr class="docutils" />
+<section id="the-error-budget-as-implemented">
+<h2>2. The error budget as implemented<a class="headerlink" href="#the-error-budget-as-implemented" title="Link to this heading"></a></h2>
+<section id="per-pixel-error-map">
+<h3>2.1 Per-pixel error map<a class="headerlink" href="#per-pixel-error-map" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">detection_and_photometry</span></code> builds the map with <code class="docutils literal notranslate"><span class="pre">photutils.utils.calc_total_error</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sigma_pix</span><span class="o">^</span><span class="mi">2</span> <span class="o">=</span> <span class="n">sigma_bkg</span><span class="p">,</span><span class="n">pix</span><span class="o">^</span><span class="mi">2</span> <span class="o">+</span> <span class="nb">max</span><span class="p">(</span><span class="n">I_pix</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">/</span> <span class="n">g_eff</span>
+</pre></div>
+</div>
+<p>where <code class="docutils literal notranslate"><span class="pre">sigma_bkg,pix</span> <span class="pre">=</span> <span class="pre">Background2D.background_rms</span></code> (MAD-based estimator,
+<code class="docutils literal notranslate"><span class="pre">MADStdBackgroundRMS</span></code>), <code class="docutils literal notranslate"><span class="pre">I_pix</span></code> is the <strong>background-subtracted</strong> image
+(<code class="docutils literal notranslate"><span class="pre">image_sub</span></code>) and <code class="docutils literal notranslate"><span class="pre">g_eff</span></code> is the resolved effective gain.</p>
+<p>This matches the photutils reference formula
+<code class="docutils literal notranslate"><span class="pre">sigma_tot</span> <span class="pre">=</span> <span class="pre">sqrt(sigma_bkg^2</span> <span class="pre">+</span> <span class="pre">I</span> <span class="pre">/</span> <span class="pre">g_eff)</span></code> exactly. Verified against the
+photutils 3.0 source (<code class="docutils literal notranslate"><span class="pre">photutils/utils/errors.py</span></code>), including the documented
+behaviour that <strong>the Poisson term is dropped wherever <code class="docutils literal notranslate"><span class="pre">data</span></code> is negative</strong>
+(<code class="docutils literal notranslate"><span class="pre">source_variance</span> <span class="pre">=</span> <span class="pre">np.maximum(source_variance,</span> <span class="pre">0)</span></code>), so background-subtracted
+sources with negative sky pixels get only the background term there. This is
+correct and is not a bug, but it is worth knowing.</p>
+</section>
+<section id="aperture-flux-and-its-error">
+<h3>2.2 Aperture flux and its error<a class="headerlink" href="#aperture-flux-and-its-error" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">aperture_photometry(image_sub,</span> <span class="pre">aperture,</span> <span class="pre">error=total_error,</span> <span class="pre">mask=mask,</span> <span class="pre">wcs=...)</span></code>
+returns</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">aperture_sum_err</span> <span class="o">=</span> <span class="n">sqrt</span><span class="p">(</span> <span class="n">sum_</span><span class="p">{</span><span class="n">aperture</span><span class="p">}</span> <span class="n">total_error</span><span class="o">^</span><span class="mi">2</span> <span class="p">)</span>
+</pre></div>
+</div>
+<p>with the pipeline mask (border + cosmic rays + satellite trails + NaNs) applied
+and the exact masked area returned through <code class="docutils literal notranslate"><span class="pre">area_overlap</span></code>.</p>
+</section>
+<section id="local-background-and-its-error">
+<h3>2.3 Local background and its error<a class="headerlink" href="#local-background-and-its-error" title="Link to this heading"></a></h3>
+<p>For aperture area <code class="docutils literal notranslate"><span class="pre">A_ap</span></code> and annulus area <code class="docutils literal notranslate"><span class="pre">A_ann</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">bkg_per_pixel</span>   <span class="o">=</span> <span class="n">sigma</span><span class="o">-</span><span class="n">clipped</span> <span class="n">median</span> <span class="n">of</span> <span class="n">the</span> <span class="n">annulus</span>   <span class="p">(</span><span class="n">ApertureStats</span><span class="o">.</span><span class="n">median</span><span class="p">)</span>
+<span class="n">total_bkg</span>       <span class="o">=</span> <span class="n">bkg_per_pixel</span> <span class="o">*</span> <span class="n">A_ap</span>
+<span class="n">sigma_bkg_pixel</span> <span class="o">=</span> <span class="n">annulus_std</span> <span class="o">/</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">A_ann</span><span class="p">)</span>             <span class="o">&lt;--</span> <span class="n">see</span> <span class="n">finding</span> <span class="n">F1</span>
+<span class="n">sigma_total_bkg</span> <span class="o">=</span> <span class="n">sigma_bkg_pixel</span> <span class="o">*</span> <span class="n">A_ap</span>
+<span class="n">flux</span>            <span class="o">=</span> <span class="n">aperture_sum</span> <span class="o">-</span> <span class="n">total_bkg</span>
+<span class="n">sigma_flux</span><span class="o">^</span><span class="mi">2</span>    <span class="o">=</span> <span class="n">aperture_sum_err</span><span class="o">^</span><span class="mi">2</span> <span class="o">+</span> <span class="n">sigma_total_bkg</span><span class="o">^</span><span class="mi">2</span>
+</pre></div>
+</div>
+</section>
+<section id="s-n-magnitude-and-magnitude-error">
+<h3>2.4 S/N, magnitude and magnitude error<a class="headerlink" href="#s-n-magnitude-and-magnitude-error" title="Link to this heading"></a></h3>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">S</span><span class="o">/</span><span class="n">N</span>       <span class="o">=</span> <span class="n">flux</span> <span class="o">/</span> <span class="n">sigma_flux</span>          <span class="p">(</span><span class="n">flux</span> <span class="n">errors</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="k">else</span> <span class="n">NaN</span><span class="p">)</span>
+<span class="n">mag_inst</span>  <span class="o">=</span> <span class="o">-</span><span class="mf">2.5</span> <span class="o">*</span> <span class="n">log10</span><span class="p">(</span><span class="n">flux</span> <span class="o">*</span> <span class="n">apcorr</span><span class="p">)</span>
+<span class="n">sigma_mag</span> <span class="o">=</span> <span class="mf">1.0857</span> <span class="o">*</span> <span class="p">(</span><span class="n">sigma_flux</span> <span class="o">*</span> <span class="n">apcorr</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">flux</span> <span class="o">*</span> <span class="n">apcorr</span><span class="p">)</span>
+          <span class="o">=</span> <span class="mf">1.0857</span> <span class="o">*</span> <span class="n">sigma_flux</span> <span class="o">/</span> <span class="n">flux</span>
+</pre></div>
+</div>
+<p>The aperture correction cancels in the ratio, so S/N and <code class="docutils literal notranslate"><span class="pre">sigma_mag</span></code> are
+invariant under <code class="docutils literal notranslate"><span class="pre">apcorr</span></code> while the magnitude itself is not. This is consistent.</p>
+</section>
+<section id="calibrated-magnitude-error">
+<h3>2.5 Calibrated magnitude error<a class="headerlink" href="#calibrated-magnitude-error" title="Link to this heading"></a></h3>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sigma_mag_calib</span> <span class="o">=</span> <span class="n">sqrt</span><span class="p">(</span> <span class="n">sigma_mag</span><span class="o">^</span><span class="mi">2</span> <span class="o">+</span> <span class="n">sigma_zp</span><span class="o">^</span><span class="mi">2</span> <span class="o">+</span> <span class="n">sigma_sys</span><span class="o">^</span><span class="mi">2</span> <span class="p">)</span>
+<span class="n">sigma_zp</span>        <span class="o">=</span> <span class="mf">1.2533</span> <span class="o">*</span> <span class="n">scatter</span> <span class="o">/</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">N</span><span class="p">)</span>      <span class="p">(</span><span class="n">median</span> <span class="n">standard</span> <span class="n">error</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">sigma_zp</span></code> is applied to every <code class="docutils literal notranslate"><span class="pre">aperture_mag_err_*</span></code> and <code class="docutils literal notranslate"><span class="pre">psf_mag_err</span></code> column in
+<code class="docutils literal notranslate"><span class="pre">add_calibrated_magnitudes</span></code>, at full precision.</p>
+</section>
+<section id="psf-photometry">
+<h3>2.6 PSF photometry<a class="headerlink" href="#psf-photometry" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">PSFPhotometry(...)(img,</span> <span class="pre">init_params=...,</span> <span class="pre">mask=...,</span> <span class="pre">error=error)</span></code> receives the
+same <code class="docutils literal notranslate"><span class="pre">total_error</span></code> map, so <code class="docutils literal notranslate"><span class="pre">flux_err</span></code> is derived from the same per-pixel noise
+model as the aperture errors.</p>
+</section>
+<section id="numerical-sanity-check-of-the-local-background-term">
+<h3>2.7 Numerical sanity check of the local-background term<a class="headerlink" href="#numerical-sanity-check-of-the-local-background-term" title="Link to this heading"></a></h3>
+<p>For the default annulus <code class="docutils literal notranslate"><span class="pre">r_in</span> <span class="pre">=</span> <span class="pre">2r</span></code>, <code class="docutils literal notranslate"><span class="pre">r_out</span> <span class="pre">=</span> <span class="pre">2.5r</span></code>:
+<code class="docutils literal notranslate"><span class="pre">A_ap</span> <span class="pre">/</span> <span class="pre">A_ann</span> <span class="pre">=</span> <span class="pre">1</span> <span class="pre">/</span> <span class="pre">(2.5^2</span> <span class="pre">-</span> <span class="pre">2.0^2)</span> <span class="pre">=</span> <span class="pre">1/2.25</span> <span class="pre">=</span> <span class="pre">0.444</span></code>, so the local-background
+term is <code class="docutils literal notranslate"><span class="pre">sqrt(A_ap/A_ann)</span> <span class="pre">=</span> <span class="pre">0.667</span></code> times the aperture sky-noise term. In
+quadrature this raises <code class="docutils literal notranslate"><span class="pre">sigma_flux</span></code> by <code class="docutils literal notranslate"><span class="pre">sqrt(1</span> <span class="pre">+</span> <span class="pre">0.444)</span> <span class="pre">=</span> <span class="pre">1.202</span></code>, i.e. ~20% —
+matching the figure quoted in <code class="docutils literal notranslate"><span class="pre">docs/PHOTOMETRY_FORMULAS.md</span></code>. The documentation
+is correct.</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="what-is-correct-and-should-be-preserved">
+<h2>3. What is correct (and should be preserved)<a class="headerlink" href="#what-is-correct-and-should-be-preserved" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Item</p></th>
+<th class="head"><p>Status</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">calc_total_error</span></code> formula and negative-pixel handling</p></td>
+<td><p>Matches photutils source</p></td>
+</tr>
+<tr class="row-odd"><td><p>Single consistent flux for S/N, magnitude and its error</p></td>
+<td><p>Correct</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sigma_flux^2</span> <span class="pre">=</span> <span class="pre">sigma_ap^2</span> <span class="pre">+</span> <span class="pre">sigma_total_bkg^2</span></code></p></td>
+<td><p>Correct, ~20% effect verified</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sigma_mag</span> <span class="pre">=</span> <span class="pre">1.0857</span> <span class="pre">*</span> <span class="pre">sigma_flux</span> <span class="pre">/</span> <span class="pre">flux</span></code> with <code class="docutils literal notranslate"><span class="pre">1.0857</span> <span class="pre">=</span> <span class="pre">2.5/ln</span> <span class="pre">10</span></code></p></td>
+<td><p>Correct</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">apcorr</span></code> cancels in S/N and <code class="docutils literal notranslate"><span class="pre">sigma_mag</span></code></p></td>
+<td><p>Correct</p></td>
+</tr>
+<tr class="row-odd"><td><p>Median standard error factor <code class="docutils literal notranslate"><span class="pre">sqrt(pi/2)</span> <span class="pre">=</span> <span class="pre">1.2533</span></code> on the zero point</p></td>
+<td><p>Correct</p></td>
+</tr>
+<tr class="row-even"><td><p>Zero point kept at full precision</p></td>
+<td><p>Correct</p></td>
+</tr>
+<tr class="row-odd"><td><p>Zero-point error propagated into every calibrated error column</p></td>
+<td><p>Correct</p></td>
+</tr>
+<tr class="row-even"><td><p>Mask applied to both aperture and annulus photometry</p></td>
+<td><p>Correct</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">MADStdBackgroundRMS</span></code> for the noise map</p></td>
+<td><p>Correct, avoids source-inflated noise</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<hr class="docutils" />
+<section id="findings">
+<h2>4. Findings<a class="headerlink" href="#findings" title="Link to this heading"></a></h2>
+<p>Ranked by expected impact on the total error budget. No finding breaks the
+pipeline; all are incremental accuracy/consistency improvements.</p>
+<section id="f1-local-background-error-uses-the-mean-standard-error-for-a-median-medium-fixed">
+<h3>F1 — Local-background error uses the <em>mean</em> standard error for a <em>median</em> (medium) — <strong>FIXED</strong><a class="headerlink" href="#f1-local-background-error-uses-the-mean-standard-error-for-a-median-medium-fixed" title="Link to this heading"></a></h3>
+<p><strong>Status:</strong> fixed. The annulus uncertainty now uses
+<code class="docutils literal notranslate"><span class="pre">ApertureStats.median_err</span></code> (with <code class="docutils literal notranslate"><span class="pre">std</span> <span class="pre">/</span> <span class="pre">sqrt(A_ann)</span></code> kept only as a fallback),
+and a regression test
+(<code class="docutils literal notranslate"><span class="pre">TestPipelineErrorBudget::test_local_background_error_uses_median_error</span></code>) guards
+it. <code class="docutils literal notranslate"><span class="pre">docs/PHOTOMETRY_FORMULAS.md</span></code> was updated to match.</p>
+<p><strong>Where:</strong> <code class="docutils literal notranslate"><span class="pre">src/pipeline.py</span></code>, annulus block (<code class="docutils literal notranslate"><span class="pre">bkg_per_pixel_err</span> <span class="pre">=</span> <span class="pre">bkg_std</span> <span class="pre">/</span> <span class="pre">np.sqrt(annulus_area)</span></code>), ~lines 1320–1340.</p>
+<p><strong>Issue:</strong> the value is <code class="docutils literal notranslate"><span class="pre">ApertureStats.median</span></code> (a sigma-clipped median) but the
+uncertainty uses the standard error of the <strong>mean</strong>, <code class="docutils literal notranslate"><span class="pre">std</span> <span class="pre">/</span> <span class="pre">sqrt(A_ann)</span></code>. The
+standard error of a median is larger by <code class="docutils literal notranslate"><span class="pre">sqrt(pi/2)</span> <span class="pre">=</span> <span class="pre">1.2533</span></code>. photutils exposes
+exactly the right quantity: <code class="docutils literal notranslate"><span class="pre">ApertureStats.median_err</span></code> is documented as the
+large-sample approximation <code class="docutils literal notranslate"><span class="pre">sqrt(pi/2)</span> <span class="pre">*</span> <span class="pre">s</span> <span class="pre">/</span> <span class="pre">sqrt(n)</span></code>.</p>
+<p><strong>Impact:</strong> the local-background term is underestimated by ~25%. In the
+background-limited regime the total <code class="docutils literal notranslate"><span class="pre">sigma_flux</span></code> is then low by ~8% (the local
+term contributes a factor ~1.20 to the total; raising it by 1.2533 gives ~1.30
+instead). This is the same class of bias that was fixed for the zero point, and
+it is the only remaining term in the budget that uses the wrong estimator.</p>
+<p><strong>Resolution:</strong> replaced <code class="docutils literal notranslate"><span class="pre">bkg_std</span> <span class="pre">/</span> <span class="pre">sqrt(annulus_area)</span></code> with
+<code class="docutils literal notranslate"><span class="pre">np.asarray(annulus_stats.median_err,</span> <span class="pre">dtype=float)</span></code>, keeping the existing
+<code class="docutils literal notranslate"><span class="pre">annulus_area</span></code> fallback only when <code class="docutils literal notranslate"><span class="pre">median_err</span></code> is unavailable or non-finite.</p>
+</section>
+<section id="f2-aperture-correction-uncertainty-is-never-propagated-medium-fixed">
+<h3>F2 — Aperture-correction uncertainty is never propagated (medium) — <strong>FIXED</strong><a class="headerlink" href="#f2-aperture-correction-uncertainty-is-never-propagated-medium-fixed" title="Link to this heading"></a></h3>
+<p><strong>Status:</strong> fixed. A per-aperture systematic
+<code class="docutils literal notranslate"><span class="pre">sigma_apcorr</span> <span class="pre">=</span> <span class="pre">1.0857</span> <span class="pre">·</span> <span class="pre">f_apcorr</span> <span class="pre">·</span> <span class="pre">|apcorr−1|</span> <span class="pre">/</span> <span class="pre">apcorr</span></code> (with
+<code class="docutils literal notranslate"><span class="pre">APCORR_SYSTEMATIC_FRACTION</span></code>, default 0.20) is now added in quadrature to every
+<code class="docutils literal notranslate"><span class="pre">aperture_mag_err_*</span></code> and stored in <code class="docutils literal notranslate"><span class="pre">apcorr_mag_err_*</span></code>. The global
+<code class="docutils literal notranslate"><span class="pre">SYSTEMATIC_MAG_ERR_FLOOR</span></code> is now actually passed to
+<code class="docutils literal notranslate"><span class="pre">add_calibrated_magnitudes</span></code> via <code class="docutils literal notranslate"><span class="pre">resolve_systematic_floor()</span></code> (session state /
+<code class="docutils literal notranslate"><span class="pre">RPP_SYSTEMATIC_MAG_ERR_FLOOR</span></code> / module default). Tests:
+<code class="docutils literal notranslate"><span class="pre">TestPipelineErrorBudget::test_error_budget_and_aperture_correction</span></code>,
+<code class="docutils literal notranslate"><span class="pre">test_add_calibrated_magnitudes_propagates_systematic_floor</span></code>,
+<code class="docutils literal notranslate"><span class="pre">test_resolve_systematic_floor_reads_environment</span></code>.</p>
+<p><strong>Where:</strong> <code class="docutils literal notranslate"><span class="pre">src/pipeline.py</span></code>, <code class="docutils literal notranslate"><span class="pre">apcorr</span></code> block ~lines 1420–1440; the
+<code class="docutils literal notranslate"><span class="pre">SYSTEMATIC_MAG_ERR_FLOOR</span></code> constant at line 34.</p>
+<p><strong>Issue:</strong> <code class="docutils literal notranslate"><span class="pre">apcorr</span> <span class="pre">=</span> <span class="pre">1</span> <span class="pre">/</span> <span class="pre">EE(r)</span></code> is derived from the empirical ePSF (or a Gaussian
+fallback) and clamped to <code class="docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">2]</span></code>. The <em>random</em> part cancels in <code class="docutils literal notranslate"><span class="pre">sigma_mag</span></code>, but
+the <em>systematic</em> part does not: an error in <code class="docutils literal notranslate"><span class="pre">EE(r)</span></code> produces a magnitude offset
+that is completely absent from every exported error. The clamp at 2.0 also
+silently truncates a pathological correction, again with no error attached.</p>
+<p>Additionally, <code class="docutils literal notranslate"><span class="pre">SYSTEMATIC_MAG_ERR_FLOOR</span> <span class="pre">=</span> <span class="pre">0.0</span></code> is defined in <code class="docutils literal notranslate"><span class="pre">src/pipeline.py</span></code>
+but is never passed to <code class="docutils literal notranslate"><span class="pre">add_calibrated_magnitudes</span></code> (which does accept a
+<code class="docutils literal notranslate"><span class="pre">systematic_floor</span></code> argument). The plumbing exists but is disconnected — dead
+code today.</p>
+<p><strong>Impact:</strong> at high S/N (where <code class="docutils literal notranslate"><span class="pre">sigma_mag</span></code> is small) the aperture-correction
+systematic dominates the realistic error budget but is invisible to the user.</p>
+<p><strong>Recommendation:</strong> either (a) estimate <code class="docutils literal notranslate"><span class="pre">delta(EE)</span></code> from the ePSF and propagate
+<code class="docutils literal notranslate"><span class="pre">1.0857</span> <span class="pre">*</span> <span class="pre">delta(EE)/EE</span></code> into <code class="docutils literal notranslate"><span class="pre">sigma_mag</span></code> or into the systematic floor, or
+(b) at minimum wire <code class="docutils literal notranslate"><span class="pre">SYSTEMATIC_MAG_ERR_FLOOR</span></code> through to
+<code class="docutils literal notranslate"><span class="pre">add_calibrated_magnitudes</span></code> and document the assumed floor. Note the clamp in
+the documentation either way.</p>
+</section>
+<section id="f3-color-term-corrected-magnitudes-carry-no-error-medium-fixed">
+<h3>F3 — Color-term-corrected magnitudes carry no error (medium) — <strong>FIXED</strong><a class="headerlink" href="#f3-color-term-corrected-magnitudes-carry-no-error-medium-fixed" title="Link to this heading"></a></h3>
+<p><strong>Status:</strong> fixed. <code class="docutils literal notranslate"><span class="pre">fit_color_term_correction</span></code> now returns the fit parameter
+covariance and standard errors, and <code class="docutils literal notranslate"><span class="pre">apply_color_term_correction</span></code> writes
+<code class="docutils literal notranslate"><span class="pre">color_term_offset_err</span></code> plus a <code class="docutils literal notranslate"><span class="pre">*_colorcorr_err</span></code> column
+<code class="docutils literal notranslate"><span class="pre">√(σ_mag_calib²</span> <span class="pre">+</span> <span class="pre">σ_color_term_offset²)</span></code> for every corrected magnitude (with
+filter-prefixed aliases). Tests:
+<code class="docutils literal notranslate"><span class="pre">test_apply_color_term_correction_appends_new_columns_and_keeps_legacy</span></code>,
+<code class="docutils literal notranslate"><span class="pre">test_colorcorr_err_without_baseline_error_is_fit_only</span></code>,
+<code class="docutils literal notranslate"><span class="pre">test_fit_color_term_reports_parameter_uncertainties</span></code>.</p>
+<p><strong>Where:</strong> <code class="docutils literal notranslate"><span class="pre">src/tools_pipeline.py</span></code>, <code class="docutils literal notranslate"><span class="pre">apply_color_term_correction</span></code>, ~lines 226–290.</p>
+<p><strong>Issue:</strong> the function appends <code class="docutils literal notranslate"><span class="pre">*_colorcorr</span></code> magnitudes and trace fields
+(<code class="docutils literal notranslate"><span class="pre">color_term_offset</span></code>, <code class="docutils literal notranslate"><span class="pre">color_term_value</span></code>, …) but never writes a
+<code class="docutils literal notranslate"><span class="pre">*_colorcorr_err</span></code> column, and the color-term coefficient/intercept uncertainty
+from <code class="docutils literal notranslate"><span class="pre">fit_color_term_correction</span></code> is not propagated. The <code class="docutils literal notranslate"><span class="pre">*_colorcorr</span></code> loop also
+deliberately skips existing error columns.</p>
+<p><strong>Impact:</strong> users who select <code class="docutils literal notranslate"><span class="pre">*_colorcorr</span></code> magnitudes for science get no error
+for them; the parallel baseline errors do not apply because the offset shifts
+the magnitude but does not change <code class="docutils literal notranslate"><span class="pre">sigma_mag</span></code> in the current model.</p>
+<p><strong>Recommendation:</strong> export <code class="docutils literal notranslate"><span class="pre">*_colorcorr_err</span></code> derived from the baseline error
+plus the color-term fit uncertainty (coefficient standard error times the color
+offset from <code class="docutils literal notranslate"><span class="pre">color_ref</span></code>), and document that the color term is not a random
+per-source error.</p>
+</section>
+<section id="f4-zero-point-scatter-is-biased-low-by-the-outlier-cuts-lowmedium-fixed">
+<h3>F4 — Zero-point scatter is biased low by the outlier cuts (low–medium) — <strong>FIXED</strong><a class="headerlink" href="#f4-zero-point-scatter-is-biased-low-by-the-outlier-cuts-lowmedium-fixed" title="Link to this heading"></a></h3>
+<p><strong>Status:</strong> fully fixed. <code class="docutils literal notranslate"><span class="pre">calculate_zero_point</span></code> now takes the scatter for
+<code class="docutils literal notranslate"><span class="pre">σ_zp</span></code> from the <strong>sigma-clipped sample before the ±0.5 mag hard cut</strong> (which
+truncates the tails), keeping the truncated value only as a reported diagnostic
+(<code class="docutils literal notranslate"><span class="pre">zero_point_scatter_kept</span></code>). Both scatter estimates and <code class="docutils literal notranslate"><span class="pre">N</span></code> are stored in
+<code class="docutils literal notranslate"><span class="pre">st.session_state[&quot;zero_point_diagnostics&quot;]</span></code>. Separately,
+<code class="docutils literal notranslate"><span class="pre">add_calibrated_magnitudes</span></code> exports every magnitude error as a total plus
+explicit <code class="docutils literal notranslate"><span class="pre">*_mag_err_*_random</span></code> and <code class="docutils literal notranslate"><span class="pre">*_mag_err_*_correlated</span></code> components with
+filter-prefixed aliases. Test:
+<code class="docutils literal notranslate"><span class="pre">TestZeroPointCalibration::test_zero_point_uncertainty_uses_untrimmed_scatter</span></code>.</p>
+<p><strong>Where:</strong> <code class="docutils literal notranslate"><span class="pre">src/pipeline.py</span></code>, <code class="docutils literal notranslate"><span class="pre">calculate_zero_point</span></code>, sigma-clip + <code class="docutils literal notranslate"><span class="pre">|residual|</span> <span class="pre">&lt;=</span> <span class="pre">0.5</span> <span class="pre">mag</span></code> block, ~lines 1700–1760.</p>
+<p><strong>Issue:</strong> <code class="docutils literal notranslate"><span class="pre">sigma_zp</span> <span class="pre">=</span> <span class="pre">1.2533</span> <span class="pre">*</span> <span class="pre">scatter</span> <span class="pre">/</span> <span class="pre">sqrt(N)</span></code> uses the scatter of the
+<em>trimmed</em> residual distribution. The explicit <code class="docutils literal notranslate"><span class="pre">|residual|</span> <span class="pre">&lt;=</span> <span class="pre">0.5</span> <span class="pre">mag</span></code> hard cut
+removes the wings, so <code class="docutils literal notranslate"><span class="pre">scatter</span></code> — and therefore <code class="docutils literal notranslate"><span class="pre">sigma_zp</span></code> — is biased low
+(the code comment already acknowledges this). In addition, the zero-point error
+is a <strong>common systematic</strong> shared by every source in the field, yet it is added
+in quadrature per source as if it were independent.</p>
+<p><strong>Impact:</strong> <code class="docutils literal notranslate"><span class="pre">sigma_mag_calib</span></code> is slightly optimistic; for ensemble/relative work
+the correlated component behaves differently from the random component.</p>
+<p><strong>Recommendation:</strong> document the bias explicitly (it already is, in part) and
+consider reporting the untrimmed RMS as a diagnostic column. If absolute
+calibration matters, expose a flag distinguishing the random (<code class="docutils literal notranslate"><span class="pre">sigma_mag</span></code>) from
+the systematic (<code class="docutils literal notranslate"><span class="pre">sigma_zp</span></code>) part rather than only their quadrature sum.</p>
+</section>
+<section id="f5-constant-background-fallback-uses-a-non-robust-rms-low-fixed">
+<h3>F5 — Constant-background fallback uses a non-robust RMS (low) — <strong>FIXED</strong><a class="headerlink" href="#f5-constant-background-fallback-uses-a-non-robust-rms-low-fixed" title="Link to this heading"></a></h3>
+<p><strong>Status:</strong> fixed. <code class="docutils literal notranslate"><span class="pre">_constant_background</span></code> now uses <code class="docutils literal notranslate"><span class="pre">stdfunc=&quot;mad_std&quot;</span></code>, matching
+the normal <code class="docutils literal notranslate"><span class="pre">Background2D</span></code> path. Test:
+<code class="docutils literal notranslate"><span class="pre">TestBackgroundRobustness::test_constant_fallback_rms_is_mad_based</span></code>.</p>
+<p><strong>Where:</strong> <code class="docutils literal notranslate"><span class="pre">src/tools_pipeline.py</span></code>, <code class="docutils literal notranslate"><span class="pre">_constant_background</span></code>, ~line 1592.</p>
+<p><strong>Issue:</strong> the last-resort model uses <code class="docutils literal notranslate"><span class="pre">sigma_clipped_stats(...)[2]</span></code>, the plain
+sigma-clipped standard deviation, whereas the normal path uses the MAD estimator.
+On the crowded frames that trigger this fallback, the plain std is inflated by
+undetected sources (the documented reason <code class="docutils literal notranslate"><span class="pre">MADStdBackgroundRMS</span></code> was adopted).</p>
+<p><strong>Impact:</strong> in exactly the fallback regime the per-pixel <code class="docutils literal notranslate"><span class="pre">sigma_bkg</span></code> — and hence
+every flux error — can be inflated by up to ~2x.</p>
+<p><strong>Recommendation:</strong> use the MAD-based RMS in <code class="docutils literal notranslate"><span class="pre">_constant_background</span></code> too, for
+consistency.</p>
+</section>
+<section id="f6-detection-threshold-uses-a-non-robust-global-std-low-fixed">
+<h3>F6 — Detection threshold uses a non-robust global std (low) — <strong>FIXED</strong><a class="headerlink" href="#f6-detection-threshold-uses-a-non-robust-global-std-low-fixed" title="Link to this heading"></a></h3>
+<p><strong>Status:</strong> fixed. Both the <code class="docutils literal notranslate"><span class="pre">fwhm_fit</span></code> noise estimate and the
+<code class="docutils literal notranslate"><span class="pre">detection_and_photometry</span></code> fallback now use <code class="docutils literal notranslate"><span class="pre">stdfunc=&quot;mad_std&quot;</span></code>, so the
+detection threshold and the error model use the same robust noise estimate.</p>
+<p><strong>Where:</strong> <code class="docutils literal notranslate"><span class="pre">src/pipeline.py</span></code>, <code class="docutils literal notranslate"><span class="pre">sigma_clipped_stats(image_sub,</span> <span class="pre">sigma=3.0)</span></code> feeding
+<code class="docutils literal notranslate"><span class="pre">DAOStarFinder(threshold=(threshold_sigma</span> <span class="pre">+</span> <span class="pre">0.5)</span> <span class="pre">*</span> <span class="pre">clipped_std)</span></code>, ~lines 1215–1230.</p>
+<p><strong>Issue:</strong> the detection threshold is set from the global sigma-clipped std,
+which is inflated by sources in crowded fields, rather than from the MAD-based
+noise that the error budget uses.</p>
+<p><strong>Impact:</strong> the effective detection threshold is higher than the requested
+<code class="docutils literal notranslate"><span class="pre">threshold_sigma</span></code> in crowded fields; faint sources are lost. It is a
+sensitivity/bias issue rather than a propagated-error issue.</p>
+<p><strong>Recommendation:</strong> derive the threshold from the MAD-based global RMS (or the
+median of the <code class="docutils literal notranslate"><span class="pre">background_rms</span></code> map) so detection and the error model agree.</p>
+</section>
+<section id="f7-psf-photometry-has-no-psf-mismatch-or-local-background-term-low-fixed">
+<h3>F7 — PSF photometry has no PSF-mismatch or local-background term (low) — <strong>FIXED</strong><a class="headerlink" href="#f7-psf-photometry-has-no-psf-mismatch-or-local-background-term-low-fixed" title="Link to this heading"></a></h3>
+<p><strong>Status:</strong> fixed. <code class="docutils literal notranslate"><span class="pre">perform_psf_photometry</span></code> builds one <code class="docutils literal notranslate"><span class="pre">LocalBackground</span></code>
+(sigma-clipped median annulus, 2×–3× FWHM) and uses it in two places:</p>
+<ul class="simple">
+<li><p><strong>ePSF build</strong> — the local background is subtracted from a copy of the image
+around each PSF star before <code class="docutils literal notranslate"><span class="pre">extract_stars</span></code>, so the empirical PSF is not built
+from sky-contaminated cutouts;</p></li>
+<li><p><strong>per-source fits</strong> — the background is evaluated with the pipeline mask and
+passed as the <code class="docutils literal notranslate"><span class="pre">local_bkg</span></code> column of the PSF-fitting <code class="docutils literal notranslate"><span class="pre">init_params</span></code> (with the
+estimator as a fallback). Sources with a fully masked/off-frame annulus fall
+back to no subtraction instead of a NaN fit.</p></li>
+</ul>
+<p>Test:
+<code class="docutils literal notranslate"><span class="pre">TestPsfApertureCoherency::test_psf_local_background_recovers_flux_with_constant_sky</span></code>
+— the sky-induced flux bias drops from ×2.49 (no local background) to ×1.001
+across the ensemble. A PSF-model mismatch can still remain on real, PSF-varying
+frames, but the background pedestal no longer drives it.</p>
+<p><strong>Where:</strong> <code class="docutils literal notranslate"><span class="pre">src/psf.py</span></code>, <code class="docutils literal notranslate"><span class="pre">PSFPhotometry(...)</span></code> construction ~line 1012; the
+<code class="docutils literal notranslate"><span class="pre">local_bkg</span></code> argument is not passed.</p>
+<p><strong>Issue:</strong> PSF fluxes are fitted on <code class="docutils literal notranslate"><span class="pre">image_sub</span></code> (global model already
+subtracted) with no explicit local background fit and no allowance for PSF model
+mismatch. <code class="docutils literal notranslate"><span class="pre">flux_err</span></code> faithfully reflects the per-pixel noise model but not these
+systematics, so PSF errors can be optimistic in nebulous/crowded fields.</p>
+<p><strong>Recommendation:</strong> consider <code class="docutils literal notranslate"><span class="pre">local_bkg</span></code> (e.g. the annulus median already
+computed for the aperture) and/or a PSF-mismatch term; at minimum document that
+the PSF error is a purely statistical estimate.</p>
+</section>
+<section id="f8-centroiding-error-is-not-propagated-low-fixed">
+<h3>F8 — Centroiding error is not propagated (low) — <strong>FIXED</strong><a class="headerlink" href="#f8-centroiding-error-is-not-propagated-low-fixed" title="Link to this heading"></a></h3>
+<p><strong>Status:</strong> fixed. The aperture flux error now includes a centroid-position term.
+<code class="docutils literal notranslate"><span class="pre">sigma_pos</span> <span class="pre">=</span> <span class="pre">sigma_PSF</span> <span class="pre">/</span> <span class="pre">S/N</span></code> (floored at 0.01 px, capped at 0.5×FWHM) and the
+flux change for a one-sigma displacement is measured directly by re-measuring
+the aperture shifted <code class="docutils literal notranslate"><span class="pre">±sigma_pos</span></code> along x and y (so real PSF
+asymmetry/ellipticity is captured, unlike a symmetric-Gaussian derivative),
+<code class="docutils literal notranslate"><span class="pre">sigma_centroid</span> <span class="pre">=</span> <span class="pre">0.5·√(ΔF_x²</span> <span class="pre">+</span> <span class="pre">ΔF_y²)</span></code>. It is folded into
+<code class="docutils literal notranslate"><span class="pre">aperture_sum_bkg_corr_err_*</span></code> and exported as <code class="docutils literal notranslate"><span class="pre">centroid_flux_err_X_X</span></code>. Tests:
+every end-to-end budget test now verifies the full decomposition
+<code class="docutils literal notranslate"><span class="pre">σ_flux²</span> <span class="pre">=</span> <span class="pre">σ_ap²</span> <span class="pre">+</span> <span class="pre">σ_bkg²</span> <span class="pre">+</span> <span class="pre">σ_centroid²</span></code>.</p>
+<p><strong>Issue:</strong> the aperture flux error accounts for per-pixel noise, the local
+background and (via <code class="docutils literal notranslate"><span class="pre">area_overlap</span></code>) the masked area, but not the uncertainty in
+the source position. For small apertures and undersampled PSFs, centroid error
+is a real contribution.</p>
+<p><strong>Recommendation:</strong> optional secondary term, or document it as a known omission.</p>
+</section>
+<section id="f9-effective-gain-fallback-of-1-is-conservative-but-not-neutral-info">
+<h3>F9 — Effective-gain fallback of 1 is conservative but not neutral (info)<a class="headerlink" href="#f9-effective-gain-fallback-of-1-is-conservative-but-not-neutral-info" title="Link to this heading"></a></h3>
+<p>As documented, with data in ADU and an unknown true gain <code class="docutils literal notranslate"><span class="pre">g</span></code>, setting
+<code class="docutils literal notranslate"><span class="pre">g_eff</span> <span class="pre">=</span> <span class="pre">1</span></code> overestimates the source Poisson variance by <code class="docutils literal notranslate"><span class="pre">g</span></code>, i.e. bright-source
+magnitude errors by up to <code class="docutils literal notranslate"><span class="pre">sqrt(g)</span></code>. The ordering (header -&gt; user -&gt; empirical
+-&gt; 1) and the <code class="docutils literal notranslate"><span class="pre">BUNIT</span></code> check are sound. No change needed; keep the warning.</p>
+</section>
+<section id="f10-naming-observability-nits-info-fixed">
+<h3>F10 — Naming / observability nits (info) — <strong>FIXED</strong><a class="headerlink" href="#f10-naming-observability-nits-info-fixed" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>The misleading <code class="docutils literal notranslate"><span class="pre">zero_point_error</span></code> column was renamed to <code class="docutils literal notranslate"><span class="pre">zero_point_scatter</span></code>
+(calibrator scatter), and the formal <code class="docutils literal notranslate"><span class="pre">zero_point_std</span></code> is now stored alongside
+it in the matched table.</p></li>
+<li><p>The documentation now states explicitly that the zero point is anchored to the
+aperture-corrected <code class="docutils literal notranslate"><span class="pre">instrumental_mag_*</span></code>, while
+<code class="docutils literal notranslate"><span class="pre">instrumental_mag_bkg_corr_*</span></code> is the uncorrected diagnostic reference.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ee_fraction_X_X</span></code> is now exported next to <code class="docutils literal notranslate"><span class="pre">apcorr_X_X</span></code>, so the correction is
+auditable (a large <code class="docutils literal notranslate"><span class="pre">apcorr</span></code> is traceable to a poorly-enclosed aperture).</p></li>
+</ul>
+</section>
+</section>
+<hr class="docutils" />
+<section id="test-coverage-assessment">
+<h2>5. Test coverage assessment<a class="headerlink" href="#test-coverage-assessment" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">tests/test_photometry.py</span></code> already contains a dedicated
+<code class="docutils literal notranslate"><span class="pre">TestPipelineErrorBudget</span></code> class with end-to-end checks that:</p>
+<ul class="simple">
+<li><p>S/N equals <code class="docutils literal notranslate"><span class="pre">flux</span> <span class="pre">/</span> <span class="pre">sigma_flux</span></code> for the background-corrected flux;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">sigma_mag</span></code> uses the same flux as the magnitude;</p></li>
+<li><p>the local-background term is folded in (<code class="docutils literal notranslate"><span class="pre">sigma_flux</span> <span class="pre">&gt;</span> <span class="pre">aperture_sum_err</span></code>);</p></li>
+<li><p>the aperture correction is <code class="docutils literal notranslate"><span class="pre">&gt;=</span> <span class="pre">1</span></code>, bounded, and larger for the smaller
+aperture;</p></li>
+<li><p>the real ePSF path produces the stored <code class="docutils literal notranslate"><span class="pre">apcorr</span></code>.</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">TestErrorPropagation</span></code> covers <code class="docutils literal notranslate"><span class="pre">sigma_mag_calib</span> <span class="pre">=</span> <span class="pre">sqrt(sigma_inst^2</span> <span class="pre">+</span> <span class="pre">sigma_zp^2)</span></code>
+and the default (instrumental-only) case. <code class="docutils literal notranslate"><span class="pre">TestGainResolution</span></code>,
+<code class="docutils literal notranslate"><span class="pre">TestEffectiveGainEstimation</span></code>, <code class="docutils literal notranslate"><span class="pre">TestCosmicRayMasking</span></code>, <code class="docutils literal notranslate"><span class="pre">TestUnreliablePhotometryCut</span></code>
+and <code class="docutils literal notranslate"><span class="pre">TestBright/FaintSource</span></code> cover the adjacent budget terms.</p>
+<p><strong>Gaps worth adding tests for:</strong></p>
+<ol class="arabic simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">median_err</span></code>-based local-background term (F1) — a regression test asserting
+<code class="docutils literal notranslate"><span class="pre">sigma_flux</span></code> uses the median standard error.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">systematic_floor</span></code> actually affecting exported errors (F2).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">*_colorcorr_err</span></code> existence and value (F3).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">_constant_background</span></code> RMS is MAD-based (F5).</p></li>
+<li><p>Zero-point <code class="docutils literal notranslate"><span class="pre">scatter</span></code> vs formal uncertainty distinguishable in the output (F10).</p></li>
+</ol>
+</section>
+<hr class="docutils" />
+<section id="suggested-follow-ups-in-priority-order">
+<h2>6. Suggested follow-ups (in priority order)<a class="headerlink" href="#suggested-follow-ups-in-priority-order" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p><strong>F1</strong> — switch the local-background uncertainty to <code class="docutils literal notranslate"><span class="pre">ApertureStats.median_err</span></code>.</p></li>
+<li><p><strong>F2</strong> — propagate/report the aperture-correction systematic; wire or remove
+<code class="docutils literal notranslate"><span class="pre">SYSTEMATIC_MAG_ERR_FLOOR</span></code>.</p></li>
+<li><p><strong>F3</strong> — export <code class="docutils literal notranslate"><span class="pre">*_colorcorr_err</span></code> with color-term fit uncertainty.</p></li>
+<li><p><strong>F5 / F6</strong> — use MAD-based noise for the constant fallback and the detection
+threshold, for consistency with the error model.</p></li>
+<li><p><strong>F4 / F7 / F8</strong> — document the correlated/systematic components and the
+PSF/centroid omissions, or model them.</p></li>
+<li><p>Update <code class="docutils literal notranslate"><span class="pre">docs/PHOTOMETRY_FORMULAS.md</span></code> to match whatever is changed.</p></li>
+</ol>
+</section>
+<hr class="docutils" />
+<section id="references">
+<h2>7. References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>photutils <code class="docutils literal notranslate"><span class="pre">calc_total_error</span></code> (formula and negative-pixel behaviour):
+<a class="reference external" href="https://photutils.readthedocs.io/en/3.0.0/_modules/photutils/utils/errors.html">https://photutils.readthedocs.io/en/3.0.0/_modules/photutils/utils/errors.html</a></p></li>
+<li><p>photutils <code class="docutils literal notranslate"><span class="pre">ApertureStats</span></code> (<code class="docutils literal notranslate"><span class="pre">median</span></code>, <code class="docutils literal notranslate"><span class="pre">median_err</span></code>, <code class="docutils literal notranslate"><span class="pre">std</span></code>, <code class="docutils literal notranslate"><span class="pre">sum_aper_area</span></code>):
+<a class="reference external" href="https://photutils.readthedocs.io/en/latest/api/photutils.aperture.ApertureStats.html">https://photutils.readthedocs.io/en/latest/api/photutils.aperture.ApertureStats.html</a></p></li>
+<li><p>photutils aperture photometry (masking, <code class="docutils literal notranslate"><span class="pre">area_overlap</span></code>, exact method):
+<a class="reference external" href="https://photutils.readthedocs.io/en/stable/aperture.html">https://photutils.readthedocs.io/en/stable/aperture.html</a></p></li>
+<li><p>photutils PSF photometry (<code class="docutils literal notranslate"><span class="pre">PSFPhotometry</span></code>, <code class="docutils literal notranslate"><span class="pre">error</span></code>, <code class="docutils literal notranslate"><span class="pre">local_bkg</span></code>):
+<a class="reference external" href="https://photutils.readthedocs.io/en/stable/psf.html">https://photutils.readthedocs.io/en/stable/psf.html</a></p></li>
+<li><p>Howell, S. B. (2006), <em>Handbook of CCD Astronomy</em>, 2nd ed., ch. 4</p></li>
+<li><p>Merline, W. J., &amp; Howell, S. B. (1995), <em>Experimental Techniques in CCD Photometry</em></p></li>
+<li><p>Bevington, P. R., &amp; Robinson, D. K. (2003), <em>Data Reduction and Error Analysis
+for the Physical Sciences</em>, 3rd ed.</p></li>
+<li><p>Standard error of the median: <code class="docutils literal notranslate"><span class="pre">sqrt(pi/2)</span> <span class="pre">*</span> <span class="pre">sigma</span> <span class="pre">/</span> <span class="pre">sqrt(N)</span> <span class="pre">~=</span> <span class="pre">1.2533</span> <span class="pre">*</span> <span class="pre">sigma</span> <span class="pre">/</span> <span class="pre">sqrt(N)</span></code></p></li>
+</ul>
+</section>
+<hr class="docutils" />
+<section id="post-review-updates-v1-8-5">
+<h2>8. Post-review updates (v1.8.5)<a class="headerlink" href="#post-review-updates-v1-8-5" title="Link to this heading"></a></h2>
+<p>This section records changes made after the review above. They concern PSF
+photometry reliability and the ePSF geometry rather than the calibrated error
+budget, which is unchanged.</p>
+<ul class="simple">
+<li><p><strong>PSF star selection</strong> no longer uses the <code class="docutils literal notranslate"><span class="pre">sqrt(flux)</span></code> approximation for a
+hard 50% S/N cut, and the saturation filter no longer rejects the brightest
+unsaturated stars. On a clean 121-star field this goes from 14 selected
+stars (below the 15-star minimum, so the whole PSF step was skipped) to 49,
+with photometry on all 121 sources.</p></li>
+<li><p><strong>ePSF geometry</strong>: the fitting region is rounded (<code class="docutils literal notranslate"><span class="pre">int(3·FWHM)</span></code> was biasing
+the effective radius by up to half a pixel), the ePSF is extracted from a
+larger ≈5× FWHM cutout so its wings are not truncated/normalised away, the
+model centre is <code class="docutils literal notranslate"><span class="pre">(N</span> <span class="pre">−</span> <span class="pre">1)/2</span></code>, and the aperture-correction model is the exact
+object used for the fits (including any re-centering).</p></li>
+<li><p><strong>PSF-vs-aperture diagnostic</strong>: <code class="docutils literal notranslate"><span class="pre">check_psf_aperture_consistency()</span></code> reports
+the median <code class="docutils literal notranslate"><span class="pre">psf_mag</span> <span class="pre">−</span> <span class="pre">aperture_mag</span></code> per aperture and warns above
+<code class="docutils literal notranslate"><span class="pre">PSF_APERTURE_CONSISTENCY_THRESHOLD</span></code> (0.15 mag). This makes the class of
+ePSF shape/normalisation offset discussed for PSF photometry directly
+observable instead of having to be inferred from the catalog.</p></li>
+<li><p><strong>Crowded local background</strong> was investigated as a possible “double
+subtraction” of the background. It is not a real flux bias in photutils
+3.0 (per-source <code class="docutils literal notranslate"><span class="pre">local_bkg</span></code> is subtracted once from each source’s own
+cutout); zeroing it for overlapping sources would bias crowded fluxes
+~5-7% high, so no guard was applied. See
+<code class="docutils literal notranslate"><span class="pre">docs/PHOTOMETRY_FORMULAS.md</span></code> for the numbers.</p></li>
+</ul>
+<hr class="docutils" />
+<p><em>Prepared as a code review of the RAPAS Photometry Pipeline error budget.</em></p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024-2026, Pier-Francesco Rocci.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

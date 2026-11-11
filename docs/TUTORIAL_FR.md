@@ -1,5 +1,7 @@
 # Tutoriel pas à pas – Pipeline de Photométrie RAPAS
 
+> **English**: this tutorial is also available in [English](TUTORIAL.md).
+
 Ce tutoriel vous guide à travers une session d'analyse typique.
 
 Utilisez une image scientifique FITS contenant des données numériques. Le
@@ -27,7 +29,7 @@ Dans la barre latérale (section **⚙️ Parameters**), ajustez :
 
 - **Estimated FWHM** : Estimation initiale en secondes d'arc
 - **Detection Threshold** : Seuil sigma pour la détection des sources
-- **FWHM Radius Factor** : Multiplicateur pour l'ouverture définie par l'utilisateur (0,5 – 2,0). Les valeurs 1,1 et 1,3 sont réservées aux deux ouvertures fixes.
+- **FWHM Radius Factor** : Multiplicateur pour l'ouverture définie par l'utilisateur (0,5 – 2,0). Les valeurs 1,1 et 1,3 sont réservées aux deux ouvertures fixes et ne peuvent pas être sélectionnées sans un avertissement.
 - **Pixel scale override (arcsec/pixel)** : Laissez à `0` (automatique) lorsque l'en-tête FITS ou le WCS fournit l'échelle. Si l'échelle est introuvable, l'analyse s'arrête avec un message ; saisissez alors la valeur ici (ex. `0,75`) et relancez l'analyse. Aucune échelle par défaut n'est supposée.
 - **Border Mask** : Pixels à exclure en bordure d'image
 - **Max Magnitude Error** : Coupe de dernier recours sur l'erreur de magnitude calibrée. Une source n'est écartée que si *toutes* les méthodes de photométrie rapportent une erreur supérieure ou égale à cette valeur ; la régler à 0 désactive complètement la coupe
@@ -62,7 +64,7 @@ Entrez votre clé API dans la section **🔑 Astro-Colibri** de la barre latéra
 
 Développez la section **Transient Candidates** dans la barre latérale :
 
-- **Enable Transient Finder** : Lance la recherche de transitoires, qui compare les sources détectées aux relevés de référence (PanSTARRS1 au nord, SkyMapper au sud) et rejette les objets connus des catalogues et du Système solaire.
+- **Enable Transient Finder** : Lance la recherche de transitoires, qui compare les sources détectées aux relevés de référence (PanSTARRS1 au nord, SkyMapper au sud) et rejette les objets connus des catalogues et du Système solaire. Les sources sont détectées directement à 1,5 sigma pour favoriser les objets faibles, et les candidats sont affichés comme des étoiles jaunes dans le visualiseur Aladin pour une vérification visuelle.
 - **Reference Filter** : Sélectionnez la bande pour la comparaison avec le relevé de référence et les vignettes du gabarit HiPS.
 - Les détections sont croisées avec les catalogues de référence dans un rayon d'une demi-largeur à mi-hauteur (FWHM), et une source confondue avec une entrée de catalogue n'est conservée que si elle est au moins 2 magnitudes plus brillante (excès de brillance réel). Les sources sont détectées avec SExtractor, et les détections peu fiables (tronquées en bord de champ, issues d'un dédoublement, ou avec une ouverture défectueuse) sont écartées. Si le tableau de photométrie ne contient pas de magnitude PSF exploitable, le détecteur se rabat sur la magnitude d'ouverture calibrée à 1,1 x FWHM au lieu de ne retourner aucun candidat.
 - Le détecteur de transitoires n'applique aucun seuil minimal de S/N. Les
@@ -177,7 +179,7 @@ mesurées par une seule méthode), et la vue des résultats le trace en fonction
 la magnitude PSF calibrée (avec les lignes de médiane et de zéro par ouverture)
 ainsi que son histogramme.
 
-**Analyse interactive** : Utilisez le visualiseur Aladin Lite intégré pour l'exploration en temps réel, ou exportez les coordonnées vers ESA SkyView. Si le script Aladin hébergé par le CDS échoue ou dépasse le délai, le visualiseur importe le module 3.8.2 épinglé sur jsDelivr. Ce repli charge la bibliothèque ; l'affichage du ciel nécessite toujours l'accès à un serveur HiPS, et les deux relevés par défaut utilisent le CDS. Développez **Source coordinates (available without Aladin)** au-dessus du visualiseur pour consulter les positions même si Aladin ou les images sont indisponibles.
+**Analyse interactive** : Utilisez le visualiseur Aladin Lite intégré pour l'exploration en temps réel, ou exportez les coordonnées vers ESA SkyView. Si le script Aladin hébergé par le CDS échoue ou dépasse le délai, le visualiseur importe le module 3.8.2 épinglé sur jsDelivr. Ce repli charge la bibliothèque ; l'affichage du ciel nécessite toujours un serveur HiPS joignable, et le visualiseur essaie d'abord les miroirs listés par le CDS pour le relevé choisi (ESA Sky, CASDA, STPub, China-VO) avant de basculer vers le relevé de secours. Développez **Source coordinates (available without Aladin)** au-dessus du visualiseur pour consulter les positions même si Aladin ou les images sont indisponibles.
 
 ### Services Externes et Résultats Partiels
 

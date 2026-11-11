@@ -48,6 +48,8 @@
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide.html">User Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="TUTORIAL.html">Step-by-Step Photometry Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="TUTORIAL_FR.html">Tutoriel pas à pas – Pipeline de Photométrie RAPAS</a></li>
 <li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
 <li class="toctree-l1"><a class="reference internal" href="advanced_features.html">Advanced Features</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a></li>
@@ -425,14 +427,9 @@ log: 10 stars is the hard minimum and 25 the quality target.</p></li>
 service is down or slow.</p></li>
 <li><p><strong>Solution</strong>:</p>
 <ul>
-<li><p>VizieR queries automatically retry through the Harvard mirror
-(<code class="docutils literal notranslate"><span class="pre">vizier.cfa.harvard.edu</span></code>), and SIMBAD region queries retry through
-<code class="docutils literal notranslate"><span class="pre">simbad.cfa.harvard.edu</span></code>. The log records when either fallback is
-used.</p></li>
-<li><p>VizieR queries automatically retry through the Harvard mirror
-(<code class="docutils literal notranslate"><span class="pre">vizier.cfa.harvard.edu</span></code>), and SIMBAD region queries retry through
-<code class="docutils literal notranslate"><span class="pre">simbad.cfa.harvard.edu</span></code>. The log records when either fallback is
-used.</p></li>
+<li><p>VizieR and SIMBAD queries automatically retry through the Harvard and
+IDIA mirrors, and Gaia TAP queries through the Heidelberg mirror. The
+log records when a fallback is used.</p></li>
 <li><p>Wait and try processing the image again later.</p></li>
 <li><p>Check your internet connection.</p></li>
 <li><p>Review the generated log file to see which catalog step timed out or was
@@ -606,8 +603,9 @@ out, the widget imports the ES module from jsDelivr using
 <code class="docutils literal notranslate"><span class="pre">https://cdn.jsdelivr.net/npm/aladin-lite&#64;3.8.2/dist/aladin.js</span></code>.
 If both sources fail, the red line reports the failure; check the
 proxy, firewall, HTTPS-Only mode, or connection.
-The fallback covers the JavaScript library only; the sky imagery still
-requires access to the HiPS tile server.</p></li>
+The fallback covers the JavaScript library only; sky imagery still
+needs a reachable HiPS server, but the CDS-listed mirrors of the survey
+are tried before the viewer switches surveys.</p></li>
 <li><p>Expand <code class="docutils literal notranslate"><span class="pre">Source</span> <span class="pre">coordinates</span> <span class="pre">(available</span> <span class="pre">without</span> <span class="pre">Aladin)</span></code> above the
 viewer to inspect positions without the library or sky imagery. The
 science-image preview also remains available.</p></li>
@@ -621,25 +619,29 @@ module if the CDS download or initialization fails or times out.</p></li>
 </ul>
 </li>
 </ul>
-<p><strong>Aladin falls back to a second survey, or shows none at all</strong></p>
+<p><strong>Aladin falls back to a mirror or a second survey, or shows none at all</strong></p>
 <ul class="simple">
 <li><p><strong>Problem</strong>: The requested HiPS (<code class="docutils literal notranslate"><span class="pre">CDS/P/DSS2/color</span></code> by default) cannot be
 fetched or is too slow, so the view stays empty.</p></li>
 <li><p><strong>Solution</strong>: The widget probes the HiPS <code class="docutils literal notranslate"><span class="pre">properties</span></code> document with a
-12 second timeout and, when it cannot be read, switches the base layer to
-<code class="docutils literal notranslate"><span class="pre">CDS/P/DSS2/red</span></code>:</p>
+12 second timeout. When the CDS server cannot be read, the CDS-listed
+mirror servers are probed for the same survey (DSS, 2MASS, SDSS9,
+PanSTARRS and AllWISE); the first reachable mirror replaces the base layer.
+Only if every mirror fails does it switch to <code class="docutils literal notranslate"><span class="pre">CDS/P/DSS2/red</span></code>:</p>
 <ul>
-<li><p>A warning is shown above the viewer
-(<code class="docutils literal notranslate"><span class="pre">Survey</span> <span class="pre">&lt;survey&gt;</span> <span class="pre">could</span> <span class="pre">not</span> <span class="pre">be</span> <span class="pre">loaded;</span> <span class="pre">trying</span> <span class="pre">&lt;fallback&gt;</span> <span class="pre">instead.</span></code>)
-and mirrored in the console.</p></li>
-<li><p>When the fallback is unreachable too, the message says so instead of
-leaving a blank canvas. Both defaults use CDS and may fail together.</p></li>
+<li><p>A warning is shown above the viewer (<code class="docutils literal notranslate"><span class="pre">Survey</span> <span class="pre">&lt;survey&gt;</span> <span class="pre">is</span> <span class="pre">unavailable;</span>
+<span class="pre">loaded</span> <span class="pre">the</span> <span class="pre">mirrored</span> <span class="pre">copy</span> <span class="pre">from</span> <span class="pre">&lt;url&gt;.</span></code>), and the switch to the second
+survey is reported as <code class="docutils literal notranslate"><span class="pre">Survey</span> <span class="pre">&lt;survey&gt;</span> <span class="pre">could</span> <span class="pre">not</span> <span class="pre">be</span> <span class="pre">loaded;</span> <span class="pre">trying</span>
+<span class="pre">&lt;fallback&gt;</span> <span class="pre">instead.</span></code> Both messages are mirrored in the console.</p></li>
+<li><p>When the mirrors and the fallback are unreachable too, the message says
+so instead of leaving a blank canvas.</p></li>
 <li><p>Change the second survey with the <code class="docutils literal notranslate"><span class="pre">fallback_survey</span></code> argument of
 <code class="docutils literal notranslate"><span class="pre">display_catalog_in_aladin</span></code>. An empty string disables the fallback.
-The two default identifiers and full HiPS URLs can be checked; other
+The known survey identifiers and full HiPS URLs can be checked; other
 identifiers are not guessed as paths, and an uncheckable survey is
-reported. A primary survey passed as a full URL is not probed.
-A third-party HiPS URL must allow cross-origin browser requests.</p></li>
+reported. A survey passed as a full URL is probed and gets the known
+mirrors when its URL matches a CDS root. A third-party HiPS URL must
+allow cross-origin browser requests.</p></li>
 </ul>
 </li>
 </ul>

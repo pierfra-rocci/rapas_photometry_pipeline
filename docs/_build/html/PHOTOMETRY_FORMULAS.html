@@ -1,0 +1,823 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Photometry Formulas and Error Calculations &mdash; RAPAS Photometry Pipeline (RPP) v1.9.3 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=f333a941"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #2980b9" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            RAPAS Photometry Pipeline (RPP)
+              <img src="_static/rapas_logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="user_guide.html">User Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="TUTORIAL.html">Step-by-Step Photometry Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="TUTORIAL_FR.html">Tutoriel pas à pas – Pipeline de Photométrie RAPAS</a></li>
+<li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced_features.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #2980b9" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">RAPAS Photometry Pipeline (RPP)</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Photometry Formulas and Error Calculations</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/PHOTOMETRY_FORMULAS.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="photometry-formulas-and-error-calculations">
+<h1>Photometry Formulas and Error Calculations<a class="headerlink" href="#photometry-formulas-and-error-calculations" title="Link to this heading"></a></h1>
+<p>This document provides detailed mathematical documentation for the photometric calculations used in the pipeline.</p>
+<section id="table-of-contents">
+<h2>Table of Contents<a class="headerlink" href="#table-of-contents" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p><a class="reference internal" href="#signal-to-noise-ratio-sn"><span class="xref myst">Signal-to-Noise Ratio (S/N)</span></a></p></li>
+<li><p><a class="reference internal" href="#magnitude-error-calculation"><span class="xref myst">Magnitude Error Calculation</span></a></p></li>
+<li><p><a class="reference internal" href="#error-propagation"><span class="xref myst">Error Propagation</span></a></p></li>
+<li><p><a class="reference internal" href="#quality-flags"><span class="xref myst">Quality Flags</span></a></p></li>
+<li><p><a class="reference internal" href="#references"><span class="xref myst">References</span></a></p></li>
+</ol>
+</section>
+<hr class="docutils" />
+<section id="signal-to-noise-ratio-s-n">
+<h2>Signal-to-Noise Ratio (S/N)<a class="headerlink" href="#signal-to-noise-ratio-s-n" title="Link to this heading"></a></h2>
+<section id="formula">
+<h3>Formula<a class="headerlink" href="#formula" title="Link to this heading"></a></h3>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">S</span><span class="o">/</span><span class="n">N</span> <span class="o">=</span> <span class="n">flux</span> <span class="o">/</span> <span class="n">flux_error</span>
+</pre></div>
+</div>
+<p>Where:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">flux</span></code>: Source flux (background-corrected and aperture-corrected, see below)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">flux_error</span></code>: Uncertainty in flux measurement (σ_flux), including the
+uncertainty of the local background estimate</p></li>
+</ul>
+</section>
+<section id="implementation-details">
+<h3>Implementation Details<a class="headerlink" href="#implementation-details" title="Link to this heading"></a></h3>
+<p><strong>Aperture Photometry:</strong></p>
+<ul class="simple">
+<li><p>Computes the background-corrected flux <code class="docutils literal notranslate"><span class="pre">aperture_sum_bkg_corr</span></code> from a robust
+sigma-clipped median annulus and uses it for the magnitude, its error and the
+S/N (a single, consistent flux)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">flux_error</span></code> is <code class="docutils literal notranslate"><span class="pre">aperture_sum_bkg_corr_err</span></code>, i.e. the quadrature sum of the
+aperture error, the local-background error and the centroid term. This column
+is produced by <code class="docutils literal notranslate"><span class="pre">detection_and_photometry</span></code> and drives the magnitude error, but
+it is not retained in the exported catalog</p></li>
+<li><p>No rounding applied to preserve precision</p></li>
+</ul>
+<p><strong>PSF Photometry:</strong></p>
+<ul class="simple">
+<li><p>Uses <code class="docutils literal notranslate"><span class="pre">flux_fit</span></code> from PSF model fitting</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">flux_err</span></code> from PSFPhotometry is already the standard deviation (not variance)</p></li>
+<li><p>A <strong>local background</strong> is subtracted per source before fitting. A
+sigma-clipped median annulus (<code class="docutils literal notranslate"><span class="pre">LocalBackground</span></code>, radii 2× and 3× FWHM) is
+evaluated per source and the values are passed as the <code class="docutils literal notranslate"><span class="pre">local_bkg</span></code> column of
+the PSF-fitting <code class="docutils literal notranslate"><span class="pre">init_params</span></code>. This matches the aperture-photometry local
+background and removes residual sky/nebulosity that would otherwise bias the
+fitted flux and its error. Sources whose annulus is fully masked or off-frame
+fall back to no local subtraction rather than returning a NaN fit.</p></li>
+<li><p>The <strong>empirical PSF itself</strong> is built from de-contaminated cutouts: the same
+local-background annulus is subtracted from a copy of the image around each PSF
+star before <code class="docutils literal notranslate"><span class="pre">extract_stars</span></code>, so the ePSF is not built from sky-contaminated
+stars. On a synthetic frame with a constant sky pedestal this drops the PSF
+flux bias from ×2.5 (no local background) to ×1.001.</p></li>
+<li><p><strong>Shape and dimensions.</strong> The PSF is fitted in a compact <code class="docutils literal notranslate"><span class="pre">fit_shape</span></code>
+(≈3× FWHM, rounded to an odd number of pixels) but the ePSF is <em>extracted</em>
+from a larger ≈5× FWHM cutout, so the wings are not truncated and normalised
+away; this keeps the encircled-energy correction (which reaches 1.5× FWHM)
+meaningful. The ePSF centre is <code class="docutils literal notranslate"><span class="pre">(N</span> <span class="pre">−</span> <span class="pre">1)</span> <span class="pre">/</span> <span class="pre">2</span></code> on its oversampled grid.</p></li>
+<li><p><strong>Star selection.</strong> Candidate ePSF stars are filtered on flux, S/N, shape,
+crowding and a local-background flatness test. Truly saturated pixels are
+already removed by the pipeline mask, so the saturation check is only a
+last-resort guard and never rejects the brightest unsaturated stars; an
+approximate S/N derived from <code class="docutils literal notranslate"><span class="pre">sqrt(flux)</span></code> is not used as a hard cut.</p></li>
+</ul>
+<p><strong>PSF-vs-aperture consistency check.</strong> After photometry,
+<code class="docutils literal notranslate"><span class="pre">check_psf_aperture_consistency()</span></code> matches PSF and aperture sources by position
+and reports the median <code class="docutils literal notranslate"><span class="pre">psf_mag</span> <span class="pre">−</span> <span class="pre">aperture_mag</span></code> for each aperture. Both methods
+are placed on the same total-flux scale (see the aperture correction above), so
+the difference should be centred on zero. A median offset larger than
+<code class="docutils literal notranslate"><span class="pre">PSF_APERTURE_CONSISTENCY_THRESHOLD</span></code> (<code class="docutils literal notranslate"><span class="pre">0.15</span></code> mag) raises a warning; the
+per-aperture counts, medians and robust (MAD) scatter are stored in
+<code class="docutils literal notranslate"><span class="pre">st.session_state[&quot;psf_aperture_consistency&quot;]</span></code>. The per-source value is also
+exported for every aperture as <code class="docutils literal notranslate"><span class="pre">psf_minus_aperture_mag_X_X</span></code> (with
+filter-prefixed aliases), NaN where only one method measured the source; the
+zero point is common to both magnitudes and cancels in the difference. The
+results view plots the per-source offset against the calibrated PSF magnitude
+(with per-aperture median and zero lines) and as a histogram. Note that photutils subtracts
+local backgrounds per source over its own <code class="docutils literal notranslate"><span class="pre">fit_shape</span></code> cutout; for the crowded
+case this does <strong>not</strong> bias the recovered flux in practice (verified on grouped
+pairs with symmetric and strongly asymmetric pedestals), so the local background
+is kept for overlapping sources rather than zeroed.</p>
+</section>
+<section id="aperture-correction">
+<h3>Aperture Correction<a class="headerlink" href="#aperture-correction" title="Link to this heading"></a></h3>
+<p>The S/N is invariant under a multiplicative flux correction, but the
+instrumental magnitude is not. Before computing magnitudes the aperture flux is
+corrected for the fraction of the PSF that falls outside the aperture using the
+encircled-energy curve of the empirical PSF (or an analytic Gaussian fallback):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">flux_total</span> <span class="o">=</span> <span class="n">flux_aperture</span> <span class="o">/</span> <span class="n">EE</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The correction factor <code class="docutils literal notranslate"><span class="pre">1/EE(r)</span></code> is stored per source in the <code class="docutils literal notranslate"><span class="pre">apcorr_X_X</span></code> column,
+and the encircled-energy fraction it came from in <code class="docutils literal notranslate"><span class="pre">ee_fraction_X_X</span></code> (so a large
+correction is traceable to a poorly-enclosed aperture rather than a silent
+magnitude offset). This puts aperture and PSF photometry on the same total-flux
+scale, which matters because the zero point is anchored to one aperture.</p>
+<p>The <strong>zero point is fitted against the aperture-corrected</strong>
+<code class="docutils literal notranslate"><span class="pre">instrumental_mag_X_X</span></code> column. The <code class="docutils literal notranslate"><span class="pre">instrumental_mag_bkg_corr_X_X</span></code> column is the
+uncorrected, background-subtracted reference (useful for diagnostics) and does
+<strong>not</strong> anchor the calibration.</p>
+<p><strong>Aperture-correction systematic.</strong> The correction shifts the (log) flux by a
+relative amount <code class="docutils literal notranslate"><span class="pre">(apcorr</span> <span class="pre">-</span> <span class="pre">1)/apcorr</span></code>. Unlike the statistical flux error, this
+shift does <strong>not</strong> cancel in the flux ratio, so it must be added to the
+magnitude error separately:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sigma_apcorr</span> <span class="o">=</span> <span class="n">MAG_ERR_COEFFICIENT</span> <span class="o">*</span> <span class="n">f_apcorr</span> <span class="o">*</span> <span class="o">|</span><span class="n">apcorr</span> <span class="o">-</span> <span class="mi">1</span><span class="o">|</span> <span class="o">/</span> <span class="n">apcorr</span>
+</pre></div>
+</div>
+<p>where <code class="docutils literal notranslate"><span class="pre">f_apcorr</span></code> is the fractional uncertainty of the correction
+(<code class="docutils literal notranslate"><span class="pre">APCORR_SYSTEMATIC_FRACTION</span></code> in <code class="docutils literal notranslate"><span class="pre">src.pipeline</span></code>, default 0.20, i.e. the
+correction is trusted to 20% of its size). The per-aperture term is stored in
+<code class="docutils literal notranslate"><span class="pre">apcorr_mag_err_X_X</span></code> and combined in quadrature with the statistical magnitude
+error. It dominates the error budget at high S/N, where <code class="docutils literal notranslate"><span class="pre">sigma_mag</span></code> alone is
+very small. Setting <code class="docutils literal notranslate"><span class="pre">APCORR_SYSTEMATIC_FRACTION</span> <span class="pre">=</span> <span class="pre">0</span></code> disables it.</p>
+</section>
+<section id="example">
+<h3>Example<a class="headerlink" href="#example" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># For a source with 1000 counts and error of 10 counts:</span>
+<span class="n">flux</span> <span class="o">=</span> <span class="mf">1000.0</span>
+<span class="n">flux_error</span> <span class="o">=</span> <span class="mf">10.0</span>
+<span class="n">snr</span> <span class="o">=</span> <span class="n">flux</span> <span class="o">/</span> <span class="n">flux_error</span>  <span class="c1"># = 100.0</span>
+</pre></div>
+</div>
+</section>
+</section>
+<hr class="docutils" />
+<section id="magnitude-error-calculation">
+<h2>Magnitude Error Calculation<a class="headerlink" href="#magnitude-error-calculation" title="Link to this heading"></a></h2>
+<section id="id1">
+<h3>Formula<a class="headerlink" href="#id1" title="Link to this heading"></a></h3>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>σ_mag = 1.0857 × (σ_flux / flux)
+</pre></div>
+</div>
+<p>Where:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">σ_mag</span></code>: Magnitude error (instrumental)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">σ_flux</span></code>: Flux uncertainty</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">flux</span></code>: Source flux</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">1.0857</span> <span class="pre">=</span> <span class="pre">2.5</span> <span class="pre">/</span> <span class="pre">ln(10)</span></code></p></li>
+</ul>
+</section>
+<section id="mathematical-derivation">
+<h3>Mathematical Derivation<a class="headerlink" href="#mathematical-derivation" title="Link to this heading"></a></h3>
+<p>Given the magnitude-flux relation:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>mag = -2.5 × log₁₀(flux)
+</pre></div>
+</div>
+<p>Using error propagation:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>σ_mag = |∂mag/∂flux| × σ_flux
+      = |-2.5 / (flux × ln(10))| × σ_flux
+      = (2.5 / ln(10)) × (σ_flux / flux)
+      ≈ 1.0857 × (σ_flux / flux)
+</pre></div>
+</div>
+<p>The statistical term above is combined in quadrature with the
+<strong>aperture-correction systematic</strong> <code class="docutils literal notranslate"><span class="pre">sigma_apcorr</span></code> (see the Aperture Correction
+section), which does not cancel in the flux ratio:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>σ_mag = √( (1.0857 × σ_flux / flux)² + σ_apcorr² )
+</pre></div>
+</div>
+</section>
+<section id="relationship-to-s-n">
+<h3>Relationship to S/N<a class="headerlink" href="#relationship-to-s-n" title="Link to this heading"></a></h3>
+<p>For high signal-to-noise sources (S/N &gt; 5), the statistical term reduces to:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>σ_mag(stat) ≈ 1.0857 / S/N
+</pre></div>
+</div>
+<p>This is valid because:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>σ_mag(stat) = 1.0857 × (σ_flux / flux)
+            = 1.0857 × (1 / (flux / σ_flux))
+            = 1.0857 / S/N
+</pre></div>
+</div>
+<p>At high S/N the actual exported <code class="docutils literal notranslate"><span class="pre">σ_mag</span></code> is dominated by the
+<code class="docutils literal notranslate"><span class="pre">σ_apcorr</span></code> systematic and the zero-point term rather than by <code class="docutils literal notranslate"><span class="pre">1.0857</span> <span class="pre">/</span> <span class="pre">S/N</span></code>.</p>
+</section>
+<section id="id2">
+<h3>Example<a class="headerlink" href="#id2" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># For a source with flux=1000 ± 10:</span>
+<span class="n">flux</span> <span class="o">=</span> <span class="mf">1000.0</span>
+<span class="n">flux_err</span> <span class="o">=</span> <span class="mf">10.0</span>
+<span class="n">mag_err</span> <span class="o">=</span> <span class="mf">1.0857</span> <span class="o">*</span> <span class="n">flux_err</span> <span class="o">/</span> <span class="n">flux</span>  <span class="c1"># = 0.01087 mag</span>
+
+<span class="c1"># Verify with S/N:</span>
+<span class="n">snr</span> <span class="o">=</span> <span class="n">flux</span> <span class="o">/</span> <span class="n">flux_err</span>  <span class="c1"># = 100.0</span>
+<span class="n">mag_err_from_snr</span> <span class="o">=</span> <span class="mf">1.0857</span> <span class="o">/</span> <span class="n">snr</span>  <span class="c1"># = 0.01087 mag (same!)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<hr class="docutils" />
+<section id="error-propagation">
+<h2>Error Propagation<a class="headerlink" href="#error-propagation" title="Link to this heading"></a></h2>
+<section id="sky-background-model">
+<h3>Sky Background Model<a class="headerlink" href="#sky-background-model" title="Link to this heading"></a></h3>
+<p>Two independent background estimates are used, and they play different roles:</p>
+<ul class="simple">
+<li><p>a <strong>global 2D model</strong> (<code class="docutils literal notranslate"><span class="pre">Background2D</span></code>, SExtractor mode estimator) defines the
+per-pixel <code class="docutils literal notranslate"><span class="pre">background</span></code> and <code class="docutils literal notranslate"><span class="pre">background_rms</span></code> arrays. The RMS map is the
+“background-only” noise term of the per-pixel error map (<code class="docutils literal notranslate"><span class="pre">σ_bkg</span></code> below);</p></li>
+<li><p>the <strong>local annulus</strong> median removes whatever sky level the global model left
+behind around each source (see the next section).</p></li>
+</ul>
+<p>The per-box RMS uses the <strong>MAD-based estimator</strong> (<code class="docutils literal notranslate"><span class="pre">MADStdBackgroundRMS</span></code>). The
+plain standard deviation of the sigma-clipped box is biased high by the wings of
+undetected sources: measured on synthetic frames it over-estimated the true pixel
+noise by x1.11 at 15 px source spacing, x1.38 at 12 px and x2.03 at 10 px, and
+that factor propagates straight into every flux error. The MAD estimator is
+unbiased on a clean frame (x1.02) and stays much closer when crowded (x1.17 at
+12 px).</p>
+<p>The smoothing filter over the background mesh is capped at 3x3 when the mesh is
+small (&lt; 12 boxes across). A 5x5 median filter over an 8x8 mesh over-smooths the
+model: on a 300 ADU sky ramp the subtracted frame was x2.24 noisier than the raw
+frame, whereas a 3x3 filter leaves x1.54.</p>
+<p>Finally, the model never aborts the run. <code class="docutils literal notranslate"><span class="pre">Background2D</span></code> discards any box with
+more than <code class="docutils literal notranslate"><span class="pre">exclude_percentile</span></code> % of masked/clipped pixels (10 % by default),
+which can reject <em>every</em> box in a crowded field or a frame with large bad areas
+and raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>. The estimation is retried with 50 % and then 100 %
+tolerance and a coarser box, and if no mesh is possible it falls back to a single
+sigma-clipped background level for the whole frame. That last-resort
+<code class="docutils literal notranslate"><span class="pre">_constant_background</span></code> model uses the same MAD-based RMS as the normal path, so
+fallback frames do not get a source-inflated noise map. Aperture photometry
+stays usable in that case because each source still has its local annulus
+background subtracted.</p>
+<p>For consistency with the error model, the <strong>source-detection threshold</strong> is
+also derived from the MAD-based global scatter (<code class="docutils literal notranslate"><span class="pre">stdfunc=&quot;mad_std&quot;</span></code>) rather than
+the plain sigma-clipped standard deviation. The plain std is inflated by
+undetected sources, which would silently raise the effective detection
+threshold above the requested <code class="docutils literal notranslate"><span class="pre">threshold_sigma</span></code> in crowded fields.</p>
+</section>
+<section id="local-background-subtraction-and-its-error">
+<h3>Local Background Subtraction and its Error<a class="headerlink" href="#local-background-subtraction-and-its-error" title="Link to this heading"></a></h3>
+<p>The local background is measured as the <strong>sigma-clipped median</strong> of the annulus
+surrounding the source (<code class="docutils literal notranslate"><span class="pre">ApertureStats</span></code>), not a plain mean, so neighbouring
+sources and cosmic rays do not bias it. For an aperture area <code class="docutils literal notranslate"><span class="pre">A_ap</span></code> and an
+annulus area <code class="docutils literal notranslate"><span class="pre">A_ann</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>bkg_per_pixel     = sigma-clipped median of the annulus
+total_bkg         = bkg_per_pixel × A_ap
+sigma_bkg_pixel   = annulus_median_err        # sqrt(pi/2) × s / sqrt(A_ann)
+sigma_total_bkg   = sigma_bkg_pixel × A_ap
+flux              = aperture_sum − total_bkg
+σ_flux²           = σ_aperture² + σ_total_bkg² + σ_centroid²
+</pre></div>
+</div>
+<p>Because the local background is a <strong>median</strong>, its uncertainty is the standard
+error of the median, <code class="docutils literal notranslate"><span class="pre">sqrt(pi/2)</span> <span class="pre">×</span> <span class="pre">s</span> <span class="pre">/</span> <span class="pre">sqrt(A_ann)</span></code> (~1.2533× larger than the
+mean-based <code class="docutils literal notranslate"><span class="pre">s</span> <span class="pre">/</span> <span class="pre">sqrt(A_ann)</span></code>), which is what <code class="docutils literal notranslate"><span class="pre">ApertureStats.median_err</span></code>
+returns. Using the mean’s standard error for a median underestimates the local
+background term by ~25% and <code class="docutils literal notranslate"><span class="pre">σ_flux</span></code> by ~8% in the background-limited regime.
+When <code class="docutils literal notranslate"><span class="pre">median_err</span></code> is unavailable (older photutils, or non-finite values) the
+pipeline falls back to the mean-based estimate.</p>
+</section>
+<section id="centroid-position-error">
+<h3>Centroid-Position Error<a class="headerlink" href="#centroid-position-error" title="Link to this heading"></a></h3>
+<p>A fixed aperture samples a different fraction of the PSF when the source is not
+perfectly centred. The corresponding flux error is</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>sigma_pos   = sigma_PSF / S/N            # per-axis centroid uncertainty
+sigma_pos   = clip(sigma_pos, 0.01, 0.5 × FWHM)
+sigma_flux  = 0.5 × sqrt( (F(x+σ)-F(x-σ))² + (F(y+σ)-F(y-σ))² )
+σ_flux²     = σ_aperture² + σ_total_bkg² + σ_centroid²
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">sigma_PSF</span> <span class="pre">=</span> <span class="pre">FWHM</span> <span class="pre">/</span> <span class="pre">2.3548</span></code> and <code class="docutils literal notranslate"><span class="pre">F(...)</span></code> is the aperture sum re-measured with
+the aperture shifted by <code class="docutils literal notranslate"><span class="pre">±sigma_pos</span></code> along x or y (<code class="docutils literal notranslate"><span class="pre">centroid_flux_err_X_X</span></code>).
+Using the measured shifted sums rather than a symmetric-Gaussian derivative is
+intentional: for a perfectly symmetric PSF the linear term vanishes by
+symmetry, whereas the real (asymmetric/elliptical) PSF does contribute. The
+term is small for apertures larger than the PSF (a few percent of the
+statistical error) but matters for small apertures and undersampled PSFs.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">σ_total_bkg</span></code> term is essential: omitting it underestimates <code class="docutils literal notranslate"><span class="pre">σ_flux</span></code> by
+roughly 20% for the default <code class="docutils literal notranslate"><span class="pre">r_in</span> <span class="pre">=</span> <span class="pre">2r</span></code>, <code class="docutils literal notranslate"><span class="pre">r_out</span> <span class="pre">=</span> <span class="pre">2.5r</span></code> annulus and therefore
+overestimates the S/N by the same amount in the background-limited regime.</p>
+</section>
+<section id="calibrated-magnitude-error">
+<h3>Calibrated Magnitude Error<a class="headerlink" href="#calibrated-magnitude-error" title="Link to this heading"></a></h3>
+<p>When converting instrumental magnitudes to calibrated magnitudes using a zero point:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">mag_calib</span> <span class="o">=</span> <span class="n">mag_inst</span> <span class="o">+</span> <span class="n">zero_point</span>
+</pre></div>
+</div>
+<p>The error propagates as:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>σ_mag_calib = √(σ_mag_inst² + σ_zero_point² + σ_sys²)
+</pre></div>
+</div>
+<p>This is quadrature addition because the errors are independent. The zero point is
+a <strong>median</strong> of the calibrator residuals, so its formal uncertainty is the
+standard error of the median,</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>σ_zero_point = √(π/2) × scatter / √N ≈ 1.2533 × scatter / √N
+</pre></div>
+</div>
+<p>over the retained calibration stars (<code class="docutils literal notranslate"><span class="pre">N</span></code>), kept at full precision. The
+<code class="docutils literal notranslate"><span class="pre">√(π/2)</span></code> factor (about 25% larger than the mean-based <code class="docutils literal notranslate"><span class="pre">scatter</span> <span class="pre">/</span> <span class="pre">√N</span></code>) is
+exported as <code class="docutils literal notranslate"><span class="pre">MEDIAN_STD_ERROR_FACTOR</span></code> in <code class="docutils literal notranslate"><span class="pre">src.pipeline</span></code>.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">scatter</span></code> in this expression is taken from the <strong>sigma-clipped sample before
+the <code class="docutils literal notranslate"><span class="pre">|residual|</span> <span class="pre">&lt;=</span> <span class="pre">0.5</span> <span class="pre">mag</span></code> hard cut</strong>. That hard cut removes the tails and
+biases the truncated (“retained”) scatter low; since the sigma clip already
+removes true outliers, the wider sample is the best available estimate of the
+intrinsic dispersion. Both values are recorded on the matched calibration table
+(<code class="docutils literal notranslate"><span class="pre">zero_point_scatter</span></code>, <code class="docutils literal notranslate"><span class="pre">zero_point_scatter_kept</span></code>) and the diagnostics are stored
+in <code class="docutils literal notranslate"><span class="pre">st.session_state[&quot;zero_point_diagnostics&quot;]</span></code>.</p>
+<p>An optional systematic floor <code class="docutils literal notranslate"><span class="pre">σ_sys</span></code> (default 0) is supplied through the
+<code class="docutils literal notranslate"><span class="pre">systematic_floor</span></code> argument of <code class="docutils literal notranslate"><span class="pre">add_calibrated_magnitudes</span></code> and is resolved per
+run by <code class="docutils literal notranslate"><span class="pre">resolve_systematic_floor()</span></code>:</p>
+<ol class="arabic simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">analysis_parameters[&quot;systematic_mag_err_floor&quot;]</span></code> / session state,</p></li>
+<li><p>the <code class="docutils literal notranslate"><span class="pre">RPP_SYSTEMATIC_MAG_ERR_FLOOR</span></code> environment variable (headless runs),</p></li>
+<li><p>the module default <code class="docutils literal notranslate"><span class="pre">SYSTEMATIC_MAG_ERR_FLOOR</span></code> (0, i.e. no extra term).</p></li>
+</ol>
+<p>The zero-point uncertainty is now propagated into every exported
+<code class="docutils literal notranslate"><span class="pre">aperture_mag_err_*</span></code> and <code class="docutils literal notranslate"><span class="pre">psf_mag_err</span></code> column by
+<code class="docutils literal notranslate"><span class="pre">add_calibrated_magnitudes(zero_point_std=...)</span></code>.</p>
+<p><strong>Random vs correlated components.</strong> <code class="docutils literal notranslate"><span class="pre">σ_zp</span></code> (and <code class="docutils literal notranslate"><span class="pre">σ_sys</span></code>) is a <strong>common</strong> offset
+shared by every source in the field, not an independent per-source error. Adding
+it in quadrature is conservative for a single source, but it does not average
+down over an ensemble. To support both uses, the total error is accompanied by
+two explicit component columns for every magnitude-error column:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">aperture_mag_err_1_3</span>           <span class="o">=</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">random</span><span class="o">^</span><span class="mi">2</span> <span class="o">+</span> <span class="n">correlated</span><span class="o">^</span><span class="mi">2</span><span class="p">)</span>   <span class="p">(</span><span class="n">total</span><span class="p">)</span>
+<span class="n">aperture_mag_err_1_3_random</span>     <span class="o">=</span> <span class="n">per</span><span class="o">-</span><span class="n">source</span> <span class="n">statistical</span> <span class="n">error</span> <span class="n">plus</span> <span class="n">the</span>
+                                   <span class="n">aperture</span><span class="o">-</span><span class="n">correction</span> <span class="n">systematic</span>
+<span class="n">_aperture_mag_err_1_3_correlated</span> <span class="o">=</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">σ_zp</span><span class="o">^</span><span class="mi">2</span> <span class="o">+</span> <span class="n">σ_sys</span><span class="o">^</span><span class="mi">2</span><span class="p">)</span>          <span class="p">(</span><span class="n">field</span><span class="o">-</span><span class="n">common</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The same <code class="docutils literal notranslate"><span class="pre">_random</span></code> / <code class="docutils literal notranslate"><span class="pre">_correlated</span></code> suffixes exist for <code class="docutils literal notranslate"><span class="pre">psf_mag_err</span></code>, but the
+PSF random component is the PSF-fitting statistical error; it has no
+aperture-correction term. For relative photometry, quote <code class="docutils literal notranslate"><span class="pre">_random</span></code>; for absolute
+photometry, use the total. The field-level <code class="docutils literal notranslate"><span class="pre">zero_point_std</span></code> is also stored as a
+catalog column.</p>
+</section>
+<section id="id3">
+<h3>Example<a class="headerlink" href="#id3" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="c1"># Instrumental photometry with error</span>
+<span class="n">mag_inst_err</span> <span class="o">=</span> <span class="mf">0.05</span>  <span class="c1"># mag</span>
+
+<span class="c1"># Zero point calibration with uncertainty</span>
+<span class="n">zero_point_err</span> <span class="o">=</span> <span class="mf">0.03</span>  <span class="c1"># mag</span>
+
+<span class="c1"># Propagated error</span>
+<span class="n">mag_calib_err</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">mag_inst_err</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">zero_point_err</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+<span class="c1"># = √(0.05² + 0.03²) = √(0.0025 + 0.0009) = √0.0034 ≈ 0.058 mag</span>
+</pre></div>
+</div>
+</section>
+<section id="effective-gain">
+<h3>Effective gain<a class="headerlink" href="#effective-gain" title="Link to this heading"></a></h3>
+<p>The per-pixel error map is built with
+<code class="docutils literal notranslate"><span class="pre">calc_total_error(background_subtracted_data,</span> <span class="pre">background_rms,</span> <span class="pre">effective_gain)</span></code>.
+The effective gain (counts per data unit) is resolved in this order:</p>
+<ol class="arabic">
+<li><p><strong>FITS conversion keyword</strong>, in the priority order of <code class="docutils literal notranslate"><span class="pre">GAIN_KEYWORDS</span></code>:
+explicit <code class="docutils literal notranslate"><span class="pre">EGAIN</span></code> and <code class="docutils literal notranslate"><span class="pre">CCDGAIN</span></code> (already e-/ADU) and <code class="docutils literal notranslate"><span class="pre">CVF</span></code> (a conversion
+factor in ADU/e-, so <code class="docutils literal notranslate"><span class="pre">gain</span> <span class="pre">=</span> <span class="pre">1/CVF</span></code>) are tried before the conventional
+<code class="docutils literal notranslate"><span class="pre">GAIN</span></code>. The value must be positive and inside the plausible range
+0.02-100 e-/ADU (<code class="docutils literal notranslate"><span class="pre">GAIN_PLAUSIBLE_RANGE</span></code>); anything outside it is reported
+and ignored. On a recognised <strong>driver-gain camera</strong> a bare <code class="docutils literal notranslate"><span class="pre">GAIN</span></code> is skipped
+entirely (see below);</p></li>
+<li><p><strong>user-supplied gain</strong> — the <em>Detector Gain</em> parameter in the sidebar,
+<code class="docutils literal notranslate"><span class="pre">analysis_parameters[&quot;effective_gain&quot;]</span></code>, or the <code class="docutils literal notranslate"><span class="pre">RPP_EFFECTIVE_GAIN</span></code>
+environment variable for headless runs (0 or empty means <em>automatic</em>);</p></li>
+<li><p><strong>empirical photon-transfer estimate</strong> from the frame itself: for boxes of
+pure sky the pixel variance grows linearly with the mean signal,</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>var(box) ≈ read_noise² + mean(box) / gain
+</pre></div>
+</div>
+<p>so <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">/</span> <span class="pre">slope</span></code> of a robust fit to (mean, variance) is the effective gain.
+The estimate is accepted only when the frame really constrains it: enough
+source-free boxes (sigma clipping removes &lt; 10% of the pixels), a sky level
+that varies enough across the frame (slope measured at ≥ 3σ), and a
+physically plausible result. A flat sky carries no gain information and is
+rejected;</p>
+</li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">effective_gain</span> <span class="pre">=</span> <span class="pre">1</span></code></strong> (data treated as electrons) as the last resort,
+with an explicit warning.</p></li>
+</ol>
+<p>Step 4 is the conservative choice, but it is <em>not</em> neutral: with data in ADU and
+an unknown true gain <code class="docutils literal notranslate"><span class="pre">g</span></code>, the source Poisson variance <code class="docutils literal notranslate"><span class="pre">flux/gain</span></code> is
+overestimated by a factor <code class="docutils literal notranslate"><span class="pre">g</span></code>, i.e. the magnitude errors of bright sources by up
+to <code class="docutils literal notranslate"><span class="pre">√g</span></code>. The previous arbitrary <code class="docutils literal notranslate"><span class="pre">65535</span> <span class="pre">/</span> <span class="pre">max(image)</span></code> heuristic remains removed.</p>
+<section id="the-poisson-term-must-follow-the-units-of-the-frame">
+<h4>The Poisson term must follow the units of the frame<a class="headerlink" href="#the-poisson-term-must-follow-the-units-of-the-frame" title="Link to this heading"></a></h4>
+<p><code class="docutils literal notranslate"><span class="pre">calc_total_error</span></code> adds <code class="docutils literal notranslate"><span class="pre">data</span> <span class="pre">/</span> <span class="pre">gain</span></code> to the pixel variance, which only carries
+information when the data are counts <strong>and</strong> the gain is expressed in those same
+units. A frame that has been rescaled — a normalised float stack with a sky level
+of about 1e-2, or the output of a stacking tool that divides by a large factor —
+breaks that assumption: with a genuine e-/ADU gain the Poisson term at the sky
+level then exceeds the measured sky variance by orders of magnitude, so the
+error map no longer describes the real noise (aperture S/N was underestimated by
+one to two orders of magnitude on such a frame).</p>
+<p>The PSF step is the most sensitive consumer, because photutils weights the
+ePSF-to-star fits by <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">/</span> <span class="pre">error²</span></code>: with the inflated core errors the star cores
+carried ~1e-4 of the weight of the sky pixels, most fitted fluxes came back
+negative, the next ePSF was built from inverted cutouts and <code class="docutils literal notranslate"><span class="pre">EPSFBuilder</span></code>
+aborted with <code class="docutils literal notranslate"><span class="pre">Cannot</span> <span class="pre">normalize</span> <span class="pre">ePSF:</span> <span class="pre">the</span> <span class="pre">data</span> <span class="pre">sum</span> <span class="pre">(…)</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">finite</span> <span class="pre">and</span> <span class="pre">positive</span></code>, dropping PSF photometry for the whole frame.</p>
+<p>The gain is therefore validated against the frame itself in
+<code class="docutils literal notranslate"><span class="pre">resolve_poisson_gain()</span></code>:</p>
+<ul>
+<li><p>the resolved gain is <strong>kept</strong> when the Poisson variance it predicts at the sky
+level stays within <code class="docutils literal notranslate"><span class="pre">POISSON_SKY_VARIANCE_TOLERANCE</span></code> (10×) of the measured
+background variance;</p></li>
+<li><p>otherwise it is <strong>replaced</strong> by the largest value the frame allows,</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>gain = sky_level / background_rms²
+</pre></div>
+</div>
+<p>because the sky Poisson variance cannot exceed the total sky variance, so the
+true gain in the data’s units is at least this large. Using that bound gives
+the largest (most conservative) Poisson term the frame admits, correct to
+within a factor of ~√2 at the sky itself;</p>
+</li>
+<li><p>frames with no usable gain or no usable sky statistics keep their declared
+gain, and <code class="docutils literal notranslate"><span class="pre">compute_error_map()</span></code> falls back to the background RMS map alone when
+no Poisson term can be trusted.</p></li>
+</ul>
+<p>On a real normalised stack this changed the core error from ~1.4e3 × the sky RMS
+(larger than the data values themselves) to a few × the sky RMS, restoring both
+the aperture S/N and the PSF photometry.</p>
+</section>
+<section id="why-a-fits-gain-is-not-always-e-adu">
+<h4>Why a FITS <code class="docutils literal notranslate"><span class="pre">GAIN</span></code> is not always e-/ADU<a class="headerlink" href="#why-a-fits-gain-is-not-always-e-adu" title="Link to this heading"></a></h4>
+<p>CMOS cameras expose an adjustable analog gain whose <em>driver setting</em> is written
+to <code class="docutils literal notranslate"><span class="pre">GAIN</span></code>, but that number is not a conversion factor. QHY writes an abstract
+0-100 scale (a QHY268M operated in high-gain mode at <code class="docutils literal notranslate"><span class="pre">GAIN=56</span></code> measures
+≈0.77 e-/ADU, and the HGC/LGC switch sits at 55→56); ZWO ASI writes a 0.1 dB
+value whose unity-gain setting is model-specific (e.g. ≈100 for the ASI2600).
+The mapping from the driver setting to e-/ADU is per-model and piecewise, so the
+pipeline does <strong>not</strong> try to guess it: it recognises such a camera from the
+instrument metadata (<code class="docutils literal notranslate"><span class="pre">INSTRUME</span></code>/<code class="docutils literal notranslate"><span class="pre">INSTRID</span></code>/<code class="docutils literal notranslate"><span class="pre">INSTRUMENT</span></code>/<code class="docutils literal notranslate"><span class="pre">CAMERA</span></code>/<code class="docutils literal notranslate"><span class="pre">DETECTOR</span></code>/
+<code class="docutils literal notranslate"><span class="pre">CCDNAME</span></code>, matched by <code class="docutils literal notranslate"><span class="pre">DRIVER_GAIN_INSTRUMENT_PATTERNS</span></code>) and ignores its bare
+<code class="docutils literal notranslate"><span class="pre">GAIN</span></code>, then uses an explicit <code class="docutils literal notranslate"><span class="pre">EGAIN</span></code>/<code class="docutils literal notranslate"><span class="pre">CVF</span></code> conversion, the user-supplied gain,
+or the photon-transfer estimate measured from the frame itself. Supplying the
+true conversion factor for the gain setting in use (read from the manufacturer’s
+gain-vs-e-/ADU chart) is the most reliable option.</p>
+<p>The same resolved gain is handed to <code class="docutils literal notranslate"><span class="pre">astroscrappy.detect_cosmics</span></code> for the
+cosmic-ray mask, together with a <code class="docutils literal notranslate"><span class="pre">RDNOISE</span></code>/<code class="docutils literal notranslate"><span class="pre">READNOIS</span></code>/<code class="docutils literal notranslate"><span class="pre">ENOISE</span></code> value when the
+header provides one. A cosmic-ray mask covering more than
+<code class="docutils literal notranslate"><span class="pre">MAX_CR_MASK_FRACTION</span></code> (20%) of a frame is not physical and is discarded rather
+than removing a large part of the science image.</p>
+<p>Masked pixels (border, cosmic rays, satellite trails and NaNs) are excluded from
+both the source and the annulus photometry.</p>
+</section>
+</section>
+<section id="atmospheric-extinction-optional">
+<h3>Atmospheric Extinction (Optional)<a class="headerlink" href="#atmospheric-extinction-optional" title="Link to this heading"></a></h3>
+<p>If atmospheric extinction is applied:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>mag_calib = mag_inst + zero_point - k × airmass
+</pre></div>
+</div>
+<p>Where:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">k</span></code>: Extinction coefficient (mag/airmass)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">airmass</span></code>: Air mass during observation</p></li>
+</ul>
+<p>Error propagation becomes:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>σ_mag_calib = √(σ_mag_inst² + σ_zero_point² + σ_sys² + (airmass × σ_k)²)
+</pre></div>
+</div>
+</section>
+<section id="color-term-calibration-optional">
+<h3>Color-Term Calibration (Optional)<a class="headerlink" href="#color-term-calibration-optional" title="Link to this heading"></a></h3>
+<p>When catalog colors are available for a matched source, the pipeline can also
+apply a simple linear color-term correction after the standard zero-point
+calibration.</p>
+<p>Baseline calibrated magnitude:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">mag_calib</span> <span class="o">=</span> <span class="n">mag_inst</span> <span class="o">+</span> <span class="n">zero_point</span>
+</pre></div>
+</div>
+<p>Color-corrected calibrated magnitude:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">mag_calib_colorcorr</span> <span class="o">=</span> <span class="n">mag_calib</span> <span class="o">+</span> <span class="n">color_term_offset</span>
+</pre></div>
+</div>
+<p>The fitted offset is modeled as:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>color_term_offset = intercept + C × (color - color_ref)
+</pre></div>
+</div>
+<p>Where:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">C</span></code>: fitted color-term coefficient</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">color</span></code>: per-source catalog color, for example <code class="docutils literal notranslate"><span class="pre">BP-RP</span></code> or <code class="docutils literal notranslate"><span class="pre">g-r</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">color_ref</span></code>: median color of the retained calibration stars</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">intercept</span></code>: residual offset relative to the scalar zero point</p></li>
+</ul>
+<p>This follows the same first-order idea described in STDPipe, while keeping the
+existing scalar zero-point calibration as the compatibility baseline.</p>
+<p><strong>Uncertainty of the color correction.</strong> The fit parameter covariance is taken
+from the final least-squares fit (<code class="docutils literal notranslate"><span class="pre">scatter²</span> <span class="pre">×</span> <span class="pre">(Dᵀ</span> <span class="pre">D)⁻¹</span></code>) and propagated to each
+source through its color offset <code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">=</span> <span class="pre">color</span> <span class="pre">-</span> <span class="pre">color_ref</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>var(color_term_offset) = var(intercept) + 2x·cov(intercept, C) + x²·var(C)
+</pre></div>
+</div>
+<p>It is stored in <code class="docutils literal notranslate"><span class="pre">color_term_offset_err</span></code> (and <code class="docutils literal notranslate"><span class="pre">color_term_std</span></code> / <code class="docutils literal notranslate"><span class="pre">intercept_std</span></code>
+are returned by the fit). Every color-corrected magnitude gets a parallel error
+column <code class="docutils literal notranslate"><span class="pre">*_colorcorr_err</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>σ_mag_colorcorr = √(σ_mag_calib² + σ_color_term_offset²)
+</pre></div>
+</div>
+<p>where <code class="docutils literal notranslate"><span class="pre">σ_mag_calib</span></code> is the baseline calibrated error (already including the
+statistical, aperture-correction and zero-point terms). Sources without a usable
+catalog color keep NaN in every correction column.</p>
+</section>
+<section id="practical-limitation">
+<h3>Practical Limitation<a class="headerlink" href="#practical-limitation" title="Link to this heading"></a></h3>
+<p>Color-corrected magnitudes are only written for sources that have the required
+catalog color columns in the final table. Unmatched sources, or sources without
+usable catalog colors, keep the standard zero-point-calibrated magnitudes only.</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="quality-flags">
+<h2>Quality Flags<a class="headerlink" href="#quality-flags" title="Link to this heading"></a></h2>
+<p>Sources are assigned quality flags based on their S/N:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Quality Flag</p></th>
+<th class="head"><p>S/N Range</p></th>
+<th class="head"><p>Description</p></th>
+<th class="head"><p>Recommendation</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">'good'</span></code></p></td>
+<td><p>S/N &gt; 10</p></td>
+<td><p>Reliable photometry</p></td>
+<td><p>Use for science</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">'marginal'</span></code></p></td>
+<td><p>5 &lt; S/N ≤ 10</p></td>
+<td><p>Intermediate quality</p></td>
+<td><p>Use with caution</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">'poor'</span></code></p></td>
+<td><p>S/N ≤ 5</p></td>
+<td><p>Unreliable photometry</p></td>
+<td><p>Exclude from analysis</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">'unknown'</span></code></p></td>
+<td><p>N/A</p></td>
+<td><p>Missing/invalid data</p></td>
+<td><p>Exclude</p></td>
+</tr>
+</tbody>
+</table>
+<section id="rationale">
+<h3>Rationale<a class="headerlink" href="#rationale" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>S/N ≤ 5</strong>: Detection may still be real, but the photometry is too uncertain to be labeled reliable</p></li>
+<li><p><strong>5 &lt; S/N ≤ 10</strong>: Usable for inspection or exploratory analysis, but not in the highest-confidence class</p></li>
+<li><p><strong>S/N &gt; 10</strong>: Conservative threshold for reliable photometry with smaller magnitude uncertainties</p></li>
+</ul>
+</section>
+<section id="usage-example">
+<h3>Usage Example<a class="headerlink" href="#usage-example" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="c1"># Load photometry catalog</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="s1">'photometry.csv'</span><span class="p">)</span>
+
+<span class="c1"># Filter for reliable sources only</span>
+<span class="n">reliable_sources</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s1">'quality_flag_1_1'</span><span class="p">]</span> <span class="o">==</span> <span class="s1">'good'</span><span class="p">]</span>
+
+<span class="c1"># Include marginal detections with warning</span>
+<span class="n">usable_sources</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s1">'quality_flag_1_1'</span><span class="p">]</span><span class="o">.</span><span class="n">isin</span><span class="p">([</span><span class="s1">'good'</span><span class="p">,</span> <span class="s1">'marginal'</span><span class="p">])]</span>
+</pre></div>
+</div>
+</section>
+</section>
+<hr class="docutils" />
+<section id="summary-table">
+<h2>Summary Table<a class="headerlink" href="#summary-table" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Quantity</p></th>
+<th class="head"><p>Formula</p></th>
+<th class="head"><p>Typical Values</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>S/N</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">flux</span> <span class="pre">/</span> <span class="pre">flux_error</span></code></p></td>
+<td><p>3–1000</p></td>
+</tr>
+<tr class="row-odd"><td><p>Flux Error</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">√(σ_aperture²</span> <span class="pre">+</span> <span class="pre">σ_total_bkg²</span> <span class="pre">+</span> <span class="pre">σ_centroid²)</span></code></p></td>
+<td><p>—</p></td>
+</tr>
+<tr class="row-even"><td><p>Local background error</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">median_err</span></code> = <code class="docutils literal notranslate"><span class="pre">√(π/2)·s/√A_ann</span></code></p></td>
+<td><p>per-pixel background</p></td>
+</tr>
+<tr class="row-odd"><td><p>Centroid-position error</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.5·√(ΔF_x²</span> <span class="pre">+</span> <span class="pre">ΔF_y²)</span></code> at <code class="docutils literal notranslate"><span class="pre">±σ_PSF/S/N</span></code></p></td>
+<td><p>few % of statistical</p></td>
+</tr>
+<tr class="row-even"><td><p>Sky RMS</p></td>
+<td><p>MAD of the sigma-clipped box (<code class="docutils literal notranslate"><span class="pre">MADStdBackgroundRMS</span></code>)</p></td>
+<td><p>per-pixel noise</p></td>
+</tr>
+<tr class="row-odd"><td><p>Magnitude Error</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">√((1.0857·σ_flux/flux)²</span> <span class="pre">+</span> <span class="pre">σ_apcorr²)</span></code></p></td>
+<td><p>0.01–0.3 mag</p></td>
+</tr>
+<tr class="row-even"><td><p>Aperture Correction</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">flux_total</span> <span class="pre">=</span> <span class="pre">flux_aperture</span> <span class="pre">/</span> <span class="pre">EE(r)</span></code></p></td>
+<td><p>1.00–1.15</p></td>
+</tr>
+<tr class="row-odd"><td><p>Aperture-correction systematic</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">σ_apcorr</span> <span class="pre">=</span> <span class="pre">1.0857</span> <span class="pre">·</span> <span class="pre">f_apcorr</span> <span class="pre">·</span> <span class="pre">|apcorr−1|</span> <span class="pre">/</span> <span class="pre">apcorr</span></code></p></td>
+<td><p>0.01–0.05 mag</p></td>
+</tr>
+<tr class="row-even"><td><p>Calibrated Mag Error</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">√(σ_inst²</span> <span class="pre">+</span> <span class="pre">σ_zp²</span> <span class="pre">+</span> <span class="pre">σ_sys²)</span></code></p></td>
+<td><p>0.02–0.35 mag</p></td>
+</tr>
+<tr class="row-odd"><td><p>Zero-point uncertainty</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">√(π/2)</span> <span class="pre">×</span> <span class="pre">scatter_untrimmed</span> <span class="pre">/</span> <span class="pre">√N</span></code></p></td>
+<td><p>0.01–0.2 mag</p></td>
+</tr>
+<tr class="row-even"><td><p>Effective gain</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">EGAIN</span></code>/<code class="docutils literal notranslate"><span class="pre">CCDGAIN</span></code>/<code class="docutils literal notranslate"><span class="pre">1/CVF</span></code> → user → <code class="docutils literal notranslate"><span class="pre">1/slope(var</span> <span class="pre">vs</span> <span class="pre">mean)</span></code> → <code class="docutils literal notranslate"><span class="pre">1</span></code></p></td>
+<td><p>e-/ADU</p></td>
+</tr>
+<tr class="row-odd"><td><p>Color-Corrected Mag</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">mag_calib</span> <span class="pre">+</span> <span class="pre">intercept</span> <span class="pre">+</span> <span class="pre">C</span> <span class="pre">×</span> <span class="pre">(color</span> <span class="pre">-</span> <span class="pre">color_ref)</span></code></p></td>
+<td><p>calibration-dependent</p></td>
+</tr>
+<tr class="row-even"><td><p>Color-Corrected Mag Error</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">√(σ_mag_calib²</span> <span class="pre">+</span> <span class="pre">var(intercept)</span> <span class="pre">+</span> <span class="pre">2x·cov</span> <span class="pre">+</span> <span class="pre">x²·var(C))</span></code></p></td>
+<td><p>calibration-dependent</p></td>
+</tr>
+<tr class="row-odd"><td><p>Instrumental Magnitude</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">-2.5</span> <span class="pre">×</span> <span class="pre">log₁₀(flux_total)</span></code></p></td>
+<td><p>10–25 mag</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<hr class="docutils" />
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p><strong>Photometric Error Theory:</strong></p>
+<ul class="simple">
+<li><p>Howell, S. B. (2006). “Handbook of CCD Astronomy” (2nd ed.), Chapter 4</p></li>
+<li><p>Merline, W. J., &amp; Howell, S. B. (1995). “Experimental Techniques in CCD Photometry”</p></li>
+</ul>
+</li>
+<li><p><strong>Error Propagation:</strong></p>
+<ul class="simple">
+<li><p>Bevington, P. R., &amp; Robinson, D. K. (2003). “Data Reduction and Error Analysis for the Physical Sciences” (3rd ed.)</p></li>
+</ul>
+</li>
+<li><p><strong>S/N and Detection Limits:</strong></p>
+<ul class="simple">
+<li><p>Da Costa, G. S. (1992). “Basic Photometry Techniques” in “Astronomical CCD Observing and Reduction Techniques”, ASP Conference Series</p></li>
+</ul>
+</li>
+<li><p><strong>Photutils Documentation:</strong></p>
+<ul class="simple">
+<li><p>https://photutils.readthedocs.io/</p></li>
+<li><p>Aperture Photometry: https://photutils.readthedocs.io/en/stable/aperture.html</p></li>
+<li><p>PSF Photometry: https://photutils.readthedocs.io/en/stable/psf.html</p></li>
+</ul>
+</li>
+</ol>
+</section>
+<hr class="docutils" />
+<section id="implementation-notes">
+<h2>Implementation Notes<a class="headerlink" href="#implementation-notes" title="Link to this heading"></a></h2>
+<section id="numerical-precision">
+<h3>Numerical Precision<a class="headerlink" href="#numerical-precision" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>All S/N calculations use full floating-point precision (no rounding)</p></li>
+<li><p>This prevents divide-by-zero errors in magnitude error calculations</p></li>
+<li><p>Magnitude errors are computed directly from flux ratios, not from S/N</p></li>
+</ul>
+</section>
+<section id="edge-cases">
+<h3>Edge Cases<a class="headerlink" href="#edge-cases" title="Link to this heading"></a></h3>
+<p>The implementation handles several edge cases:</p>
+<ol class="arabic simple">
+<li><p><strong>Negative background-corrected flux:</strong> Kept as-is in the S/N (it is a real
+non-detection rather than silently replaced by the raw flux) and excluded
+from the magnitude/error columns (<code class="docutils literal notranslate"><span class="pre">nan</span></code>)</p></li>
+<li><p><strong>Zero flux:</strong> Produces <code class="docutils literal notranslate"><span class="pre">nan</span></code> magnitude and <code class="docutils literal notranslate"><span class="pre">nan</span></code> magnitude error</p></li>
+<li><p><strong>Very low/high flux:</strong> Maintains numerical stability across dynamic range</p></li>
+<li><p><strong>Missing data:</strong> Assigns <code class="docutils literal notranslate"><span class="pre">'unknown'</span></code> quality flag</p></li>
+<li><p><strong>Masked / NaN pixels:</strong> Excluded from both the aperture and the annulus sums
+and from their errors via the shared pipeline mask</p></li>
+<li><p><strong>Unreliable photometry:</strong> a source is removed only when <em>every</em> photometry
+method reports a magnitude error of 2 mag or more (<code class="docutils literal notranslate"><span class="pre">MAG_ERR_MAX</span></code> in
+<code class="docutils literal notranslate"><span class="pre">src.tools_pipeline</span></code>, overridable per run through the <em>Max Magnitude Error</em>
+parameter). A source with one usable method is kept, and sources without any
+error information at all (all NaN) are kept as well. Setting the parameter to
+0 disables the cut completely, leaving the quality flags as the only
+reliability indicator.</p></li>
+</ol>
+</section>
+<section id="testing">
+<h3>Testing<a class="headerlink" href="#testing" title="Link to this heading"></a></h3>
+<p>Run the test suite to verify calculations:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pytest<span class="w"> </span>tests/test_photometry.py<span class="w"> </span>-v
+</pre></div>
+</div>
+<hr class="docutils" />
+<p><em>Last Updated: 2026-10-02</em>
+<em>Version: 1.0</em></p>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024-2026, Pier-Francesco Rocci.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

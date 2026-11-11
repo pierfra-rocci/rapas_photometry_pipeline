@@ -21,10 +21,6 @@ Frontend and UI
    successful sign-in is written to the Streamlit log as
    ``[YYYY-MM-DD HH:MM:SS] RPP vX.Y.Z - User '<username>' logged in
    successfully (frontend, <backend> backend).``
-   Login, registration, password recovery, and backend selection workflow. Every
-   successful sign-in is written to the Streamlit log as
-   ``[YYYY-MM-DD HH:MM:SS] RPP vX.Y.Z - User '<username>' logged in
-   successfully (frontend, <backend> backend).``
 
 ``pages/api_client.py``
    Thin HTTP client used by the Streamlit frontend to talk to the FastAPI
@@ -83,10 +79,6 @@ Database and API Modules
 
 ``api/main.py``
    FastAPI application with health, authentication, config persistence, and
-   FITS upload/listing endpoints. A successful ``POST /api/login`` writes
-   ``[YYYY-MM-DD HH:MM:SS] RPP vX.Y.Z - User '<username>' logged in
-   successfully (FastAPI backend).`` to the service log; the legacy backend
-   (``backend.py``) emits the same line tagged ``(legacy backend)``.
    FITS upload/listing endpoints. A successful ``POST /api/login`` writes
    ``[YYYY-MM-DD HH:MM:SS] RPP vX.Y.Z - User '<username>' logged in
    successfully (FastAPI backend).`` to the service log; the legacy backend
