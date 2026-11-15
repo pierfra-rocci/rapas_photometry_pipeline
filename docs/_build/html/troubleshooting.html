@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Troubleshooting &mdash; RAPAS Photometry Pipeline (RPP) v1.9.3 Documentation</title>
+  <title>Troubleshooting &mdash; RAPAS Photometry Pipeline (RPP) v1.9.4 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=f333a941"></script>
+      <script src="_static/documentation_options.js?v=38ba398c"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -61,6 +61,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#image-loading-processing-issues">Image Loading &amp; Processing Issues</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#catalog-query-issues-simbad-skybot-etc">Catalog Query Issues (SIMBAD, SkyBoT, etc.)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#database-and-migration-issues">Database and Migration Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#transient-and-astro-colibri-template-cutouts">Transient and Astro-Colibri Template Cutouts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#aladin-lite-viewer-issues">Aladin Lite Viewer Issues</a></li>
 </ul>
 </li>
@@ -584,6 +585,25 @@ and start the analysis again.</p></li>
 <li><p><strong>Solution</strong>: Press Enter in the password field before clicking <strong>Login</strong>.</p></li>
 </ul>
 </section>
+<section id="transient-and-astro-colibri-template-cutouts">
+<h2>Transient and Astro-Colibri Template Cutouts<a class="headerlink" href="#transient-and-astro-colibri-template-cutouts" title="Link to this heading"></a></h2>
+<p><strong>The reference template panel is missing from a cutout</strong></p>
+<ul class="simple">
+<li><p><strong>Problem</strong>: the science cutout is shown without the HiPS template, and a
+warning lists the surveys that were tried.</p></li>
+<li><p><strong>Solution</strong>: the template follows a chain: PanSTARRS (north) or SkyMapper
+(south), then SDSS, then DSS2, which covers the whole sky.</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">...</span> <span class="pre">returned</span> <span class="pre">no</span> <span class="pre">usable</span> <span class="pre">pixels</span> <span class="pre">there.</span></code>: the field is outside those
+survey footprints (low Galactic latitude, for example). The cutout
+keeps its science frame and the candidates are unaffected.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">HiPS</span> <span class="pre">template</span> <span class="pre">service</span> <span class="pre">unreachable</span> <span class="pre">...</span></code>: CDS hips2fits could not be
+contacted. The helper retries with an explicit timeout on two CDS hosts
+before reporting this; the exported files are unaffected.</p></li>
+</ul>
+</li>
+</ul>
+</section>
 <section id="aladin-lite-viewer-issues">
 <h2>Aladin Lite Viewer Issues<a class="headerlink" href="#aladin-lite-viewer-issues" title="Link to this heading"></a></h2>
 <p><strong>The Aladin viewer stays empty although the image layer is listed</strong></p>
@@ -629,10 +649,11 @@ mirror servers are probed for the same survey (DSS, 2MASS, SDSS9,
 PanSTARRS and AllWISE); the first reachable mirror replaces the base layer.
 Only if every mirror fails does it switch to <code class="docutils literal notranslate"><span class="pre">CDS/P/DSS2/red</span></code>:</p>
 <ul>
-<li><p>A warning is shown above the viewer (<code class="docutils literal notranslate"><span class="pre">Survey</span> <span class="pre">&lt;survey&gt;</span> <span class="pre">is</span> <span class="pre">unavailable;</span>
-<span class="pre">loaded</span> <span class="pre">the</span> <span class="pre">mirrored</span> <span class="pre">copy</span> <span class="pre">from</span> <span class="pre">&lt;url&gt;.</span></code>), and the switch to the second
-survey is reported as <code class="docutils literal notranslate"><span class="pre">Survey</span> <span class="pre">&lt;survey&gt;</span> <span class="pre">could</span> <span class="pre">not</span> <span class="pre">be</span> <span class="pre">loaded;</span> <span class="pre">trying</span>
-<span class="pre">&lt;fallback&gt;</span> <span class="pre">instead.</span></code> Both messages are mirrored in the console.</p></li>
+<li><p>Using a mirror is silent, since the requested survey is still shown;
+the switch appears only in the browser console. The switch to the
+second survey is reported above the viewer as <code class="docutils literal notranslate"><span class="pre">Survey</span> <span class="pre">&lt;survey&gt;</span> <span class="pre">could</span>
+<span class="pre">not</span> <span class="pre">be</span> <span class="pre">loaded;</span> <span class="pre">trying</span> <span class="pre">&lt;fallback&gt;</span> <span class="pre">instead.</span></code>, again with a console
+entry.</p></li>
 <li><p>When the mirrors and the fallback are unreachable too, the message says
 so instead of leaving a blank canvas.</p></li>
 <li><p>Change the second survey with the <code class="docutils literal notranslate"><span class="pre">fallback_survey</span></code> argument of

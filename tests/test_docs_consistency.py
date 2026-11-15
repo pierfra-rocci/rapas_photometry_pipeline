@@ -81,13 +81,14 @@ def test_user_guide_documents_shared_psf_fallback_message():
 
 
 def test_user_guide_documents_transient_psf_fallback_message():
-    """The transient-finder PSF fallback warning must appear in the user guide."""
+    """The transient finder warns with the short shared message."""
+    from src.tools_pipeline import PSF_FALLBACK_MESSAGE
     from src.transient import TRANSIENT_PSF_FALLBACK_MESSAGE
 
-    assert TRANSIENT_PSF_FALLBACK_MESSAGE in _user_guide_text(), (
-        "docs/user_guide.rst does not contain the transient PSF fallback "
-        f"message {TRANSIENT_PSF_FALLBACK_MESSAGE!r}"
-    )
+    guide = _user_guide_text()
+    assert PSF_FALLBACK_MESSAGE in guide
+    # The long transient variant is no longer shown above the viewer.
+    assert TRANSIENT_PSF_FALLBACK_MESSAGE not in guide
 
 
 @pytest.mark.parametrize(

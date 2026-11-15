@@ -104,10 +104,11 @@ photometry and displays the shared warning::
 
     PSF photometry is not available; using calibrated aperture photometry instead.
 
-The transient finder uses the same base warning for its own fallback and adds
-the aperture it relies on::
+The transient finder shows the same short warning above the Aladin viewer; the
+aperture it relies on (the calibrated 1.1 x FWHM aperture magnitude) is named in
+the transient table::
 
-    PSF photometry is not available; using calibrated aperture photometry instead. Transient candidates use the calibrated 1.1 x FWHM aperture magnitude.
+    PSF photometry is not available; using calibrated aperture photometry instead.
 
 This single wording makes it clear that aperture measurements replace PSF
 photometry in both workflows, while the transient message identifies the

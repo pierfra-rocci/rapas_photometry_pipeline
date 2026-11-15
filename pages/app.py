@@ -85,7 +85,6 @@ from src.xmatch_catalogs import cross_match_with_gaia, enhance_catalog
 from src.transient import (
     TRANSIENT_APERTURE_FALLBACK_SOURCE,
     TRANSIENT_MAGNITUDE_SOURCE_META,
-    TRANSIENT_PSF_FALLBACK_MESSAGE,
     find_candidates,
     build_transient_table,
     plot_astrocolibri_cutouts,
@@ -2115,7 +2114,10 @@ if _run_analysis_now:
                                     )
                                     == TRANSIENT_APERTURE_FALLBACK_SOURCE
                                 ):
-                                    st.warning(TRANSIENT_PSF_FALLBACK_MESSAGE)
+                                    # Keep the viewer uncluttered: the short
+                                    # shared warning, not the long transient
+                                    # variant, is shown above Aladin.
+                                    st.warning(PSF_FALLBACK_MESSAGE)
                                 if candidates:
                                     st.subheader("Transient Candidates Found")
                                     candidates_df = build_transient_table(

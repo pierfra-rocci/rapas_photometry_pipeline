@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Changelog &mdash; RAPAS Photometry Pipeline (RPP) v1.9.3 Documentation</title>
+  <title>Changelog &mdash; RAPAS Photometry Pipeline (RPP) v1.9.4 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=f333a941"></script>
+      <script src="_static/documentation_options.js?v=38ba398c"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -56,6 +56,7 @@
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 <li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Changelog</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#version-1-9-4">Version 1.9.4</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#version-1-9-3">Version 1.9.3</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#version-1-9-2">Version 1.9.2</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#version-1-9-1">Version 1.9.1</a></li>
@@ -110,6 +111,39 @@
   <section id="changelog">
 <h1>Changelog<a class="headerlink" href="#changelog" title="Link to this heading"></a></h1>
 <p>This document records all notable changes to RAPAS Photometry Pipeline.</p>
+<section id="version-1-9-4">
+<h2>Version 1.9.4<a class="headerlink" href="#version-1-9-4" title="Link to this heading"></a></h2>
+<p><strong>Resilient HiPS template cutouts</strong></p>
+<ul class="simple">
+<li><p>Astro-Colibri stamps and transient-candidate cutouts now share one template
+helper that tries a chain of surveys: <code class="docutils literal notranslate"><span class="pre">PanSTARRS/DR1/&lt;band&gt;</span></code> for northern
+fields or <code class="docutils literal notranslate"><span class="pre">SkyMapper/DR4/&lt;band&gt;</span></code> for southern ones, then
+<code class="docutils literal notranslate"><span class="pre">SDSS/DR9/color</span></code>, then <code class="docutils literal notranslate"><span class="pre">CDS/P/DSS2/color</span></code>, which covers the whole sky.
+An unreachable survey, a missing HiPS entry, or a field without tiles is
+skipped instead of dropping the template.</p></li>
+<li><p>When no survey answers, a second method queries CDS hips2fits directly with
+an explicit 20-second timeout on two CDS hosts before giving up, so a
+stalled request cannot hang the cutouts.</p></li>
+<li><p>Warnings name the surveys tried and distinguish an unreachable service from
+missing coverage; the cutout keeps its science frame either way, and its
+title names the survey actually used.</p></li>
+</ul>
+<p><strong>Transient filtering survives a CDS X-Match outage</strong></p>
+<ul class="simple">
+<li><p>Transient filtering retries a network failure once, then runs without the
+extra VizieR cross-match (<code class="docutils literal notranslate"><span class="pre">gaiaedr3</span></code>, <code class="docutils literal notranslate"><span class="pre">ps1</span></code>, <code class="docutils literal notranslate"><span class="pre">skymapper</span></code>, <code class="docutils literal notranslate"><span class="pre">sdss</span></code>,
+<code class="docutils literal notranslate"><span class="pre">atlas</span></code>, <code class="docutils literal notranslate"><span class="pre">apass</span></code>, <code class="docutils literal notranslate"><span class="pre">gsc</span></code>) instead of returning no candidates. A warning
+states that only the reference-survey catalogue was applied, and other
+errors are still reported with their traceback.</p></li>
+</ul>
+<p><strong>Shorter PSF fallback warning above the viewer</strong></p>
+<ul class="simple">
+<li><p>The Aladin viewer shows the short shared warning (<code class="docutils literal notranslate"><span class="pre">PSF</span> <span class="pre">photometry</span> <span class="pre">is</span> <span class="pre">not</span>
+<span class="pre">available;</span> <span class="pre">using</span> <span class="pre">calibrated</span> <span class="pre">aperture</span> <span class="pre">photometry</span> <span class="pre">instead.</span></code>); the
+1.1 x FWHM aperture detail stays in the transient table instead of a long
+message above the viewer.</p></li>
+</ul>
+</section>
 <section id="version-1-9-3">
 <h2>Version 1.9.3<a class="headerlink" href="#version-1-9-3" title="Link to this heading"></a></h2>
 <p><strong>TNS catalogue downloaded without an API key</strong></p>

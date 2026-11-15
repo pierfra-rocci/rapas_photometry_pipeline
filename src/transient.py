@@ -9,10 +9,14 @@ from matplotlib.patches import Circle
 import astropy.units as u
 from astropy.convolution import Gaussian2DKernel, convolve
 from astropy.visualization import simple_norm
+import io
+import json
 import numpy as np
 import pandas as pd
+import requests
 import shutil
 import streamlit as st
+import time
 from astropy.table import Table
 
 # NumPy 2.0 removed np.in1d; restore it as an alias for np.isin for stdpipe compatibility
@@ -316,6 +320,32 @@ def _resolve_photometry_columns(table, mag_column, err_column, filter_band=None)
     return resolved[0], resolved[1]
 
 
+# CDS X-Match occasionally times out or drops the connection. A short retry
+# rides out the hiccup; if it keeps failing, transient filtering still runs,
+# just without the extra VizieR cross-checks.
+TRANSIENT_FILTER_ATTEMPTS = 2
+TRANSIENT_FILTER_RETRY_DELAY_SECONDS = 2.0
+# Socket errno values that mean the peer could not be reached.
+NETWORK_ERRNOS = {101, 104, 110, 111, 113}
+
+
+def _is_transient_network_error(error, depth=0):
+    """Return True when *error* or one of its causes is a network failure.
+
+    astroquery wraps the socket error several times, so the chain has to be
+    inspected rather than only the outermost exception.
+    """
+    if error is None or depth > 5:
+        return False
+    if isinstance(error, (requests.exceptions.RequestException, TimeoutError)):
+        return True
+    if isinstance(error, OSError) and getattr(error, "errno", None) in NETWORK_ERRNOS:
+        return True
+    return _is_transient_network_error(
+        error.__cause__, depth + 1
+    ) or _is_transient_network_error(error.__context__, depth + 1)
+
+
 def find_candidates(
     photometry_table: pd.DataFrame,
     image: np.ndarray,
@@ -398,13 +428,11 @@ def find_candidates(
     # Auto-select catalog based on hemisphere if not specified or if PanSTARRS
     if is_southern:
         catalog = "skymapper"
-        cat_cutout = "SkyMapper/DR4/"
         st.info(
             f"🌏 Southern hemisphere detected (Dec={dec_center:.2f}°). Using SkyMapper catalog."
         )
     else:
         catalog = "ps1"
-        cat_cutout = "PanSTARRS/DR1/"
         st.info(
             f"🌍 Northern hemisphere detected (Dec={dec_center:.2f}°). Using PanSTARRS catalog."
         )
@@ -628,9 +656,10 @@ def find_candidates(
     # Note: 'apass' and 'gsc' excluded due to RA/DEC column naming issues in stdpipe
     vizier_catalogs = ["gaiaedr3", "ps1", "skymapper", "sdss", "atlas", "apass", "gsc"]
 
-    # First, run filter_transient_candidates WITHOUT SkyBoT (it has column naming issues)
-    try:
-        candidates = pipeline.filter_transient_candidates(
+    # First, run filter_transient_candidates WITHOUT SkyBoT (it has column naming
+    # issues in stdpipe).
+    def _filter_candidates(vizier_list):
+        return pipeline.filter_transient_candidates(
             obj,
             cat=cat,
             # 'fwhm' is in pixels and 'pixscale' must be in deg/pixel (our
@@ -642,7 +671,7 @@ def find_candidates(
             pixscale=pixel_scale / 3600.0,
             time=header.get("DATE-OBS", None),
             skybot=False,  # Disable stdpipe's SkyBoT - we'll do our own
-            vizier=vizier_catalogs,
+            vizier=vizier_list,
             vizier_checker_fn=lambda xobj, xcat, catname: checker_fn(
                 xobj,
                 xcat,
@@ -657,12 +686,47 @@ def find_candidates(
             # the stdpipe default (0x7F00) never matches raw SEP flags.
             flagmask=SEP_REJECT_FLAGS,
         )
-    except Exception as e:
-        st.error(f"Error during transient filtering: {e}")
-        import traceback
 
-        st.error(traceback.format_exc())
-        return []
+    import traceback
+
+    candidates = None
+    filter_error = None
+    filter_traceback = None
+    for attempt in range(1, TRANSIENT_FILTER_ATTEMPTS + 1):
+        try:
+            candidates = _filter_candidates(vizier_catalogs)
+            filter_error = None
+            break
+        except Exception as e:
+            filter_error = e
+            filter_traceback = traceback.format_exc()
+            if attempt == TRANSIENT_FILTER_ATTEMPTS or not _is_transient_network_error(
+                e
+            ):
+                break
+            time.sleep(TRANSIENT_FILTER_RETRY_DELAY_SECONDS)
+
+    if filter_error is not None:
+        if not _is_transient_network_error(filter_error):
+            st.error(f"Error during transient filtering: {filter_error}")
+            st.error(filter_traceback)
+            return []
+        # The extra VizieR cross-match runs through the CDS X-Match service.
+        # When it is unreachable, keep the reference-survey filtering (which
+        # is local) instead of losing every candidate to a remote outage.
+        try:
+            candidates = _filter_candidates([])
+            st.warning(
+                "CDS X-Match is unreachable, so the extra VizieR cross-match ("
+                f"{', '.join(vizier_catalogs)}) was skipped after "
+                f"{TRANSIENT_FILTER_ATTEMPTS} attempts: {filter_error}. "
+                "Candidates were only checked against the reference survey "
+                "catalogue, so objects present in those catalogues may remain."
+            )
+        except Exception as e:
+            st.error(f"Error during transient filtering: {e}")
+            st.error(traceback.format_exc())
+            return []
 
     # Now apply our own SkyBoT filtering to remove Solar System objects
     obs_time = header.get("DATE-OBS", None)
@@ -701,18 +765,29 @@ def find_candidates(
         cand_dict = {col: cand[col] for col in cand.colnames}
         # Create the cutout from image based on the candidate
         cutout = cutouts.get_cutout(image, cand_dict, 25, header=header)
+        # The cutout's header carries the WCS, so the template matches its
+        # exact field of view. _fetch_hips_template walks the survey chain:
+        # reference survey, then SDSS, then DSS2, then the direct CDS request.
+        cand_dec = float(cand_dict.get("dec", dec_center))
         try:
-            # Use the cutout's header with WCS for template retrieval
-            # This ensures the HiPS image matches the cutout's field of view
-            cutout["template"] = templates.get_hips_image(
-                cat_cutout + filter_name, header=cutout.get("header"), get_header=False
+            cutout["template"], _template_survey = _fetch_hips_template(
+                cutout.get("header"), filter_name, cand_dec
             )
+            if cutout["template"] is None:
+                tried = " or ".join(_hips_template_labels(filter_name, cand_dec))
+                st.warning(
+                    "No HiPS template coverage for candidate at "
+                    f"RA={cand_dict.get('ra')}, Dec={cand_dict.get('dec')}: "
+                    f"{tried} returned no usable pixels there."
+                )
+        except HipsTemplateServiceError as e:
+            st.warning(
+                f"HiPS template service unreachable for a candidate: {e}. "
+                "The science cutout is unaffected."
+            )
+            cutout["template"] = None
         except Exception as e:
-            st.error(f"Failed to retrieve HiPS template image for candidate: {e}")
-            st.error(f"  Attempted URL: {cat_cutout}{filter_name}")
-            st.error(
-                f"  Header info: RA={header.get('CRVAL1')}, Dec={header.get('CRVAL2')}"
-            )
+            st.warning(f"Failed to retrieve HiPS template image for candidate: {e}")
             cutout["template"] = None
 
         # Now we have two image planes in the cutout - let's display them
@@ -791,37 +866,152 @@ def sanitize_astrocolibri_name(name) -> str:
     return "".join(c if c.isalnum() or c in "_-" else "_" for c in str(name))
 
 
-def _hips_survey_candidates(dec_center):
-    """Return HiPS survey prefixes ordered by preference for a declination.
+# Template cutouts come from CDS HiPS. The reference survey depends on the
+# hemisphere; SDSS then DSS2 follow, DSS2 being all-sky, so a field the
+# reference survey does not cover - or an unreachable survey server - still
+# gets a template.
+HIPS_TEMPLATE_SDSS = "SDSS/DR9/color"
+HIPS_TEMPLATE_DSS = "CDS/P/DSS2/color"
+# Second, resilient path: hips2fits queried directly with an explicit timeout.
+HIPS2FITS_URLS = (
+    "https://alasky.cds.unistra.fr/hips-image-services/hips2fits",
+    "https://alasky.u-strasbg.fr/hips-image-services/hips2fits",
+)
+HIPS2FITS_TIMEOUT_SECONDS = 20.0
 
-    SkyMapper (south) and PanSTARRS (north) overlap only around the equator,
-    so the other survey is kept as a fallback when the first returns nothing.
+
+class HipsTemplateServiceError(RuntimeError):
+    """The CDS hips2fits service answered none of the template requests.
+
+    ``templates.get_hips_image`` swallows download errors and returns ``None``,
+    so without this distinction an outage looks exactly like a field outside
+    the survey footprints. Raised only when every survey returned no response.
     """
-    if dec_center < 0:
-        return ["SkyMapper/DR4/", "PanSTARRS/DR1/"]
-    return ["PanSTARRS/DR1/", "SkyMapper/DR4/"]
+
+
+def _hips_template_surveys(filter_name, dec_center):
+    """Return the HiPS identifiers tried for a template, in order.
+
+    PanSTARRS (north) or SkyMapper (south) is the reference survey. SDSS and
+    then DSS2 follow, so an uncovered field or an unreachable survey server
+    still yields a template.
+    """
+    primary = "SkyMapper/DR4/" if dec_center < 0 else "PanSTARRS/DR1/"
+    return [primary + filter_name, HIPS_TEMPLATE_SDSS, HIPS_TEMPLATE_DSS]
+
+
+def _hips_template_labels(filter_name, dec_center):
+    """Return the survey identifiers tried, in attempt order."""
+    return _hips_template_surveys(filter_name, dec_center)
+
+
+def _fix_panstarrs_scaling(image, hips):
+    """Undo the non-linear asinh scaling of the PanSTARRS HiPS, as stdpipe."""
+    if "PanSTARRS" not in hips or hips == "PanSTARRS/DR1/g":
+        return image
+    x = image * 0.4 * np.log(10)
+    with np.errstate(over="ignore", invalid="ignore"):
+        return np.exp(x) - np.exp(-x)
+
+
+def _fetch_hips_template_direct(cutout_header, surveys):
+    """Fetch a template straight from hips2fits (second, resilient path).
+
+    Only used when the stdpipe helper returned no image at all, which also
+    happens when a request hangs or the service drops the connection: this
+    path sets an explicit timeout and tries both CDS hosts before giving up.
+
+    Returns ``(template, survey)``; raises ``HipsTemplateServiceError`` when no
+    host answered at all.
+    """
+    from astropy.io import fits
+    from astropy.wcs import WCS
+
+    if cutout_header is None:
+        return None, None
+    try:
+        wcs = WCS(cutout_header)
+        params = {
+            "width": int(cutout_header["NAXIS1"]),
+            "height": int(cutout_header["NAXIS2"]),
+            "coordsys": "icrs",
+            "format": "fits",
+            "wcs": json.dumps(dict(wcs.to_header(relax=True))),
+        }
+    except Exception:
+        return None, None
+    if not wcs.is_celestial:
+        return None, None
+
+    answered = False
+    last_error = None
+    for hips in surveys:
+        for url in HIPS2FITS_URLS:
+            try:
+                response = requests.get(
+                    url,
+                    params={**params, "hips": hips},
+                    timeout=HIPS2FITS_TIMEOUT_SECONDS,
+                )
+                response.raise_for_status()
+                with fits.open(io.BytesIO(response.content)) as hdul:
+                    image = np.asarray(hdul[0].data, dtype=float)
+            except Exception as e:
+                last_error = e
+                continue
+            answered = True
+            if np.isfinite(image).any():
+                return _fix_panstarrs_scaling(image, hips), hips
+            break  # This survey has no tiles here: try the next one.
+    if not answered and last_error is not None:
+        raise HipsTemplateServiceError(
+            "direct hips2fits request failed for "
+            + ", ".join(surveys)
+            + f": {last_error}"
+        )
+    return None, None
 
 
 def _fetch_hips_template(cutout_header, filter_name, dec_center):
-    """Fetch a HiPS template matching *cutout_header*, trying both surveys.
+    """Fetch a HiPS template matching *cutout_header*.
 
-    Returns ``(template, survey_prefix)``; ``template`` is None when no survey
-    returned usable (finite, non-empty) data.
+    Tries the reference survey for the hemisphere, then SDSS, then DSS2. A
+    survey is abandoned on error, on no response, or when the field has no
+    usable pixels in it.
+
+    Returns ``(template, survey)`` with the full HiPS identifier; ``template``
+    is None when a survey answered but none had usable (finite, non-empty)
+    data. Raises ``HipsTemplateServiceError`` when nothing answered, after a
+    second attempt through the direct hips2fits path.
     """
+    surveys = _hips_template_surveys(filter_name, dec_center)
     last_error = None
-    for prefix in _hips_survey_candidates(dec_center):
+    answered = False
+    for hips in surveys:
         try:
             template = templates.get_hips_image(
-                prefix + filter_name, header=cutout_header, get_header=False
+                hips, header=cutout_header, get_header=False
             )
         except Exception as e:
             last_error = e
             continue
-        if template is not None and np.isfinite(template).any():
-            return template, prefix
+        if template is None:
+            # No response at all: the service, not the survey, is the problem.
+            continue
+        answered = True
+        if np.isfinite(template).any():
+            return template, hips
+    if answered:
+        return None, None
+    # Second, resilient method: stdpipe cannot tell a timeout from an outage,
+    # so ask hips2fits again with an explicit timeout on both CDS hosts.
+    template, hips = _fetch_hips_template_direct(cutout_header, surveys)
+    if template is not None:
+        return template, hips
+    message = "CDS hips2fits did not answer for " + ", ".join(surveys)
     if last_error is not None:
-        raise last_error
-    return None, None
+        message += f": {last_error}"
+    raise HipsTemplateServiceError(message)
 
 
 def plot_astrocolibri_cutouts(
@@ -919,12 +1109,24 @@ def plot_astrocolibri_cutouts(
             continue
 
         survey = None
+        survey_labels = " or ".join(
+            _hips_template_labels(filter_name, float(dec))
+        )
         try:
             cutout["template"], survey = _fetch_hips_template(
                 cutout.get("header"), filter_name, float(dec)
             )
             if cutout["template"] is None:
-                st.warning(f"No HiPS template coverage for {name}")
+                st.warning(
+                    f"No HiPS template coverage for {name}: {survey_labels} "
+                    "returned no usable pixels there."
+                )
+        except HipsTemplateServiceError as e:
+            st.warning(
+                f"HiPS template service unreachable for {name}: {e}. "
+                "The science cutout is unaffected."
+            )
+            cutout["template"] = None
         except Exception as e:
             st.warning(f"Could not retrieve HiPS template for {name}: {e}")
             cutout["template"] = None
@@ -941,7 +1143,7 @@ def plot_astrocolibri_cutouts(
                 mag_str += f" ± {mag_err_val:.3f}"
             title_parts.append(mag_str)
         if survey:
-            title_parts.append(f"ref: {survey.rstrip('/')}/{filter_name}")
+            title_parts.append(f"ref: {survey}")
         title = " | ".join(title_parts)
 
         fig = plot_cutout(

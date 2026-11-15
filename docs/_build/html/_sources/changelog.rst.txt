@@ -3,6 +3,39 @@ Changelog
 
 This document records all notable changes to RAPAS Photometry Pipeline.
 
+Version 1.9.4
+-------------
+
+**Resilient HiPS template cutouts**
+
+*   Astro-Colibri stamps and transient-candidate cutouts now share one template
+    helper that tries a chain of surveys: ``PanSTARRS/DR1/<band>`` for northern
+    fields or ``SkyMapper/DR4/<band>`` for southern ones, then
+    ``SDSS/DR9/color``, then ``CDS/P/DSS2/color``, which covers the whole sky.
+    An unreachable survey, a missing HiPS entry, or a field without tiles is
+    skipped instead of dropping the template.
+*   When no survey answers, a second method queries CDS hips2fits directly with
+    an explicit 20-second timeout on two CDS hosts before giving up, so a
+    stalled request cannot hang the cutouts.
+*   Warnings name the surveys tried and distinguish an unreachable service from
+    missing coverage; the cutout keeps its science frame either way, and its
+    title names the survey actually used.
+
+**Transient filtering survives a CDS X-Match outage**
+
+*   Transient filtering retries a network failure once, then runs without the
+    extra VizieR cross-match (``gaiaedr3``, ``ps1``, ``skymapper``, ``sdss``,
+    ``atlas``, ``apass``, ``gsc``) instead of returning no candidates. A warning
+    states that only the reference-survey catalogue was applied, and other
+    errors are still reported with their traceback.
+
+**Shorter PSF fallback warning above the viewer**
+
+*   The Aladin viewer shows the short shared warning (``PSF photometry is not
+    available; using calibrated aperture photometry instead.``); the
+    1.1 x FWHM aperture detail stays in the transient table instead of a long
+    message above the viewer.
+
 Version 1.9.3
 -------------
 

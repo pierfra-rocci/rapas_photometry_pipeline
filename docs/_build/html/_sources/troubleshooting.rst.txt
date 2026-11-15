@@ -449,6 +449,23 @@ Database and Migration Issues
 *   **Problem**: After typing the password, the value is not taken into account.
 *   **Solution**: Press Enter in the password field before clicking **Login**.
 
+Transient and Astro-Colibri Template Cutouts
+--------------------------------------------
+
+**The reference template panel is missing from a cutout**
+
+*   **Problem**: the science cutout is shown without the HiPS template, and a
+    warning lists the surveys that were tried.
+*   **Solution**: the template follows a chain: PanSTARRS (north) or SkyMapper
+    (south), then SDSS, then DSS2, which covers the whole sky.
+
+    *   ``... returned no usable pixels there.``: the field is outside those
+        survey footprints (low Galactic latitude, for example). The cutout
+        keeps its science frame and the candidates are unaffected.
+    *   ``HiPS template service unreachable ...``: CDS hips2fits could not be
+        contacted. The helper retries with an explicit timeout on two CDS hosts
+        before reporting this; the exported files are unaffected.
+
 Aladin Lite Viewer Issues
 -------------------------
 
@@ -493,10 +510,11 @@ Aladin Lite Viewer Issues
     PanSTARRS and AllWISE); the first reachable mirror replaces the base layer.
     Only if every mirror fails does it switch to ``CDS/P/DSS2/red``:
 
-    *   A warning is shown above the viewer (``Survey <survey> is unavailable;
-        loaded the mirrored copy from <url>.``), and the switch to the second
-        survey is reported as ``Survey <survey> could not be loaded; trying
-        <fallback> instead.`` Both messages are mirrored in the console.
+    *   Using a mirror is silent, since the requested survey is still shown;
+        the switch appears only in the browser console. The switch to the
+        second survey is reported above the viewer as ``Survey <survey> could
+        not be loaded; trying <fallback> instead.``, again with a console
+        entry.
     *   When the mirrors and the fallback are unreachable too, the message says
         so instead of leaving a blank canvas.
     *   Change the second survey with the ``fallback_survey`` argument of

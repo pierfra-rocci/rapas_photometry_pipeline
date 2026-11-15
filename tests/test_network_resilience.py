@@ -1043,6 +1043,7 @@ const input = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
 const events = {primary: 0, fallback: 0, sources: 0, switches: 0, urls: []};
 const status = {textContent: ''};
 const viewer = {innerHTML: ''};
+const coordinates = {style: {display: 'none'}};
 function api(init) {
     return {
         init,
@@ -1062,7 +1063,10 @@ const context = {
     console: {error: () => {}, warn: () => {}, info: () => {}},
     window: {},
     document: {
-        getElementById: id => id === 'aladin-lite-status' ? status : viewer,
+        getElementById: id =>
+            id === 'aladin-lite-status' ? status
+            : id === 'aladin-lite-coordinates' ? coordinates
+            : viewer,
         createElement: tag => tag === 'canvas'
             ? {getContext: () => input.scenario !== 'no_webgl'}
             : {},
@@ -1109,7 +1113,11 @@ const script = input.script.replace(
     "__importAladin()"
 );
 vm.runInNewContext(script, context);
-setTimeout(() => console.log(JSON.stringify({events, status: status.textContent})), 80);
+setTimeout(() => console.log(JSON.stringify({
+    events,
+    status: status.textContent,
+    coordinates: coordinates.style.display
+})), 80);
 """
     result = subprocess.run(
         [shutil.which("node"), "-e", harness],
@@ -1124,8 +1132,10 @@ setTimeout(() => console.log(JSON.stringify({events, status: status.textContent}
     if scenario == "no_webgl":
         assert events["primary"] == events["fallback"] == 0
         assert "no WebGL2 context" in output["status"]
+        assert output["coordinates"] == ""
     elif scenario == "both_fail":
         assert events["primary"] == events["fallback"] == 1
+        assert output["coordinates"] == ""
         assert (
             "could not be initialized from either CDS or jsDelivr" in output["status"]
         )
@@ -1136,6 +1146,15 @@ setTimeout(() => console.log(JSON.stringify({events, status: status.textContent}
             if scenario in ("primary", "surveys_fail", "fallback_url", "unknown_survey")
             else 1
         )
+        if scenario in ("surveys_fail", "unknown_survey", "fallback_url"):
+            # A switch to the fallback survey changes what is displayed, so it
+            # is still reported above the viewer.
+            assert output["status"]
+            assert output["coordinates"] == ""
+        else:
+            # Primary, mirror and library-fallback paths are transparent.
+            assert output["status"] == ""
+            assert output["coordinates"] == "none"
         if scenario == "surveys_fail":
             assert events["switches"] == 1
             assert "Neither CDS/P/DSS2/color nor CDS/P/DSS2/red" in output["status"]
@@ -1149,10 +1168,10 @@ setTimeout(() => console.log(JSON.stringify({events, status: status.textContent}
             ]
         elif scenario == "mirror":
             assert events["switches"] == 1
-            assert (
-                "mirrored copy from https://skies.esac.esa.int/DSSColor"
-                in output["status"]
-            )
+            # A reachable mirror displays the requested survey, so nothing is
+            # written above the viewer and the coordinate table stays hidden.
+            assert output["status"] == ""
+            assert output["coordinates"] == "none"
             assert events["urls"] == [
                 "https://alasky.cds.unistra.fr/DSS/DSSColor/properties",
                 "https://skies.esac.esa.int/DSSColor/properties",

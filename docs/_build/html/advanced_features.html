@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Advanced Features &mdash; RAPAS Photometry Pipeline (RPP) v1.9.3 Documentation</title>
+  <title>Advanced Features &mdash; RAPAS Photometry Pipeline (RPP) v1.9.4 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=f333a941"></script>
+      <script src="_static/documentation_options.js?v=38ba398c"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -227,7 +227,9 @@ dropped.</p></li>
 remain eligible if they pass the other catalog, known-source, and Solar
 System-object filters.</p></li>
 <li><p>Cutouts (science and HiPS template) are displayed and saved for the top 20
-candidates, ranked by signal-to-noise ratio.</p></li>
+candidates, ranked by signal-to-noise ratio. The template follows the field
+declination (PanSTARRS north, SkyMapper south) and falls back to SDSS, then
+DSS2, when that survey does not cover the field or cannot be reached.</p></li>
 </ul>
 <p>This workflow should be treated as best-effort. Reference data, remote catalog
 services, and transient filtering may degrade gracefully when an external

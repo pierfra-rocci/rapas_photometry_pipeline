@@ -170,13 +170,16 @@ def test_key_pipeline_status_messages_use_expected_levels() -> None:
 
 
 def test_transient_finder_warns_when_aperture_fallback_is_used() -> None:
-    """The results view must explain transient magnitudes that use the 1.1 x FWHM fallback."""
+    """The viewer must warn in one short line about the aperture fallback."""
     warning_arg_names = {
         call.args[0].id
         for call in _streamlit_calls("warning")
         if call.args and isinstance(call.args[0], ast.Name)
     }
-    assert "TRANSIENT_PSF_FALLBACK_MESSAGE" in warning_arg_names
+    # The short shared message is used above the Aladin viewer; the long
+    # transient variant no longer appears there.
+    assert "PSF_FALLBACK_MESSAGE" in warning_arg_names
+    assert "TRANSIENT_PSF_FALLBACK_MESSAGE" not in warning_arg_names
 
     referenced_names = {
         node.id for node in ast.walk(_app_tree()) if isinstance(node, ast.Name)

@@ -735,7 +735,7 @@ def display_catalog_in_aladin(
 </head>
 <body>
     <div id="aladin-lite-status" style="padding:6px 8px; font:13px Arial,sans-serif; color:#8a1c1c;"></div>
-    <details>
+    <details id="aladin-lite-coordinates" style="display:none;">
         <summary>Source coordinates (available without Aladin)</summary>
         <div style="max-height:200px;overflow:auto;">{coordinates_html}</div>
     </details>
@@ -744,6 +744,12 @@ def display_catalog_in_aladin(
         function aladinShowProblem(message) {{
             let box = document.getElementById('aladin-lite-status');
             if (box) {{ box.textContent = message; }}
+            // Only reveal the offline coordinate table when something visible
+            // needs explaining; a viewer that loaded fine shows no extra text.
+            let coordinates = document.getElementById('aladin-lite-coordinates');
+            if (coordinates && coordinates.style) {{
+                coordinates.style.display = '';
+            }}
             console.error('[RPP Aladin] ' + message);
         }}
         function aladinWithTimeout(promise, message) {{
@@ -885,13 +891,11 @@ def display_catalog_in_aladin(
                         const mirror = urls[index];
                         probe(mirror, function () {{
                             if (setBaseLayer(mirror)) {{
+                                // A working mirror shows the requested survey,
+                                // so the switch stays in the console log only.
                                 console.info(
                                     '[RPP Aladin] survey ' + id +
                                     ' unavailable, using mirror ' + mirror
-                                );
-                                aladinShowProblem(
-                                    'Survey ' + id + ' is unavailable; loaded ' +
-                                    'the mirrored copy from ' + mirror + '.'
                                 );
                             }} else {{
                                 tryMirrors(id, index + 1, onFail);

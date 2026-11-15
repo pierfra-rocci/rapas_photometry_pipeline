@@ -10,7 +10,7 @@
 
 ![RAPAS Logo](rapas_logo.png)
 
-![Version](https://img.shields.io/badge/version-1.9.3-blue)
+![Version](https://img.shields.io/badge/version-1.9.4-blue)
 
 A comprehensive astronomical photometry pipeline built with Streamlit, featuring local astrometric plate solving with an optional online fallback, multi-catalog cross-matching, and advanced photometric analysis capabilities.
 
@@ -340,8 +340,8 @@ and are not included in the ZIP.
   unavailable (missing columns or no finite value for the matched detections),
   the calibrated 1.1 x FWHM aperture magnitude is used instead, so transient
   filtering is not blocked. The app then shows the shared PSF warning
-  `PSF photometry is not available; using calibrated aperture photometry instead. Transient candidates use the calibrated 1.1 x FWHM aperture magnitude.`
-  The main pipeline uses only the first sentence.
+  `PSF photometry is not available; using calibrated aperture photometry instead.`
+  The app shows only this short warning above the Aladin viewer.
 - Detections coincident with a reference-survey or Vizier source are rejected
   within half the seeing FWHM, unless they are a genuine brightness excess
   (`mag_threshold`, default 2.0 mag brighter than the catalog counterpart)
@@ -525,9 +525,15 @@ viewer is usually a WebGL2 or a network issue, not a caching one.
 
 ## Changelog
 
-> The project currently targets version 1.9.3. Recent releases are listed here; the full history is in `docs/changelog.rst`.
+> The project currently targets version 1.9.4. Recent releases are listed here; the full history is in `docs/changelog.rst`.
 
-### Current Release (1.9.3)
+### Current Release (1.9.4)
+
+- **HiPS template chain**: Astro-Colibri stamps and transient cutouts try `PanSTARRS/DR1` (north) or `SkyMapper/DR4` (south), then `SDSS/DR9/color`, then `CDS/P/DSS2/color`, skipping an unreachable survey or an uncovered field; if none answers, CDS hips2fits is queried directly with an explicit timeout on two hosts.
+- **CDS X-Match outage tolerated**: transient filtering retries once, then runs without the extra VizieR cross-match (with a warning) instead of returning no candidates.
+- **Shorter PSF warning**: the short shared message is shown above the Aladin viewer; the 1.1 x FWHM aperture detail stays in the transient table.
+
+### Version 1.9.3
 
 - **TNS public catalogue without an API key**: the daily `tns_public_objects.csv.zip` is downloaded from `https://www.wis-tns.org/sites/default/files/tns_public_objects/` with a plain `GET` that only carries the `tns_marker` user agent (a guest marker, named with `RPP_TNS_MARKER_NAME`); the older `/system/files/` path is tried if it fails. One copy is cached and shared by every user: the first run of the day downloads it, the others read it, and a copy older than 24 hours is downloaded again and overwritten, with a lock file so concurrent sessions do not download it twice. TNS credentials are now only needed by the Search API fallback.
 - **TNS catalogue warm-up**: the shared catalogue is prepared at app startup in a background daemon thread (once per process), so neither the first page load nor the first analysis of the day pays for the download; an analysis that needs it meanwhile waits on the download lock and reuses the downloaded file, and the warm-up is skipped when `RPP_TNS_MIRROR_URL` is set.

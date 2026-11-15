@@ -146,7 +146,9 @@ Candidate finding (``src.transient.find_candidates``) works as follows:
   remain eligible if they pass the other catalog, known-source, and Solar
   System-object filters.
 - Cutouts (science and HiPS template) are displayed and saved for the top 20
-  candidates, ranked by signal-to-noise ratio.
+  candidates, ranked by signal-to-noise ratio. The template follows the field
+  declination (PanSTARRS north, SkyMapper south) and falls back to SDSS, then
+  DSS2, when that survey does not cover the field or cannot be reached.
 
 This workflow should be treated as best-effort. Reference data, remote catalog
 services, and transient filtering may degrade gracefully when an external

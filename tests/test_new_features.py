@@ -27,6 +27,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pandas as pd
 import pytest
+import requests
 from astropy.io.fits import Header
 
 # ── Stub out optional heavy dependencies before src.transient is imported ─────
@@ -94,6 +95,15 @@ def _celestial_header(dec: float = 15.0) -> Header:
     wcs.wcs.crpix = [250.0, 250.0]
     wcs.wcs.cdelt = [-0.001, 0.001]
     return wcs.to_header()
+
+
+@pytest.fixture(autouse=True)
+def _no_direct_hips2fits(monkeypatch):
+    """Unit tests never reach hips2fits; the direct-path tests patch it again."""
+    monkeypatch.setattr(
+        "src.transient.requests.get",
+        MagicMock(side_effect=requests.exceptions.ConnectTimeout("disabled in tests")),
+    )
 
 
 # ─── 1. plot_astrocolibri_cutouts — early-return guards ──────────────────────
@@ -223,9 +233,9 @@ class TestAstrocolibriSurveySelection:
 
 
 class TestAstrocolibriSurveyFallback:
-    """The other survey is tried when the preferred one has no data."""
+    """The next survey in the chain is used when one has no data."""
 
-    def test_falls_back_to_other_survey(self):
+    def test_falls_back_to_sdss_when_primary_has_no_data(self):
         from src.transient import _fetch_hips_template
 
         def fake(name, header=None, get_header=False):
@@ -235,8 +245,279 @@ class TestAstrocolibriSurveyFallback:
 
         with patch("src.transient.templates.get_hips_image", side_effect=fake):
             tmpl, survey = _fetch_hips_template(None, "r", -10.0)
-        assert survey == "PanSTARRS/DR1/"
+        assert survey == "SDSS/DR9/color"
         assert np.isfinite(tmpl).all()
+
+
+class TestAstrocolibriTemplateFailureReporting:
+    """An unreachable hips2fits must read differently from a coverage gap."""
+
+    @staticmethod
+    def _warnings(response):
+        """Run one cutout with *response* as get_hips_image; return warnings."""
+        from src.transient import plot_astrocolibri_cutouts
+
+        df = _make_ac_table(n_sources=1, n_matches=1)
+        header = _celestial_header(10.0)
+        with (
+            patch("src.transient.st") as mock_st,
+            patch("src.transient.fix_header", return_value=(header, None)),
+            patch(
+                "src.transient.cutouts.get_cutout",
+                return_value={"image": np.zeros((25, 25)), "header": header},
+            ),
+            patch("src.transient.templates.get_hips_image", side_effect=response),
+            patch("src.transient.plot_cutout", return_value=MagicMock()),
+            patch("src.transient.plt.close"),
+        ):
+            plot_astrocolibri_cutouts(
+                df, np.zeros((500, 500)), header, "/tmp", "science", "r", 10.0
+            )
+        return [call.args[0] for call in mock_st.warning.call_args_list]
+
+    def test_unreachable_service_names_the_surveys_and_filters(self):
+        warnings = self._warnings(lambda name, header=None, get_header=False: None)
+
+        assert len(warnings) == 1
+        assert "unreachable" in warnings[0]
+        assert "PanSTARRS/DR1/r" in warnings[0]
+        assert "CDS/P/DSS2/color" in warnings[0]
+        assert "coverage" not in warnings[0]
+
+    def test_missing_coverage_names_the_surveys_and_filters(self):
+        warnings = self._warnings(
+            lambda name, header=None, get_header=False: np.full((5, 5), np.nan)
+        )
+
+        assert len(warnings) == 1
+        assert "No HiPS template coverage" in warnings[0]
+        assert "PanSTARRS/DR1/r" in warnings[0]
+        assert "SDSS/DR9/color" in warnings[0]
+        assert "CDS/P/DSS2/color" in warnings[0]
+        assert "unreachable" not in warnings[0]
+
+    def test_one_answering_survey_means_a_coverage_gap(self):
+        """A survey that did answer rules out a service outage."""
+
+        def fake(name, header=None, get_header=False):
+            if name.startswith("PanSTARRS"):
+                return None
+            return np.full((5, 5), np.nan)
+
+        warnings = self._warnings(fake)
+
+        assert len(warnings) == 1
+        assert "No HiPS template coverage" in warnings[0]
+
+    def test_helper_raises_a_dedicated_service_error(self):
+        from src.transient import HipsTemplateServiceError, _fetch_hips_template
+
+        with patch("src.transient.templates.get_hips_image", return_value=None):
+            with pytest.raises(HipsTemplateServiceError) as excinfo:
+                _fetch_hips_template(None, "g", -10.0)
+
+        message = str(excinfo.value)
+        assert "SkyMapper/DR4/g" in message
+        assert "CDS/P/DSS2/color" in message
+
+
+class TestHipsTemplateSurveyChain:
+    """PanSTARRS/SkyMapper, then SDSS, then DSS2, then the direct request."""
+
+    def test_northern_field_tries_panstarrs_then_sdss_then_dss(self):
+        from src.transient import _hips_template_surveys
+
+        assert _hips_template_surveys("r", 10.0) == [
+            "PanSTARRS/DR1/r",
+            "SDSS/DR9/color",
+            "CDS/P/DSS2/color",
+        ]
+
+    def test_southern_field_tries_skymapper_then_sdss_then_dss(self):
+        from src.transient import _hips_template_surveys
+
+        assert _hips_template_surveys("i", -30.0) == [
+            "SkyMapper/DR4/i",
+            "SDSS/DR9/color",
+            "CDS/P/DSS2/color",
+        ]
+
+    def test_dss_is_used_when_the_first_two_surveys_have_no_data(self):
+        from src.transient import _fetch_hips_template
+
+        def fake(name, header=None, get_header=False):
+            if name == "CDS/P/DSS2/color":
+                return np.ones((5, 5))
+            return np.full((5, 5), np.nan)
+
+        with patch("src.transient.templates.get_hips_image", side_effect=fake):
+            tmpl, survey = _fetch_hips_template(None, "r", 10.0)
+
+        assert survey == "CDS/P/DSS2/color"
+        assert np.isfinite(tmpl).all()
+
+    def test_direct_request_is_used_when_nothing_answers(self):
+        from src.transient import _fetch_hips_template
+
+        with (
+            patch("src.transient.templates.get_hips_image", return_value=None),
+            patch(
+                "src.transient._fetch_hips_template_direct",
+                return_value=(np.ones((5, 5)), "CDS/P/DSS2/color"),
+            ) as direct,
+        ):
+            tmpl, survey = _fetch_hips_template(None, "r", 10.0)
+
+        assert direct.called
+        assert survey == "CDS/P/DSS2/color"
+        assert np.isfinite(tmpl).all()
+
+    def test_direct_request_returns_the_image_with_the_survey(self):
+        import io as _io
+
+        from astropy.io import fits
+
+        from src.transient import _fetch_hips_template_direct
+
+        buffer = _io.BytesIO()
+        fits.PrimaryHDU(np.ones((5, 5))).writeto(buffer)
+        calls = []
+
+        class FakeResponse:
+            content = buffer.getvalue()
+
+            def raise_for_status(self):
+                return None
+
+        def fake_get(url, params=None, timeout=None):
+            calls.append((url, params["hips"], timeout))
+            return FakeResponse()
+
+        header = _celestial_header()
+        header["NAXIS"] = 2
+        header["NAXIS1"] = 5
+        header["NAXIS2"] = 5
+
+        with patch("src.transient.requests.get", side_effect=fake_get):
+            image, survey = _fetch_hips_template_direct(
+                header, ["PanSTARRS/DR1/r", "CDS/P/DSS2/color"]
+            )
+
+        assert survey == "PanSTARRS/DR1/r"
+        assert image.shape == (5, 5)
+        assert calls[0][2] == pytest.approx(20.0)
+
+    def test_direct_request_reports_an_unreachable_service(self):
+        from src.transient import HipsTemplateServiceError, _fetch_hips_template_direct
+
+        header = _celestial_header()
+        header["NAXIS"] = 2
+        header["NAXIS1"] = 5
+        header["NAXIS2"] = 5
+
+        with patch(
+            "src.transient.requests.get",
+            side_effect=requests.exceptions.ConnectTimeout("timed out"),
+        ):
+            with pytest.raises(HipsTemplateServiceError):
+                _fetch_hips_template_direct(header, ["PanSTARRS/DR1/r"])
+
+    def test_transient_cutouts_reuse_the_shared_template_helper(self, monkeypatch):
+        from astropy.table import Table
+        from astropy.wcs import WCS
+
+        import src.transient as transient_module
+
+        wcs = WCS(naxis=2)
+        wcs.wcs.crpix = [32.0, 32.0]
+        wcs.wcs.cdelt = [-0.0002777778, 0.0002777778]
+        wcs.wcs.crval = [10.0, 15.0]
+        wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+        header = wcs.to_header()
+        detections = Table(
+            {
+                "x": [10.0],
+                "y": [12.0],
+                "ra": [10.0],
+                "dec": [15.0],
+                "flux": [1000.0],
+                "fluxerr": [10.0],
+                "flags": [0],
+            }
+        )
+        monkeypatch.setattr(
+            transient_module.photometry,
+            "get_objects_sextractor",
+            lambda *args, **kwargs: detections,
+        )
+        monkeypatch.setattr(transient_module, "fix_header", lambda h: (header, None))
+        monkeypatch.setattr(
+            transient_module, "resolve_effective_gain", lambda *args, **kwargs: 1.0
+        )
+        monkeypatch.setattr(
+            transient_module.stdpipe_astrometry,
+            "spherical_match",
+            lambda *args, **kwargs: (np.array([0]), np.array([0]), np.array([0.0])),
+        )
+        monkeypatch.setattr(
+            transient_module.catalogs,
+            "get_cat_vizier",
+            lambda *args, **kwargs: Table(
+                {"_RAJ2000": [10.0], "_DEJ2000": [15.0], "rmag": [19.0]}
+            ),
+        )
+        monkeypatch.setattr(
+            transient_module.pipeline,
+            "filter_transient_candidates",
+            lambda obj, **kwargs: Table(
+                {"ra": [10.0], "dec": [15.0], "mag_calib_err": [0.1]}
+            ),
+        )
+        monkeypatch.setattr(
+            transient_module.cutouts,
+            "get_cutout",
+            lambda image, cand, size, header=None: {
+                "image": np.zeros((5, 5)),
+                "header": header,
+            },
+        )
+        templates_requested = []
+
+        def fake_template(cutout_header, filter_name, dec_center):
+            templates_requested.append((filter_name, dec_center))
+            return np.ones((5, 5)), "CDS/P/DSS2/color"
+
+        monkeypatch.setattr(
+            transient_module, "_fetch_hips_template", fake_template
+        )
+        monkeypatch.setattr(
+            transient_module, "plot_cutout", lambda *args, **kwargs: MagicMock()
+        )
+        monkeypatch.setattr(transient_module.plt, "close", lambda *args, **kwargs: None)
+        monkeypatch.setattr(transient_module, "st", MagicMock())
+
+        result = transient_module.find_candidates(
+            pd.DataFrame(
+                {
+                    "ra": [10.0],
+                    "dec": [15.0],
+                    "psf_mag": [17.0],
+                    "psf_mag_err": [0.05],
+                }
+            ),
+            np.zeros((64, 64)),
+            header,
+            fwhm=3.0,
+            pixel_scale=1.0,
+            ra_center=10.0,
+            dec_center=15.0,
+            sr=0.1,
+            filter_cat="psf_mag",
+            filter_name="r",
+        )
+
+        assert templates_requested == [("r", 15.0)]
+        assert result is not None
 
 
 # ─── 3. plot_astrocolibri_cutouts — PNG filename sanitisation ─────────────────
@@ -897,6 +1178,161 @@ def _run_transient_finder(monkeypatch, photometry_table):
         )
 
     return captured.get("obj"), result
+
+
+def _run_transient_filter_with_failures(monkeypatch, error, fail_attempts=None):
+    """Run find_candidates() with a failing stdpipe transient filter.
+
+    *fail_attempts* limits how many attempts carrying the extra VizieR
+    catalogues fail; None means they always fail. Returns the VizieR list of
+    every attempt, the result, and the warnings / errors shown to the user.
+    """
+    from astropy.table import Table
+    from astropy.wcs import WCS
+
+    import src.transient as transient_module
+
+    wcs = WCS(naxis=2)
+    wcs.wcs.crpix = [32.0, 32.0]
+    wcs.wcs.cdelt = [-0.0002777778, 0.0002777778]
+    wcs.wcs.crval = [150.0, 2.0]
+    wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+    header = wcs.to_header()
+
+    detections = Table(
+        {
+            "x": [10.0],
+            "y": [12.0],
+            "ra": [150.0],
+            "dec": [2.0],
+            "flux": [1000.0],
+            "fluxerr": [10.0],
+            "flags": [0],
+        }
+    )
+    photometry_table = pd.DataFrame(
+        {"ra": [150.0], "dec": [2.0], "psf_mag": [17.0], "psf_mag_err": [0.05]}
+    )
+
+    monkeypatch.setattr(
+        transient_module.photometry,
+        "get_objects_sextractor",
+        lambda *args, **kwargs: detections,
+    )
+    monkeypatch.setattr(transient_module, "fix_header", lambda h: (header, None))
+    monkeypatch.setattr(
+        transient_module, "resolve_effective_gain", lambda *args, **kwargs: 1.0
+    )
+    monkeypatch.setattr(
+        transient_module.stdpipe_astrometry,
+        "spherical_match",
+        lambda *args, **kwargs: (np.array([0]), np.array([0]), np.array([0.0])),
+    )
+    monkeypatch.setattr(
+        transient_module.catalogs,
+        "get_cat_vizier",
+        lambda *args, **kwargs: Table(
+            {"_RAJ2000": [150.0], "_DEJ2000": [2.0], "rmag": [19.0]}
+        ),
+    )
+    # No real waiting between retries.
+    monkeypatch.setattr(transient_module, "TRANSIENT_FILTER_RETRY_DELAY_SECONDS", 0)
+
+    attempts = {"failed": 0}
+    calls = []
+
+    def fake_filter(obj, **kwargs):
+        vizier = list(kwargs.get("vizier") or [])
+        calls.append(vizier)
+        if vizier and (fail_attempts is None or attempts["failed"] < fail_attempts):
+            attempts["failed"] += 1
+            raise error
+        return obj[:0]
+
+    monkeypatch.setattr(
+        transient_module.pipeline, "filter_transient_candidates", fake_filter
+    )
+    mock_st = MagicMock()
+    monkeypatch.setattr(transient_module, "st", mock_st)
+
+    result = transient_module.find_candidates(
+        photometry_table,
+        np.zeros((64, 64)),
+        header,
+        fwhm=3.0,
+        pixel_scale=1.0,
+        ra_center=150.0,
+        dec_center=2.0,
+        sr=0.1,
+        filter_cat="psf_mag",
+        filter_name="r",
+    )
+    return {
+        "calls": calls,
+        "result": result,
+        "warnings": [call.args[0] for call in mock_st.warning.call_args_list],
+        "errors": [call.args[0] for call in mock_st.error.call_args_list],
+    }
+
+
+class TestTransientFilterXmatchResilience:
+    """A CDS X-Match outage must not discard every candidate."""
+
+    def test_retries_a_transient_failure_before_succeeding(self, monkeypatch):
+        outcome = _run_transient_filter_with_failures(
+            monkeypatch,
+            requests.exceptions.ConnectTimeout("timed out"),
+            fail_attempts=1,
+        )
+
+        assert len(outcome["calls"]) == 2
+        assert outcome["calls"][0] == outcome["calls"][1] != []
+        assert outcome["warnings"] == []
+        assert outcome["result"] is not None
+
+    def test_falls_back_without_the_vizier_cross_match(self, monkeypatch):
+        outcome = _run_transient_filter_with_failures(
+            monkeypatch, requests.exceptions.ConnectTimeout("timed out")
+        )
+
+        # Retried once with the catalogues, then once without them.
+        assert outcome["calls"][0] == outcome["calls"][1] != []
+        assert outcome["calls"][2] == []
+        assert outcome["result"] is not None
+        assert any("X-Match" in warning for warning in outcome["warnings"])
+
+    def test_non_network_failure_is_still_reported(self, monkeypatch):
+        outcome = _run_transient_filter_with_failures(
+            monkeypatch, ValueError("unexpected column layout")
+        )
+
+        assert len(outcome["calls"]) == 1
+        assert outcome["result"] == []
+        assert any(
+            "unexpected column layout" in error for error in outcome["errors"]
+        )
+
+
+class TestTransientNetworkErrorDetection:
+    """Only connectivity failures may be retried or softened."""
+
+    @staticmethod
+    def _is_network(error):
+        from src.transient import _is_transient_network_error
+
+        return _is_transient_network_error(error)
+
+    def test_requests_timeout_is_transient(self):
+        assert self._is_network(requests.exceptions.ConnectTimeout("timed out"))
+
+    def test_chained_socket_timeout_is_transient(self):
+        wrapper = RuntimeError("wrapped")
+        wrapper.__cause__ = TimeoutError(110, "Connection timed out")
+
+        assert self._is_network(wrapper)
+
+    def test_application_error_is_not_transient(self):
+        assert not self._is_network(ValueError("bad column"))
 
 
 class TestTransientFinderPhotometryFallback:
