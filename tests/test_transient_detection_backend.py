@@ -128,10 +128,10 @@ def test_missing_sextractor_binary_falls_back_to_sep(monkeypatch, fake_st):
     assert result == []
     assert len(calls["sextractor"]) == 1
     assert len(calls["sep"]) == 1
-    assert any("not found on PATH" in message for message in fake_st.warnings)
-    assert any("SEP" in message for message in fake_st.warnings)
+    assert any("not found on PATH" in message for message in fake_st.infos)
+    assert any("SEP" in message for message in fake_st.infos)
     # The fallback reaching the photometry step proves its detections were used.
-    assert any("photometry_table" in message for message in fake_st.warnings)
+    assert any("photometry_table" in message for message in fake_st.infos)
 
 
 def test_sextractor_failure_with_binary_present_is_reported(monkeypatch, fake_st):
@@ -142,7 +142,7 @@ def test_sextractor_failure_with_binary_present_is_reported(monkeypatch, fake_st
     assert result == []
     assert len(calls["sep"]) == 1
     assert any(
-        "SExtractor returned no result" in message for message in fake_st.warnings
+        "SExtractor returned no result" in message for message in fake_st.infos
     )
 
 

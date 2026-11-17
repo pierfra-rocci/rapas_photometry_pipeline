@@ -303,8 +303,8 @@ def _parse_fits_bytes(
         if image_index is None:
             messages.append(
                 (
-                    "warning",
-                    "WARNING",
+                    "info",
+                    "INFO",
                     "No supported numeric image data found in the FITS file.",
                 )
             )
@@ -339,7 +339,7 @@ def _parse_fits_bytes(
         elif len(data.shape) > 3:
             messages.append(
                 (
-                    "warning",
+                    "info",
                     None,
                     f"Data has {len(data.shape)} dimensions. Using first slice only.",
                 )
@@ -363,13 +363,13 @@ def _parse_fits_bytes(
         except Exception as fix_error:
             messages.append(
                 (
-                    "warning",
+                    "info",
                     None,
                     f"Header fixing encountered an issue: {str(fix_error)}",
                 )
             )
             messages.append(
-                (None, "WARNING", f"Header fixing failed: {str(fix_error)}")
+                (None, "INFO", f"Header fixing failed: {str(fix_error)}")
             )
 
         return data, header, messages
@@ -382,7 +382,7 @@ def _parse_fits_bytes(
             hdul.close()
         except Exception as close_error:
             messages.append(
-                ("warning", "WARNING", f"Could not close FITS file: {close_error}")
+                ("info", "INFO", f"Could not close FITS file: {close_error}")
             )
         finally:
             streams.close()
@@ -520,7 +520,7 @@ def display_catalog_in_aladin(
         return
 
     if not isinstance(final_table, pd.DataFrame) or final_table.empty:
-        st.warning("Input table is empty or not a DataFrame. Cannot display in Aladin.")
+        st.info("Input table is empty or not a DataFrame. Cannot display in Aladin.")
         return
 
     if ra_col not in final_table.columns or dec_col not in final_table.columns:
@@ -1668,7 +1668,25 @@ def plot_photometry_offsets(final_table, log_buffer=None):
     return fig_offset
 
 
-def handle_log_messages(log_messages):
+# Analysis diagnostics are shown as info notes; only the two "found nothing"
+# cases keep a warning box. The log buffer keeps the original WARNING level.
+_KEPT_WARNING_MESSAGES = (
+    "No sources to cross-match",
+    "No catalog sources found",
+    "No sources found from",
+    "No valid sources with RA/Dec",
+    "No objects found in the image.",
+    "No candidates returned from filtering.",
+)
+
+
+def _is_kept_warning(message: str) -> bool:
+    """Return True when a WARNING diagnostic still deserves a warning box."""
+    text = (message or "").lower()
+    return any(kept.lower() in text for kept in _KEPT_WARNING_MESSAGES)
+
+
+def handle_log_messages(log_messages, show_info=False):
     """
     Process and display log messages in the Streamlit interface.
 
@@ -1676,6 +1694,16 @@ def handle_log_messages(log_messages):
     ----------
     log_messages : list[str]
         A list of log messages, each formatted as "LEVEL: message"
+    show_info : bool, optional
+        Also display INFO lines as info notes. Used by the astrometry solver
+        so its diagnostics (time budget, solver hints) are visible instead of
+        staying buried in the log.
+
+    Notes
+    -----
+    WARNING diagnostics are displayed as info notes so that only a zero-source
+    cross-match or a transient search that found nothing still raises a
+    warning in the analysis view.
     """
     for msg in log_messages:
         level, _, message = msg.partition(":")
@@ -1685,9 +1713,13 @@ def handle_log_messages(log_messages):
             level=level.strip(),
         )
         if level.strip() == "INFO":
-            pass
+            if show_info:
+                st.info(message.strip())
         elif level.strip() == "WARNING":
-            st.warning(message.strip())
+            if _is_kept_warning(message):
+                st.warning(message.strip())
+            else:
+                st.info(message.strip())
         elif level.strip() == "ERROR":
             st.error(message.strip())
 

@@ -33,7 +33,7 @@ FIGURE_SIZES = {
 
 URL = "https://astro-colibri.science/"
 
-# Shared user-facing warning when PSF photometry is unavailable and the
+# Shared user-facing message when PSF photometry is unavailable and the
 # analysis falls back to aperture photometry. The main pipeline and the
 # transient finder use the same wording so the fallback is reported
 # consistently across the app.
@@ -43,18 +43,18 @@ PSF_FALLBACK_MESSAGE = (
 
 
 def format_psf_fallback_message(detail: str | None = None) -> str:
-    """Return the shared PSF-fallback warning, optionally with a detail.
+    """Return the shared PSF-fallback message, optionally with a detail.
 
     Parameters
     ----------
     detail : str, optional
         Additional sentence describing a workflow-specific fallback, appended
-        after the shared warning.
+        after the shared message.
 
     Returns
     -------
     str
-        Complete warning message.
+        Complete fallback message.
     """
     if detail:
         return f"{PSF_FALLBACK_MESSAGE} {detail}"
@@ -612,7 +612,7 @@ def safe_wcs_create(
                 caught.clear()
                 wcs_obj = WCS(working_header)
                 log_messages.append(
-                    "WARNING: WCS parsing ignored conflicting metadata in a copy: "
+                    "INFO: WCS parsing ignored conflicting metadata in a copy: "
                     + ", ".join(removed_keywords)
                 )
         for warning in caught:
@@ -624,9 +624,9 @@ def safe_wcs_create(
                         f"Invalid WCS linear transformation: {message}",
                         log_messages,
                     )
-                log_messages.append(f"WARNING: Astropy WCS correction: {message}")
+                log_messages.append(f"INFO: Astropy WCS correction: {message}")
             else:
-                log_messages.append(f"WARNING: WCS creation: {warning.message}")
+                log_messages.append(f"INFO: WCS creation: {warning.message}")
         if wcs_obj.pixel_n_dim > 2:
             wcs_obj = wcs_obj.celestial
 
@@ -698,7 +698,7 @@ def fix_header(
     _, error, wcs_messages = safe_wcs_create(fixed_header)
     log_messages.extend(wcs_messages)
     if error:
-        log_messages.append(f"WARNING: No valid celestial WCS: {error}")
+        log_messages.append(f"INFO: No valid celestial WCS: {error}")
     return fixed_header, log_messages
 
 
@@ -924,7 +924,7 @@ def validate_cross_match_results(
                 continue
             if np.isfinite(ra_range) and np.isfinite(dec_range):
                 if ra_range < 0.001 or dec_range < 0.001:  # less than ~4 arcsec
-                    st.warning(
+                    st.info(
                         "Matched sources seem too clustered - possible coordinate issue"
                     )
                     return False
@@ -944,7 +944,7 @@ def validate_cross_match_results(
     if separations is not None and np.isfinite(separations).any():
         median_sep = float(np.nanmedian(separations))
         if median_sep > max_median_separation_arcsec:
-            st.warning(
+            st.info(
                 f"Large median separation ({median_sep:.1f} arcsec) suggests "
                 "coordinate problems"
             )
@@ -998,12 +998,12 @@ def validate_wcs_orientation(original_header, solved_header, test_pixel_coords):
         dec_diff = np.abs(orig_sky[1] - solved_sky[1])
 
         if np.any(ra_diff > 0.1) or np.any(dec_diff > 0.1):  # 0.1 degree tolerance
-            st.warning("WCS orientation may have changed during plate solving")
+            st.info("WCS orientation may have changed during plate solving")
             return False
 
         return True
     except Exception as e:
-        st.warning(f"Could not validate WCS orientation: {e}")
+        st.info(f"Could not validate WCS orientation: {e}")
         return True  # Assume OK if validation fails
 
 
@@ -1066,7 +1066,7 @@ def clean_final_table(df):
 
     removed = initial_count - len(df_clean)
     if removed > 0:
-        st.warning(f"Removed {removed} rows with NaN/Inf values in critical columns")
+        st.info(f"Removed {removed} rows with NaN/Inf values in critical columns")
 
     return df_clean
 
@@ -1489,7 +1489,7 @@ def add_calibrated_magnitudes(
         if removed_count > 0:
             import streamlit as st
 
-            st.warning(
+            st.info(
                 f"Removed {removed_count} sources with magnitude error "
                 f">= {max_mag_err:g} mag in all photometry methods."
             )
@@ -1555,7 +1555,7 @@ def clean_photometry_table(df, require_magnitude=True):
 def _notify_background_fallback(message):
     """Report a degraded background estimation without ever raising."""
     try:
-        st.warning(message)
+        st.info(message)
     except Exception:
         pass
 

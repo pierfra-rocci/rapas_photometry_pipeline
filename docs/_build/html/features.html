@@ -66,6 +66,7 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="advanced_features.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PHOTOMETRY_FORMULAS.html">Photometry Formulas and Error Calculations</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
@@ -304,8 +305,8 @@ the ePSF-building star cutouts and to the per-source fits</p></li>
 <li><p>PSF-specific quality flags for reliability assessment</p></li>
 <li><p>PSF model visualization and FITS output</p></li>
 <li><p><strong>PSF-vs-aperture consistency check</strong>: the median
-<code class="docutils literal notranslate"><span class="pre">psf_mag</span> <span class="pre">−</span> <span class="pre">aperture_mag</span></code> offset is reported per aperture, with a warning
-when it exceeds <code class="docutils literal notranslate"><span class="pre">PSF_APERTURE_CONSISTENCY_THRESHOLD</span></code> (0.15 mag) — a
+<code class="docutils literal notranslate"><span class="pre">psf_mag</span> <span class="pre">−</span> <span class="pre">aperture_mag</span></code> offset is reported per aperture, with an info
+note when it exceeds <code class="docutils literal notranslate"><span class="pre">PSF_APERTURE_CONSISTENCY_THRESHOLD</span></code> (0.15 mag) — a
 direct indicator of an ePSF shape/normalisation problem</p></li>
 <li><p>Per-source difference columns <code class="docutils literal notranslate"><span class="pre">psf_minus_aperture_mag_X_X</span></code> (with
 filter-prefixed aliases) for every aperture, NaN where only one method
@@ -448,7 +449,7 @@ source and its calibrated magnitude</p></li>
 <code class="docutils literal notranslate"><span class="pre">RPP_TNS_SANDBOX=1</span></code> selects <code class="docutils literal notranslate"><span class="pre">sandbox.wis-tns.org</span></code></p></li>
 <li><p>Progressive cross-match radius 5 -&gt; 10 -&gt; 15 -&gt; 20 -&gt; 30 arcsec (nearest
 event per source, radius reached reported in the log); matches found only
-at the 15, 20 or 30 arcsec tier raise a warning; the match outcome is
+at the 15, 20 or 30 arcsec tier show an info note; the match outcome is
 displayed in the app</p></li>
 <li><p>Every source returned by Astro-Colibri for the field is listed (name,
 RA/Dec, type, classification, observatory, trigger ID, position error,
@@ -466,8 +467,8 @@ plain <code class="docutils literal notranslate"><span class="pre">GET</span></c
 <li><p>One copy is shared by every user of the deployment: the first run of the
 day downloads it, the other runs read it, and a copy older than 24 hours
 is downloaded again and overwritten in place; a lock file serialises
-concurrent downloads, and a failed refresh keeps the previous copy with a
-warning (<code class="docutils literal notranslate"><span class="pre">RPP_TNS_CACHE_DIR</span></code> sets the cache location,
+concurrent downloads, and a failed refresh keeps the previous copy with an
+info note (<code class="docutils literal notranslate"><span class="pre">RPP_TNS_CACHE_DIR</span></code> sets the cache location,
 <code class="docutils literal notranslate"><span class="pre">RPP_TNS_CATALOG_PATH</span></code> reads a local CSV/ZIP instead)</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">TNS_API_KEY</span></code> plus <code class="docutils literal notranslate"><span class="pre">TNS_BOT_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_BOT_NAME</span></code> (bot) or
 <code class="docutils literal notranslate"><span class="pre">TNS_USER_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_USER_NAME</span></code> (user) are optional and only used by the
@@ -479,7 +480,7 @@ authoritative when it answers, any failure falls back to the daily
 catalogue, and fields with more than 500 sources use the catalogue directly</p></li>
 <li><p>Progressive cross-match radius 5 -&gt; 10 -&gt; 15 -&gt; 20 -&gt; 30 arcsec keeping the
 closest object per source; matches found only at the 20 or 30 arcsec tier
-raise a warning</p></li>
+show an info note</p></li>
 <li><p>Spatial index: the parsed catalogue carries a <code class="docutils literal notranslate"><span class="pre">scipy</span></code> KD-tree over the
 object positions, so the objects of a field are selected by walking the
 tree instead of comparing every catalogue row with the field centre</p></li>

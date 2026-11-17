@@ -91,7 +91,7 @@ def _local_astrometry_timeout(log_messages: list[str]) -> float:
     except ValueError:
         pass
     log_messages.append(
-        f"WARNING: Invalid {LOCAL_ASTROMETRY_TIMEOUT_ENV} value; "
+        f"INFO: Invalid {LOCAL_ASTROMETRY_TIMEOUT_ENV} value; "
         f"using {LOCAL_ASTROMETRY_TIMEOUT_SECONDS:g} seconds"
     )
     return LOCAL_ASTROMETRY_TIMEOUT_SECONDS
@@ -322,11 +322,11 @@ def _accept_solved_wcs(
         validated, error, messages = safe_wcs_create(solution_header)
         log_messages.extend(messages)
         if validated is None:
-            log_messages.append(f"WARNING: Rejected invalid plate solution: {error}")
+            log_messages.append(f"INFO: Rejected invalid plate solution: {error}")
             return None
         return solution.celestial if solution.pixel_n_dim > 2 else solution
     except Exception as error:
-        log_messages.append(f"WARNING: Could not validate plate solution: {error}")
+        log_messages.append(f"INFO: Could not validate plate solution: {error}")
         return None
 
 
@@ -397,7 +397,7 @@ def solve_with_enhanced_strategy(
                     f"INFO: Using RA/DEC hint: {ra_hint:.3f}, {dec_hint:.3f}"
                 )
         except Exception:
-            log_messages.append("WARNING: Could not parse RA/DEC from header")
+            log_messages.append("INFO: Could not parse RA/DEC from header")
 
     # Try stages in order
     for stage_name, kwargs in [
@@ -407,7 +407,7 @@ def solve_with_enhanced_strategy(
     ]:
         try:
             if time.monotonic() >= deadline:
-                log_messages.append("WARNING: Local astrometry time budget exhausted")
+                log_messages.append("INFO: Local astrometry time budget exhausted")
                 break
             log_messages.append(f"INFO: Trying {stage_name} plate solving")
             candidate, detail = _run_local_astrometry(sources, kwargs, deadline)
@@ -417,16 +417,16 @@ def solve_with_enhanced_strategy(
                 return solved_wcs, log_messages
             if candidate is None:
                 log_messages.append(
-                    f"WARNING: {stage_name} solving returned no solution"
+                    f"INFO: {stage_name} solving returned no solution"
                     + (f": {detail}" if detail else "")
                 )
         except LocalAstrometryCleanupError:
             raise
         except TimeoutError:
-            log_messages.append("WARNING: Local astrometry time budget exhausted")
+            log_messages.append("INFO: Local astrometry time budget exhausted")
             break
         except Exception as e:
-            log_messages.append(f"WARNING: {stage_name} solving failed: {e}")
+            log_messages.append(f"INFO: {stage_name} solving failed: {e}")
 
     log_messages.append("ERROR: All plate solving stages failed")
     return None, log_messages
@@ -1249,7 +1249,7 @@ def solve_with_astrometrynet(
             header = fixed_header
             log_messages.extend(header_messages)
         except Exception as header_error:
-            log_messages.append(f"WARNING: Header fixing failed: {header_error}")
+            log_messages.append(f"INFO: Header fixing failed: {header_error}")
 
         existing_wcs, _, _ = safe_wcs_create(header)
         if existing_wcs is None:
@@ -1282,7 +1282,7 @@ def solve_with_astrometrynet(
             )
         if len(sources) < adaptive_min_sources:
             log_messages.append(
-                f"WARNING: Only {len(sources)} sources found "
+                f"INFO: Only {len(sources)} sources found "
                 f"(target {adaptive_min_sources}); plate solving may be "
                 "unreliable"
             )
@@ -1327,7 +1327,7 @@ def solve_with_astrometrynet(
             while solved_wcs is None and detection_thresh is not None:
                 if time.monotonic() >= local_deadline:
                     log_messages.append(
-                        "WARNING: Local astrometry time budget exhausted; "
+                        "INFO: Local astrometry time budget exhausted; "
                         "skipping further local retries"
                     )
                     break
@@ -1403,12 +1403,12 @@ def solve_with_astrometrynet(
                         else:
                             online_scale = pixel_scale_estimate
                             log_messages.append(
-                                f"WARNING: Ignoring invalid WCS solver hints: {hint_error}"
+                                f"INFO: Ignoring invalid WCS solver hints: {hint_error}"
                             )
                     except Exception as hint_error:
                         online_scale = pixel_scale_estimate
                         log_messages.append(
-                            "WARNING: Could not derive online solver hints: "
+                            "INFO: Could not derive online solver hints: "
                             f"{hint_error}"
                         )
 
@@ -1436,12 +1436,12 @@ def solve_with_astrometrynet(
                             )
                         else:
                             log_messages.append(
-                                "WARNING: Online Astrometry.net plate solving "
+                                "INFO: Online Astrometry.net plate solving "
                                 "returned no solution"
                             )
                     except Exception as online_error:
                         log_messages.append(
-                            "WARNING: Online Astrometry.net solve failed: "
+                            "INFO: Online Astrometry.net solve failed: "
                             f"{online_error}"
                         )
                 else:
@@ -1546,7 +1546,7 @@ def solve_with_astrometrynet(
 
                         if scamp_diagnostics.get("executable") is None:
                             log_messages.append(
-                                "WARNING: SCAMP executable not found; keeping "
+                                "INFO: SCAMP executable not found; keeping "
                                 "the initial WCS solution"
                             )
                         elif refined_wcs is not None:
@@ -1571,18 +1571,18 @@ def solve_with_astrometrynet(
                                 )
                         else:
                             log_messages.append(
-                                "WARNING: Astrometric refinement failed "
+                                "INFO: Astrometric refinement failed "
                                 f"({scamp_diagnostics.get('reason')}), keeping "
                                 "initial solution"
                             )
                     else:
                         log_messages.append(
-                            "WARNING: Could not retrieve sufficient catalog stars for refinement"
+                            "INFO: Could not retrieve sufficient catalog stars for refinement"
                         )
 
                 except Exception as refine_error:
                     log_messages.append(
-                        f"WARNING: Refinement process failed: {refine_error}"
+                        f"INFO: Refinement process failed: {refine_error}"
                     )
 
                 # Update original header with WCS solution (refined or initial)
@@ -1636,12 +1636,12 @@ def solve_with_astrometrynet(
                         log_messages.append("SUCCESS: Solution coordinates are valid")
                     else:
                         log_messages.append(
-                            "WARNING: Solution coordinates seem invalid"
+                            "INFO: Solution coordinates seem invalid"
                         )
 
                 except Exception as coord_error:
                     log_messages.append(
-                        f"WARNING: Could not extract solution coordinates: {coord_error}"
+                        f"INFO: Could not extract solution coordinates: {coord_error}"
                     )
 
                 return solved_wcs, updated_header, log_messages, None

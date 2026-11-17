@@ -164,11 +164,11 @@ def filter_skybot_candidates(
             Skybot._parse_result,
         )
         if skybot_problem is not None:
-            st.warning(f"{skybot_problem}. Skipping Solar System object filtering.")
+            st.info(f"{skybot_problem}. Skipping Solar System object filtering.")
             return candidates
 
         if skybot_results is None or len(skybot_results) == 0:
-            st.warning("✓ SkyBoT: No Solar System objects found in field")
+            st.info("✓ SkyBoT: No Solar System objects found in field")
             return candidates
 
         # Astroquery's SkyBoT returns 'RA' and 'DEC' columns (uppercase)
@@ -185,7 +185,7 @@ def filter_skybot_candidates(
                 break
 
         if skybot_ra_col is None or skybot_dec_col is None:
-            st.warning(
+            st.info(
                 f"SkyBoT: Could not find RA/DEC columns. Available: {skybot_results.colnames}"
             )
             return candidates
@@ -228,7 +228,7 @@ def filter_skybot_candidates(
             return candidates
 
     except Exception as e:
-        st.warning(f"SkyBoT query failed: {e}. Skipping Solar System object filtering.")
+        st.info(f"SkyBoT query failed: {e}. Skipping Solar System object filtering.")
         return candidates
 
 
@@ -418,7 +418,7 @@ def find_candidates(
     header, _ = fix_header(header)
     wcs, wcs_error, _ = safe_wcs_create(header)
     if wcs is None:
-        st.warning(f"Transient search skipped: invalid celestial WCS: {wcs_error}")
+        st.info(f"Transient search skipped: invalid celestial WCS: {wcs_error}")
         return []
 
     # Check hemisphere using astropy
@@ -468,7 +468,7 @@ def find_candidates(
             if not _sextractor_binary_available()
             else "SExtractor returned no result"
         )
-        st.warning(
+        st.info(
             f"SExtractor source detection unavailable ({reason}). "
             "Falling back to the built-in SEP detector."
         )
@@ -574,10 +574,10 @@ def find_candidates(
             obj["mag_calib"] = mag_calib
             obj["mag_calib_err"] = mag_calib_err
         else:
-            st.warning("No matches found between detections and PSF photometry table")
+            st.info("No matches found between detections and PSF photometry table")
             return []
     else:
-        st.warning("No photometry_table provided - cannot get PSF magnitudes")
+        st.info("No photometry_table provided - cannot get PSF magnitudes")
         return []
 
     # Query the appropriate catalog
@@ -636,7 +636,7 @@ def find_candidates(
                 )
                 return []
         else:
-            st.warning("Catalog query returned no sources")
+            st.info("Catalog query returned no sources")
             return []
 
     except Exception as e:
@@ -716,7 +716,7 @@ def find_candidates(
         # is local) instead of losing every candidate to a remote outage.
         try:
             candidates = _filter_candidates([])
-            st.warning(
+            st.info(
                 "CDS X-Match is unreachable, so the extra VizieR cross-match ("
                 f"{', '.join(vizier_catalogs)}) was skipped after "
                 f"{TRANSIENT_FILTER_ATTEMPTS} attempts: {filter_error}. "
@@ -749,10 +749,10 @@ def find_candidates(
 
     if len(candidates) > 10:
         if len(candidates) > 50:
-            st.warning(
+            st.info(
                 "⚠️ Too many candidates found (>50). Please refine your search criteria."
             )
-            st.warning("(⚠️ Possibly due to a crowded field, filter band or bad S/N)")
+            st.info("(⚠️ Possibly due to a crowded field, filter band or bad S/N)")
 
     st.info(
         "Generating cutouts and retrieving template images for the first 20 candidates (best S/N first)..."
@@ -775,19 +775,19 @@ def find_candidates(
             )
             if cutout["template"] is None:
                 tried = " or ".join(_hips_template_labels(filter_name, cand_dec))
-                st.warning(
+                st.info(
                     "No HiPS template coverage for candidate at "
                     f"RA={cand_dict.get('ra')}, Dec={cand_dict.get('dec')}: "
                     f"{tried} returned no usable pixels there."
                 )
         except HipsTemplateServiceError as e:
-            st.warning(
+            st.info(
                 f"HiPS template service unreachable for a candidate: {e}. "
                 "The science cutout is unaffected."
             )
             cutout["template"] = None
         except Exception as e:
-            st.warning(f"Failed to retrieve HiPS template image for candidate: {e}")
+            st.info(f"Failed to retrieve HiPS template image for candidate: {e}")
             cutout["template"] = None
 
         # Now we have two image planes in the cutout - let's display them
@@ -1062,15 +1062,15 @@ def plot_astrocolibri_cutouts(
         return
 
     if image is None:
-        st.warning("Astro-Colibri cutouts skipped: no image data.")
+        st.info("Astro-Colibri cutouts skipped: no image data.")
         return []
     if header is None:
-        st.warning("Astro-Colibri cutouts skipped: no celestial WCS header.")
+        st.info("Astro-Colibri cutouts skipped: no celestial WCS header.")
         return []
     header, _ = fix_header(header)
     wcs, wcs_error, _ = safe_wcs_create(header)
     if wcs is None:
-        st.warning(f"Astro-Colibri cutouts skipped: invalid celestial WCS: {wcs_error}")
+        st.info(f"Astro-Colibri cutouts skipped: invalid celestial WCS: {wcs_error}")
         return []
 
     st.subheader("Astro-Colibri Match Cutouts")
@@ -1096,7 +1096,7 @@ def plot_astrocolibri_cutouts(
         try:
             x, y = wcs.all_world2pix(float(ra), float(dec), 0)
         except Exception as e:
-            st.warning(f"Could not compute pixel position for {name}: {e}")
+            st.info(f"Could not compute pixel position for {name}: {e}")
             continue
         if not (np.isfinite(x) and np.isfinite(y)):
             continue
@@ -1105,7 +1105,7 @@ def plot_astrocolibri_cutouts(
         try:
             cutout = cutouts.get_cutout(image, cand_dict, 25, header=header)
         except Exception as e:
-            st.warning(f"Could not create cutout for {name}: {e}")
+            st.info(f"Could not create cutout for {name}: {e}")
             continue
 
         survey = None
@@ -1117,18 +1117,18 @@ def plot_astrocolibri_cutouts(
                 cutout.get("header"), filter_name, float(dec)
             )
             if cutout["template"] is None:
-                st.warning(
+                st.info(
                     f"No HiPS template coverage for {name}: {survey_labels} "
                     "returned no usable pixels there."
                 )
         except HipsTemplateServiceError as e:
-            st.warning(
+            st.info(
                 f"HiPS template service unreachable for {name}: {e}. "
                 "The science cutout is unaffected."
             )
             cutout["template"] = None
         except Exception as e:
-            st.warning(f"Could not retrieve HiPS template for {name}: {e}")
+            st.info(f"Could not retrieve HiPS template for {name}: {e}")
             cutout["template"] = None
 
         # Build a descriptive title
@@ -1166,7 +1166,7 @@ def plot_astrocolibri_cutouts(
             fig.savefig(png_path, dpi=100, bbox_inches="tight")
             saved_paths.append(png_path)
         except Exception as e:
-            st.warning(f"Could not save Astro-Colibri cutout PNG: {e}")
+            st.info(f"Could not save Astro-Colibri cutout PNG: {e}")
 
         plt.close(fig)
 

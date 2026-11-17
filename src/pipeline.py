@@ -410,7 +410,7 @@ def resolve_effective_gain(header, image_data, quiet=False):
             if key == "CVF"
             else f"{key} = {raw_value:g} e-/ADU"
         )
-        st.warning(
+        st.info(
             f"{shown} is outside the plausible effective-gain range "
             f"({lower:g}-{upper:g} e-/ADU); it is probably a detector driver "
             "setting rather than e-/ADU, so it is ignored. Set the detector "
@@ -442,17 +442,18 @@ def resolve_effective_gain(header, image_data, quiet=False):
         "e-/pixel",
         "electron/pixel",
     )
-    if bunit_is_electrons:
-        st.warning(
-            "No usable header gain keyword; BUNIT indicates electrons, "
-            "using effective_gain = 1."
-        )
-    elif not quiet:
-        st.warning(
-            "No usable header gain keyword and the frame does not constrain "
-            "it; assuming effective_gain = 1 (data treated as electrons). Set "
-            "the detector gain in the parameters to improve the errors of bright sources."
-        )
+    if not quiet:
+        if bunit_is_electrons:
+            st.info(
+                "No usable header gain keyword; BUNIT indicates electrons, "
+                "using effective_gain = 1."
+            )
+        else:
+            st.info(
+                "No usable header gain keyword and the frame does not constrain "
+                "it; assuming effective_gain = 1 (data treated as electrons). Set "
+                "the detector gain in the parameters to improve the errors of bright sources."
+            )
     return 1.0
 
 
@@ -853,7 +854,7 @@ def mask_and_remove_cosmic_rays(image_data, header, effective_gain=None):
 
         cr_fraction = float(np.mean(crmask))
         if cr_fraction > MAX_CR_MASK_FRACTION:
-            st.warning(
+            st.info(
                 f"Cosmic-ray detection flagged {100 * cr_fraction:.1f}% of the "
                 "frame, which is not physical; the cosmic-ray mask is discarded "
                 "(saturated and NaN pixels stay masked). Check the detector "
@@ -867,7 +868,7 @@ def mask_and_remove_cosmic_rays(image_data, header, effective_gain=None):
             )
         st.success("Saturated pixels and Cosmic ray detection complete.")
     except Exception:
-        st.warning("Cosmic ray detection failed, proceeding with saturation only mask.")
+        st.info("Cosmic ray detection failed, proceeding with saturation only mask.")
         crmask = np.zeros_like(mask, dtype=bool)
 
     mask |= crmask
@@ -1057,7 +1058,7 @@ def detect_and_mask_satellite_trails(image_data, header, temp_fits_path=None):
                 # installed photutils/astride versions. Subtract our own
                 # background map instead of degrading to a constant one,
                 # which only yields short fragments.
-                st.warning(
+                st.info(
                     f"ASTRiDE 'map' background failed ({map_error}); "
                     "using a photutils background subtraction instead."
                 )
@@ -1138,12 +1139,12 @@ def detect_and_mask_satellite_trails(image_data, header, temp_fits_path=None):
                                 err += dx
                                 y1 += sy
             else:
-                st.warning("No satellite trails detected")
+                st.info("No satellite trails detected")
 
             return mask
 
         except Exception as e:
-            st.warning(f"Error in satellite trail detection: {e}")
+            st.info(f"Error in satellite trail detection: {e}")
             return np.zeros_like(image_data, dtype=bool)
         finally:
             # Clean up temporary file if we created it
@@ -1156,10 +1157,10 @@ def detect_and_mask_satellite_trails(image_data, header, temp_fits_path=None):
                     pass
 
     except ImportError:
-        st.warning("ASTRiDE library not available. Satellite trail detection disabled.")
+        st.info("ASTRiDE library not available. Satellite trail detection disabled.")
         return np.zeros_like(image_data, dtype=bool)
     except Exception as e:
-        st.warning(f"Unexpected error in satellite trail detection: {e}")
+        st.info(f"Unexpected error in satellite trail detection: {e}")
         return np.zeros_like(image_data, dtype=bool)
 
 
@@ -1225,12 +1226,12 @@ def airmass(
                         return existing_airmass, {"airmass_source": f"header_{keyword}"}
                     return existing_airmass
                 else:
-                    st.warning(
+                    st.info(
                         f"Invalid airmass value in header ({existing_airmass}), calculating from coordinates"
                     )
                     break
             except (ValueError, TypeError):
-                st.warning(
+                st.info(
                     f"Could not parse airmass value from header keyword {keyword}"
                 )
                 continue
@@ -1318,10 +1319,10 @@ def airmass(
         airmass_value = float(altaz.secz)
 
         if airmass_value < 1.0:
-            st.warning("Calculated airmass is less than 1 (impossible)")
+            st.info("Calculated airmass is less than 1 (impossible)")
             airmass_value = 1.0
         elif airmass_value > 30.0:
-            st.warning("Extremely high airmass (>30), object near horizon")
+            st.info("Extremely high airmass (>30), object near horizon")
 
         sun_altaz = get_sun(obstime).transform_to(altaz_frame)
         sun_alt = float(sun_altaz.alt.deg)
@@ -1352,7 +1353,7 @@ def airmass(
         return round(airmass_value, 2)
 
     except Exception as e:
-        st.warning(f"Error calculating airmass: {str(e)}")
+        st.info(f"Error calculating airmass: {str(e)}")
         if return_details:
             return 0.0, {}
         return 0.0
@@ -1414,7 +1415,7 @@ def fwhm_fit(
         daofind = DAOStarFinder(fwhm=1.5 * fwhm, threshold=7 * clipped_std)
         sources = daofind(_img, mask=mask)
         if sources is None:
-            st.warning("No sources found !")
+            st.info("No sources found !")
             return None, clipped_std
 
         flux = sources["flux"]
@@ -1438,7 +1439,7 @@ def fwhm_fit(
         if len(filtered_sources) > 1000:
             indices = np.random.choice(len(filtered_sources), size=1000, replace=False)
             filtered_sources = filtered_sources[indices]
-            st.warning("Too many sources, sampled 1000 sources for FWHM calculation")
+            st.info("Too many sources, sampled 1000 sources for FWHM calculation")
 
         box_size = int(6 * round(fwhm))
         if box_size % 2 == 0:
@@ -1482,7 +1483,7 @@ def check_psf_aperture_consistency(
     well-built ePSF the difference ``psf_mag - aperture_mag`` should be centred
     on zero. A large median offset is a diagnostic of an ePSF shape/normalisation
     problem, a corrupted aperture correction, or a local-background bias; it is
-    reported with ``st.warning``.
+    reported with ``st.info``.
 
     Parameters
     ----------
@@ -1606,7 +1607,7 @@ def check_psf_aperture_consistency(
             f" ({diagnostics['per_aperture'][suffix]['n']} sources)"
             for suffix in diagnostics["outliers"]
         )
-        st.warning(
+        st.info(
             "PSF and aperture magnitudes disagree (median PSF - aperture over "
             f"matched sources): {details}. Both methods are on the same "
             "total-flux scale, so a large offset indicates an ePSF "
@@ -1807,7 +1808,7 @@ def detection_and_photometry(
     fwhm_estimate, clipped_std = fwhm_fit(image_sub, mean_fwhm_pixel, mask)
 
     if fwhm_estimate is None:
-        st.warning("Failed to estimate FWHM. Using the initial estimate.")
+        st.info("Failed to estimate FWHM. Using the initial estimate.")
         fwhm_estimate = mean_fwhm_pixel
     if clipped_std is None:
         _, _, clipped_std = sigma_clipped_stats(image_sub, sigma=3.0, stdfunc="mad_std")
@@ -1819,7 +1820,7 @@ def detection_and_photometry(
     sources = daofind(image_sub, mask=mask)
 
     if sources is None or len(sources) == 0:
-        st.warning("No sources found!")
+        st.info("No sources found!")
         return None, None, daofind, bkg, None, None, fwhm_estimate, mask
 
     positions = np.transpose((sources["xcentroid"], sources["ycentroid"]))
@@ -1861,7 +1862,7 @@ def detection_and_photometry(
             except Exception as error:
                 if wcs_obj is None:
                     raise
-                st.warning(
+                st.info(
                     f"Aperture photometry with WCS failed: {error}. "
                     "Retrying without sky coordinates."
                 )
@@ -1910,7 +1911,7 @@ def detection_and_photometry(
                     annulus_stats.sum_aper_area.value, dtype=float
                 )
             except Exception as annulus_error:
-                st.warning(
+                st.info(
                     f"Annulus background estimation failed{radius_suffix}: "
                     f"{annulus_error}"
                 )
@@ -1999,7 +2000,7 @@ def detection_and_photometry(
                     (f_x_plus - f_x_minus) ** 2 + (f_y_plus - f_y_minus) ** 2
                 )
             except Exception as centroid_error:
-                st.warning(
+                st.info(
                     f"Centroid flux error estimation failed{radius_suffix}: "
                     f"{centroid_error}"
                 )
@@ -2039,7 +2040,7 @@ def detection_and_photometry(
                 image_sub, sources, fwhm_estimate, daofind, mask, total_error
             )
         except Exception as e:
-            st.warning(
+            st.info(
                 f"Error performing EPSF photometry: {e}. Continuing with aperture photometry only."
             )
             epsf_table, epsf_model = None, None
@@ -2185,7 +2186,7 @@ def detection_and_photometry(
             epsf_instrumental_mags = -2.5 * np.log10(epsf_table["flux_fit"])
             epsf_table["instrumental_mag"] = epsf_instrumental_mags
         else:
-            st.warning(
+            st.info(
                 "PSF photometry was not performed. Continuing with aperture photometry only."
             )
 
@@ -2198,7 +2199,7 @@ def detection_and_photometry(
                 check_psf_aperture_consistency(phot_table, epsf_table, aperture_radii)
             )
         except Exception as consistency_error:
-            st.warning(f"PSF/aperture consistency check failed: {consistency_error}")
+            st.info(f"PSF/aperture consistency check failed: {consistency_error}")
 
         # Use the first aperture's columns (since "aperture_sum" was renamed)
         first_aperture_suffix = f"_{str(aperture_radii[0]).replace('.', '_')}"
@@ -2246,11 +2247,11 @@ def detection_and_photometry(
                             f"Added RA/Dec coordinates to {len(epsf_table)} PSF sources"
                         )
                     except Exception as e:
-                        st.warning(f"Could not add coordinates to EPSF table: {e}")
+                        st.info(f"Could not add coordinates to EPSF table: {e}")
             else:
-                st.warning("No WCS object available - coordinates will not be added")
+                st.info("No WCS object available - coordinates will not be added")
         except Exception as e:
-            st.warning(
+            st.info(
                 f"WCS transformation failed: {e}. RA and Dec not added to tables."
             )
             wcs_obj = None
@@ -2361,10 +2362,10 @@ def calculate_zero_point(
     - Creates and saves a plot showing the relation between GAIA and calibrated magnitudes
     """
     if _phot_table is None:
-        st.warning("No photometry table available to calculate zero point.")
+        st.info("No photometry table available to calculate zero point.")
         return None, None, None
     if _matched_table is None or len(_matched_table) == 0:
-        st.warning("No matched sources to calculate zero point.")
+        st.info("No matched sources to calculate zero point.")
         return None, None, None
 
     try:
@@ -2394,7 +2395,7 @@ def calculate_zero_point(
         matched_table = _matched_table.loc[valid].copy()
 
         if len(matched_table) == 0:
-            st.warning("No valid matched sources for zero point calculation.")
+            st.info("No valid matched sources for zero point calculation.")
             return None, None, None
 
         # Robust zero-point estimation using iterative sigma clipping.
@@ -2412,7 +2413,7 @@ def calculate_zero_point(
         # clips nothing and the mask is the nomask singleton.
         keep_mask = ~np.ma.getmaskarray(clipped)
         if not keep_mask.any():
-            st.warning("All matched sources removed by sigma clipping for zero point.")
+            st.info("All matched sources removed by sigma clipping for zero point.")
             return None, None, None
 
         # Restrict matched_table to the accepted calibration stars so that the
@@ -2430,7 +2431,7 @@ def calculate_zero_point(
         zp_center = float(np.median(zero_points_clean))
         strict_keep = np.abs(zero_points_clean - zp_center) <= residual_limit_mag
         if not strict_keep.any():
-            st.warning(
+            st.info(
                 "All matched sources removed by strict residual filtering "
                 f"(|residual| <= {residual_limit_mag:.1f} mag)."
             )
@@ -2480,7 +2481,7 @@ def calculate_zero_point(
             pass
 
         if np.isnan(zero_point_value):
-            st.warning("Zero point calculation returned NaN.")
+            st.info("Zero point calculation returned NaN.")
             return None, None, None
 
         st.info(
@@ -2548,7 +2549,7 @@ def calculate_zero_point(
 
         # Check if the aperture_mag column exists before calculating residuals
         if aperture_mag_col not in _matched_table.columns:
-            st.warning(
+            st.info(
                 f"Column '{aperture_mag_col}' not found. Cannot create calibration plots."
             )
             # Keep full precision so the zero-point uncertainty can be propagated
@@ -2703,7 +2704,7 @@ def calculate_zero_point(
             )
             fig.savefig(zero_point_plot_path)
         except Exception as e:
-            st.warning(f"Could not save plot to file: {e}")
+            st.info(f"Could not save plot to file: {e}")
 
         # The figure was displayed and saved above: release it from the
         # process-wide pyplot registry shared by all sessions.

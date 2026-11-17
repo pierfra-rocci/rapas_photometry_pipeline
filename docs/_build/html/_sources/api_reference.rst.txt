@@ -61,7 +61,8 @@ Science and Processing Modules
 
 ``src/pipeline.py`` also exposes ``check_psf_aperture_consistency()``, which
 matches PSF and aperture sources by position and reports the median
-``psf_mag - aperture_mag`` per aperture, warning when the offset exceeds
+``psf_mag - aperture_mag`` per aperture, with an info note when the offset
+exceeds
 ``PSF_APERTURE_CONSISTENCY_THRESHOLD`` (0.15 mag). Diagnostics are stored in
 ``st.session_state["psf_aperture_consistency"]``, and ``add_calibrated_magnitudes``
 exports the per-source difference as ``psf_minus_aperture_mag_X_X`` (with

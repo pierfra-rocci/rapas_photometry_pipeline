@@ -395,7 +395,9 @@ def test_forced_solve_timeout_retains_original_wcs(
     assert not page.exception
     assert not page.session_state["proceed_without_wcs"]
     assert page.session_state["calibrated_header"]["CTYPE1"] == header["CTYPE1"]
-    assert any("time budget exhausted" in warning.value for warning in page.warning)
+    # Solver diagnostics are shown as info notes and kept in the log.
+    assert "time budget exhausted" in page.session_state["log_buffer"].getvalue()
+    assert any("time budget exhausted" in info.value for info in page.info)
     assert any(
-        "using the original valid WCS" in warning.value for warning in page.warning
+        "using the original valid WCS" in info.value for info in page.info
     )

@@ -4,7 +4,7 @@ This document provides detailed mathematical documentation for the photometric c
 
 ## Table of Contents
 
-1. [Signal-to-Noise Ratio (S/N)](#signal-to-noise-ratio-sn)
+1. [Signal-to-Noise Ratio (S/N)](#signal-to-noise-ratio-s-n)
 2. [Magnitude Error Calculation](#magnitude-error-calculation)
 3. [Error Propagation](#error-propagation)
 4. [Quality Flags](#quality-flags)
@@ -71,7 +71,7 @@ Where:
 and reports the median `psf_mag − aperture_mag` for each aperture. Both methods
 are placed on the same total-flux scale (see the aperture correction above), so
 the difference should be centred on zero. A median offset larger than
-`PSF_APERTURE_CONSISTENCY_THRESHOLD` (`0.15` mag) raises a warning; the
+`PSF_APERTURE_CONSISTENCY_THRESHOLD` (`0.15` mag) shows an info note; the
 per-aperture counts, medians and robust (MAD) scatter are stored in
 `st.session_state["psf_aperture_consistency"]`. The per-source value is also
 exported for every aperture as `psf_minus_aperture_mag_X_X` (with
@@ -408,7 +408,7 @@ The effective gain (counts per data unit) is resolved in this order:
    physically plausible result. A flat sky carries no gain information and is
    rejected;
 4. **`effective_gain = 1`** (data treated as electrons) as the last resort,
-   with an explicit warning.
+   with an explicit info note.
 
 Step 4 is the conservative choice, but it is *not* neutral: with data in ADU and
 an unknown true gain `g`, the source Poisson variance `flux/gain` is

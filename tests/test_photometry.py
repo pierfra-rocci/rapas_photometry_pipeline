@@ -1781,6 +1781,9 @@ class TestPsfApertureCoherency:
             def success(self, *_args, **_kwargs):
                 return None
 
+            def info(self, *_args, **_kwargs):
+                return None
+
             def warning(self, *_args, **_kwargs):
                 return None
 
@@ -2094,7 +2097,7 @@ class TestPsfApertureDiagnostic:
         entry = diag["per_aperture"]["_1_3"]
         assert entry["n"] == len(phot_table)
         assert entry["median_diff"] == pytest.approx(0.4, abs=0.02)
-        assert fake.warnings and "disagree" in fake.warnings[0]
+        assert fake.infos and "disagree" in fake.infos[0]
 
     def test_agreement_does_not_warn(self, monkeypatch):
         fake = self.FakeStreamlit()
@@ -2109,7 +2112,7 @@ class TestPsfApertureDiagnostic:
         assert diag["per_aperture"]["_1_3"]["median_diff"] == pytest.approx(
             0.0, abs=0.02
         )
-        assert not fake.warnings
+        assert not any("disagree" in message for message in fake.infos)
         assert fake.infos
 
     def test_unmatched_and_missing_inputs_are_tolerated(self, monkeypatch):

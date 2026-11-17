@@ -287,7 +287,7 @@ if "matomo_injected" not in st.session_state:
     inject_matomo_tracking(site_id="83", matomo_url="https://analytics.obspm.fr/")
     st.session_state.matomo_injected = True
 
-# Custom CSS to control plot display size and fix sidebar width
+# Custom CSS to control plot display size
 st.markdown(
     f"""
 <style>
@@ -304,14 +304,6 @@ st.markdown(
     .element-container img {{
         max-width: 100% !important;
         height: auto !important;
-    }}
-    [data-testid="stSidebar"] {{
-        min-width: 480px !important;
-        max-width: 480px !important;
-        width: 480px !important;
-    }}
-    [data-testid="stSidebarResizeHandle"] {{
-        display: none !important;
     }}
 </style>
 """,
@@ -913,7 +905,7 @@ if _run_analysis_now:
     proceed_without_wcs = False
     original_wcs = wcs_obj
     if wcs_obj is None:
-        st.warning(f"No valid WCS found : {wcs_error}")
+        st.info(f"No valid WCS found : {wcs_error}")
         st.write("Attempt plate solving...")
         use_astrometry = True
     else:
@@ -944,7 +936,8 @@ if _run_analysis_now:
                 solved_wcs, solved_header, log_messages, error = (
                     solve_with_astrometrynet(science_file_path)
                 )
-                handle_log_messages(log_messages)
+                # Surface the solver diagnostics (time budget, hints) as info.
+                handle_log_messages(log_messages, show_info=True)
                 if error:
                     st.error(error)
 
@@ -965,7 +958,7 @@ if _run_analysis_now:
                         science_header = original_science_header
                         wcs_obj = original_wcs
                         use_astrometry = False
-                        st.warning(
+                        st.info(
                             "Plate solving failed; using the original valid WCS."
                         )
                     else:
@@ -1015,12 +1008,12 @@ if _run_analysis_now:
                         st.session_state["stored_fits_filename"] = stored_fits_filename
                         st.session_state["has_wcs"] = True
                         if stored_fits_filename is None:
-                            st.warning(
+                            st.info(
                                 "The private WCS FITS copy could not be saved; "
                                 "see the server log for details."
                             )
                     elif wcs_fits_error:
-                        st.warning(f"Could not save WCS FITS: {wcs_fits_error}")
+                        st.info(f"Could not save WCS FITS: {wcs_fits_error}")
                         write_to_log(
                             log_buffer, f"Warning: {wcs_fits_error}", level="WARNING"
                         )
@@ -1089,7 +1082,7 @@ if _run_analysis_now:
         st.session_state["calibrated_header"] = science_header
         st.session_state["wcs_obj"] = wcs_obj
     if proceed_without_wcs:
-        st.warning(
+        st.info(
             "Proceeding without valid WCS - photometry will be limited to instrumental magnitudes"
         )
     elif not use_astrometry:
@@ -1135,7 +1128,7 @@ if _run_analysis_now:
                     science_data, norm=norm, origin="lower", cmap="viridis"
                 )
             except Exception as norm_error:
-                st.warning(
+                st.info(
                     f"ZScale normalization failed: {norm_error}. Using simple normalization."
                 )
                 vmin, vmax = np.percentile(science_data, [1, 99])
@@ -1166,11 +1159,11 @@ if _run_analysis_now:
                     ax_inset.set_title("Pixel Distribution", fontsize=8)
                     ax_inset.tick_params(axis="both", which="major", labelsize=6)
                 else:
-                    st.warning(
+                    st.info(
                         "No finite values in image data for histogram equalization"
                     )
             except Exception as hist_error:
-                st.warning(f"Histogram equalization failed: {hist_error}")
+                st.info(f"Histogram equalization failed: {hist_error}")
 
             fig.suptitle(f"{science_file.name}")
             st.pyplot(fig)
@@ -1200,7 +1193,7 @@ if _run_analysis_now:
             if science_header:
                 st.text(repr(science_header))
             else:
-                st.warning("No header information available for Image.")
+                st.info("No header information available for Image.")
 
     st.subheader("Statistics")
     if science_data is not None:
@@ -1285,7 +1278,7 @@ if _run_analysis_now:
             )
             ra_missing = dec_missing = False
         else:
-            st.warning(f"Coordinate issue: {coord_source}")
+            st.info(f"Coordinate issue: {coord_source}")
             write_to_log(
                 log_buffer, f"Coordinate issue: {coord_source}", level="WARNING"
             )
@@ -1297,7 +1290,7 @@ if _run_analysis_now:
             st.session_state["manual_dec"] = ""
 
         if ra_missing or dec_missing:
-            st.warning(
+            st.info(
                 "Target coordinates (RA/DEC) not found in FITS header. Please enter them manually:"
             )
 
@@ -1364,7 +1357,7 @@ if _run_analysis_now:
                 except ValueError:
                     st.error("RA and DEC must be valid numbers")
             else:
-                st.warning("Please enter both RA and DEC coordinates")
+                st.info("Please enter both RA and DEC coordinates")
         else:
             st.session_state["valid_ra"] = ra_val
             st.session_state["valid_dec"] = dec_val
@@ -1389,7 +1382,7 @@ if _run_analysis_now:
             air = airmass(science_header, observatory=observatory_data)
             st.write(f"Airmass : {air:.2f}")
         except Exception as e:
-            st.warning(f"Error calculating airmass: {e}")
+            st.info(f"Error calculating airmass: {e}")
             air = 0.0
             st.write(f"Using default airmass: {air:.2f}")
 
@@ -1505,7 +1498,7 @@ if _run_analysis_now:
                             "ra" not in phot_table_df.columns
                             or "dec" not in phot_table_df.columns
                         ):
-                            st.warning(
+                            st.info(
                                 "RA/Dec columns not found in photometry table, attempting to add them..."
                             )
                             if w is not None:
@@ -1531,7 +1524,7 @@ if _run_analysis_now:
                 if phot_table_df is not None:
                     if w is None:
                         matched_table = None
-                        st.warning(
+                        st.info(
                             "No valid WCS: catalog matching and calibration are skipped. "
                             "Saving pixel positions and uncalibrated instrumental photometry."
                         )
@@ -1573,7 +1566,7 @@ if _run_analysis_now:
                         if not validate_cross_match_results(
                             phot_table_df, matched_table, header_to_process
                         ):
-                            st.warning(
+                            st.info(
                                 "The catalogue cross-match failed its sanity "
                                 "check (clustered matches or a large median "
                                 "separation). Treat the zero point and the "
@@ -1633,7 +1626,7 @@ if _run_analysis_now:
                                             color_term_result["diagnostic_figure"]
                                         )
                                 elif color_term_result.get("supported"):
-                                    st.warning(
+                                    st.info(
                                         "Color term skipped: "
                                         f"{color_term_result.get('reason', 'insufficient calibration stars')}"
                                     )
@@ -1702,7 +1695,7 @@ if _run_analysis_now:
                                         )
                                     else:
                                         # No PSF photometry - use aperture photometry only
-                                        st.warning(PSF_FALLBACK_MESSAGE)
+                                        st.info(PSF_FALLBACK_MESSAGE)
                                         final_table = phot_table_df.copy()
 
                                         # Add calibrated magnitudes
@@ -1779,7 +1772,7 @@ if _run_analysis_now:
                                         f"Saved magnitude histogram plot: {hist_filename}",
                                     )
                                 except Exception as e:
-                                    st.warning(
+                                    st.info(
                                         f"Could not save magnitude histogram plot: {e}"
                                     )
 
@@ -1821,12 +1814,12 @@ if _run_analysis_now:
                                                 f"{offset_filename}",
                                             )
                                         except Exception as e:
-                                            st.warning(
+                                            st.info(
                                                 "Could not save PSF/aperture "
                                                 f"offset plot: {e}"
                                             )
                                     except Exception as e:
-                                        st.warning(
+                                        st.info(
                                             "Could not create PSF/aperture "
                                             f"offset plot: {e}"
                                         )
@@ -1844,7 +1837,7 @@ if _run_analysis_now:
                                         / 2.0
                                     )
                                 except Exception as e:
-                                    st.warning(
+                                    st.info(
                                         f"Could not calculate search radius from header: {e}"
                                     )
                                     # Fallback: assume 1800 arcsec (0.5 degrees) as reasonable default
@@ -1916,7 +1909,7 @@ if _run_analysis_now:
                                             filter_band=filter_band,
                                         )
                                 elif final_table is not None:
-                                    st.warning(
+                                    st.info(
                                         "RA/DEC coordinates not available for catalog cross-matching"
                                     )
                                 else:
@@ -1960,7 +1953,7 @@ if _run_analysis_now:
                     "Saving uncalibrated instrumental photometry; "
                     "transient finding requires calibrated magnitudes and will be skipped."
                 )
-                st.warning(message)
+                st.info(message)
                 write_to_log(log_buffer, message, level="WARNING")
                 instrumental_table = phot_table_df.copy()
                 if epsf_table is not None:
@@ -1970,7 +1963,7 @@ if _run_analysis_now:
                         )
                         handle_log_messages(log_messages)
                     except Exception as e:  # noqa: BLE001
-                        st.warning(
+                        st.info(
                             f"Could not merge PSF photometry into the instrumental catalog: {e}"
                         )
                         write_to_log(
@@ -2009,7 +2002,7 @@ if _run_analysis_now:
                     / 2.0
                 )
             except Exception as e:
-                st.warning(
+                st.info(
                     f"Could not calculate search radius: {e}. Using default value."
                 )
                 search_radius = 1800.0  # Default 0.5 degrees in arcseconds
@@ -2032,9 +2025,9 @@ if _run_analysis_now:
                     )
                     if not np.isfinite(ra_center) or not np.isfinite(dec_center):
                         ra_center = dec_center = None
-                        st.warning("The WCS image center is not finite.")
+                        st.info("The WCS image center is not finite.")
                 except Exception as e:
-                    st.warning(f"Could not determine the WCS image center: {e}")
+                    st.info(f"Could not determine the WCS image center: {e}")
 
             if ra_center is not None and dec_center is not None:
                 # Check if we have a valid final photometry table
@@ -2060,7 +2053,7 @@ if _run_analysis_now:
                                 dec_center=dec_center,
                             )
                         except Exception as e:
-                            st.warning(f"Could not generate Astro-Colibri cutouts: {e}")
+                            st.info(f"Could not generate Astro-Colibri cutouts: {e}")
 
                 transient_candidates_df = None
 
@@ -2069,13 +2062,13 @@ if _run_analysis_now:
                     "run_transient_finder"
                 )
                 if run_transient_finder and instrumental_only:
-                    st.warning(
+                    st.info(
                         "Transient search skipped: calibrated photometry is unavailable."
                     )
                 elif run_transient_finder and (
                     final_phot_table is None or fwhm_estimate is None
                 ):
-                    st.warning(
+                    st.info(
                         "Transient search skipped: photometry or FWHM is unavailable."
                     )
                 elif (
@@ -2117,7 +2110,7 @@ if _run_analysis_now:
                                     # Keep the viewer uncluttered: the short
                                     # shared warning, not the long transient
                                     # variant, is shown above Aladin.
-                                    st.warning(PSF_FALLBACK_MESSAGE)
+                                    st.info(PSF_FALLBACK_MESSAGE)
                                 if candidates:
                                     st.subheader("Transient Candidates Found")
                                     candidates_df = build_transient_table(
@@ -2180,7 +2173,7 @@ if _run_analysis_now:
                         )
                     except Exception as e:
                         st.error(f"Error displaying Aladin viewer: {str(e)}")
-                        st.warning(
+                        st.info(
                             "Catalog data is available but cannot be displayed in interactive viewer."
                         )
 
@@ -2203,7 +2196,7 @@ if _run_analysis_now:
                 )
 
             else:
-                st.warning(
+                st.info(
                     "A valid celestial WCS and field center are required for "
                     "transient searches and sky viewers."
                 )

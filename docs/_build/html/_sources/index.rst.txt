@@ -35,6 +35,7 @@ Highlights
    TUTORIAL_FR
    features
    advanced_features
+   PHOTOMETRY_FORMULAS
    api
    api_reference
    examples

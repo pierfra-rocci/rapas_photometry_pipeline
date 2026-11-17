@@ -253,8 +253,8 @@ class TestAstrocolibriTemplateFailureReporting:
     """An unreachable hips2fits must read differently from a coverage gap."""
 
     @staticmethod
-    def _warnings(response):
-        """Run one cutout with *response* as get_hips_image; return warnings."""
+    def _messages(response):
+        """Run one cutout with *response* as get_hips_image; return infos."""
         from src.transient import plot_astrocolibri_cutouts
 
         df = _make_ac_table(n_sources=1, n_matches=1)
@@ -273,28 +273,28 @@ class TestAstrocolibriTemplateFailureReporting:
             plot_astrocolibri_cutouts(
                 df, np.zeros((500, 500)), header, "/tmp", "science", "r", 10.0
             )
-        return [call.args[0] for call in mock_st.warning.call_args_list]
+        return [call.args[0] for call in mock_st.info.call_args_list]
 
     def test_unreachable_service_names_the_surveys_and_filters(self):
-        warnings = self._warnings(lambda name, header=None, get_header=False: None)
+        messages = self._messages(lambda name, header=None, get_header=False: None)
 
-        assert len(warnings) == 1
-        assert "unreachable" in warnings[0]
-        assert "PanSTARRS/DR1/r" in warnings[0]
-        assert "CDS/P/DSS2/color" in warnings[0]
-        assert "coverage" not in warnings[0]
+        assert len(messages) == 1
+        assert "unreachable" in messages[0]
+        assert "PanSTARRS/DR1/r" in messages[0]
+        assert "CDS/P/DSS2/color" in messages[0]
+        assert "coverage" not in messages[0]
 
     def test_missing_coverage_names_the_surveys_and_filters(self):
-        warnings = self._warnings(
+        messages = self._messages(
             lambda name, header=None, get_header=False: np.full((5, 5), np.nan)
         )
 
-        assert len(warnings) == 1
-        assert "No HiPS template coverage" in warnings[0]
-        assert "PanSTARRS/DR1/r" in warnings[0]
-        assert "SDSS/DR9/color" in warnings[0]
-        assert "CDS/P/DSS2/color" in warnings[0]
-        assert "unreachable" not in warnings[0]
+        assert len(messages) == 1
+        assert "No HiPS template coverage" in messages[0]
+        assert "PanSTARRS/DR1/r" in messages[0]
+        assert "SDSS/DR9/color" in messages[0]
+        assert "CDS/P/DSS2/color" in messages[0]
+        assert "unreachable" not in messages[0]
 
     def test_one_answering_survey_means_a_coverage_gap(self):
         """A survey that did answer rules out a service outage."""
@@ -304,10 +304,10 @@ class TestAstrocolibriTemplateFailureReporting:
                 return None
             return np.full((5, 5), np.nan)
 
-        warnings = self._warnings(fake)
+        messages = self._messages(fake)
 
-        assert len(warnings) == 1
-        assert "No HiPS template coverage" in warnings[0]
+        assert len(messages) == 1
+        assert "No HiPS template coverage" in messages[0]
 
     def test_helper_raises_a_dedicated_service_error(self):
         from src.transient import HipsTemplateServiceError, _fetch_hips_template
@@ -1271,6 +1271,7 @@ def _run_transient_filter_with_failures(monkeypatch, error, fail_attempts=None):
         "calls": calls,
         "result": result,
         "warnings": [call.args[0] for call in mock_st.warning.call_args_list],
+        "infos": [call.args[0] for call in mock_st.info.call_args_list],
         "errors": [call.args[0] for call in mock_st.error.call_args_list],
     }
 
@@ -1299,7 +1300,7 @@ class TestTransientFilterXmatchResilience:
         assert outcome["calls"][0] == outcome["calls"][1] != []
         assert outcome["calls"][2] == []
         assert outcome["result"] is not None
-        assert any("X-Match" in warning for warning in outcome["warnings"])
+        assert any("X-Match" in message for message in outcome["infos"])
 
     def test_non_network_failure_is_still_reported(self, monkeypatch):
         outcome = _run_transient_filter_with_failures(

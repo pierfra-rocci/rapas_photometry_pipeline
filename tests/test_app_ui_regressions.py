@@ -80,9 +80,14 @@ def _has_keyword(call: ast.Call, name: str, value: object) -> bool:
     )
 
 
-def test_app_has_no_streamlit_info_messages() -> None:
-    # Info messages are allowed in focused guidance blocks, but should stay limited.
-    assert len(_streamlit_calls("info")) <= 3
+def test_analysis_warnings_are_limited_to_zero_source_cases() -> None:
+    """Only a run that found nothing may still raise a warning in the analysis."""
+    analysis_warnings = [
+        _first_string_arg(call)
+        for call in _streamlit_calls("warning")
+        if call.lineno >= 900
+    ]
+    assert analysis_warnings == ["No transient candidates found."]
 
 
 def test_compact_pipeline_scale_is_less_than_one() -> None:
@@ -150,36 +155,36 @@ def test_app_shows_header_preview_before_analysis_button() -> None:
 
 def test_key_pipeline_status_messages_use_expected_levels() -> None:
     success_messages = _streamlit_messages("success")
-    warning_messages = _streamlit_messages("warning")
+    info_messages = _streamlit_messages("info")
 
     assert "Observatory information updated from FITS header" in success_messages
     assert any(
         "File '" in message and "is ready." in message for message in success_messages
     )
 
-    warning_arg_names = {
+    info_arg_names = {
         call.args[0].id
-        for call in _streamlit_calls("warning")
+        for call in _streamlit_calls("info")
         if call.args and isinstance(call.args[0], ast.Name)
     }
-    assert "PSF_FALLBACK_MESSAGE" in warning_arg_names
+    assert "PSF_FALLBACK_MESSAGE" in info_arg_names
     assert (
         "Catalog data is available but cannot be displayed in interactive viewer."
-        in warning_messages
+        in info_messages
     )
 
 
-def test_transient_finder_warns_when_aperture_fallback_is_used() -> None:
-    """The viewer must warn in one short line about the aperture fallback."""
-    warning_arg_names = {
+def test_transient_finder_reports_aperture_fallback_in_one_short_line() -> None:
+    """The viewer must report the aperture fallback in one short info line."""
+    info_arg_names = {
         call.args[0].id
-        for call in _streamlit_calls("warning")
+        for call in _streamlit_calls("info")
         if call.args and isinstance(call.args[0], ast.Name)
     }
     # The short shared message is used above the Aladin viewer; the long
     # transient variant no longer appears there.
-    assert "PSF_FALLBACK_MESSAGE" in warning_arg_names
-    assert "TRANSIENT_PSF_FALLBACK_MESSAGE" not in warning_arg_names
+    assert "PSF_FALLBACK_MESSAGE" in info_arg_names
+    assert "TRANSIENT_PSF_FALLBACK_MESSAGE" not in info_arg_names
 
     referenced_names = {
         node.id for node in ast.walk(_app_tree()) if isinstance(node, ast.Name)

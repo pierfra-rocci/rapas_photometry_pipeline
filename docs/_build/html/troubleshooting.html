@@ -52,6 +52,7 @@
 <li class="toctree-l1"><a class="reference internal" href="TUTORIAL_FR.html">Tutoriel pas à pas – Pipeline de Photométrie RAPAS</a></li>
 <li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
 <li class="toctree-l1"><a class="reference internal" href="advanced_features.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PHOTOMETRY_FORMULAS.html">Photometry Formulas and Error Calculations</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
@@ -369,7 +370,7 @@ magnitude range.</p></li>
 </ul>
 <p><strong>Unrealistic S/N or Magnitude Errors / Gain Reported as Ignored</strong></p>
 <ul class="simple">
-<li><p><strong>Problem</strong>: The warning “… is outside the plausible effective-gain
+<li><p><strong>Problem</strong>: The info note “… is outside the plausible effective-gain
 range” appears, or bright-source magnitude errors look far too small (and
 the cosmic-ray mask covers a large part of the frame). On several CMOS
 cameras the FITS <code class="docutils literal notranslate"><span class="pre">GAIN</span></code> keyword stores an abstract <em>driver</em> setting
@@ -422,7 +423,7 @@ log: 10 stars is the hard minimum and 25 the quality target.</p></li>
 </section>
 <section id="catalog-query-issues-simbad-skybot-etc">
 <h2>Catalog Query Issues (SIMBAD, SkyBoT, etc.)<a class="headerlink" href="#catalog-query-issues-simbad-skybot-etc" title="Link to this heading"></a></h2>
-<p><strong>Warning: “Query failed: Network error / Timeout”</strong></p>
+<p><strong>Info note: “Query failed: Network error / Timeout”</strong></p>
 <ul class="simple">
 <li><p><strong>Problem</strong>: A temporary network issue occurred or the external catalog
 service is down or slow.</p></li>
@@ -452,8 +453,8 @@ criteria within your image field.</p></li>
 so parsing failed.</p></li>
 <li><p><strong>Solution</strong>:</p>
 <ul>
-<li><p>The pipeline now treats this as a warning and continues without SkyBoT
-matches.</p></li>
+<li><p>The pipeline now treats this as a non-fatal info note and continues
+without SkyBoT matches.</p></li>
 <li><p>Re-run later to retry the external service response.</p></li>
 <li><p>If the preview starts with <code class="docutils literal notranslate"><span class="pre">#</span> <span class="pre">Flag:</span> <span class="pre">-1</span></code>, SkyBoT reports a service-side
 error. Keep the accompanying ticket number and report it to IMCCE if the
@@ -476,8 +477,8 @@ sidebar.</p></li>
 <li><p>Check the Astro-Colibri service status.</p></li>
 <li><p>HTTP 429 means the daily quota (100 requests/day) is exhausted; the
 log message states the reason returned by the API.</p></li>
-<li><p>A warning about the 15, 20 or 30 arcsec tier means the association is
-loose: check it visually in Aladin.</p></li>
+<li><p>An info note about the 15, 20 or 30 arcsec tier means the association
+is loose: check it visually in Aladin.</p></li>
 </ul>
 </li>
 </ul>
@@ -498,8 +499,8 @@ the name sent in the guest marker.</p></li>
 it, the others read it, and a copy older than 24 hours is downloaded
 again and overwritten. <code class="docutils literal notranslate"><span class="pre">RPP_TNS_CACHE_DIR</span></code> moves the cache (use the
 shared cache drive) and removing <code class="docutils literal notranslate"><span class="pre">tns_public_objects.csv</span></code> forces a
-refresh. If the refresh fails the previous copy is still used and a
-warning gives its age.</p></li>
+refresh. If the refresh fails the previous copy is still used and an
+info note gives its age.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">RPP_TNS_CATALOG_PATH</span></code> uses a CSV or ZIP catalogue already on disk and
 skips the download entirely.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">RPP_TNS_MIRROR_URL</span></code> queries a shared <code class="docutils literal notranslate"><span class="pre">tns-mirror</span></code> API instead of
@@ -512,14 +513,15 @@ the catalogue directly.</p></li>
 <code class="docutils literal notranslate"><span class="pre">TNS_BOT_ID</span></code>/<code class="docutils literal notranslate"><span class="pre">TNS_BOT_NAME</span></code> (bot) or <code class="docutils literal notranslate"><span class="pre">TNS_USER_ID</span></code>/
 <code class="docutils literal notranslate"><span class="pre">TNS_USER_NAME</span></code> (user) are set, the TNS Search API is queried instead
 (<code class="docutils literal notranslate"><span class="pre">INFO:</span> <span class="pre">TNS:</span> <span class="pre">querying</span> <span class="pre">the</span> <span class="pre">Search</span> <span class="pre">API</span> <span class="pre">instead.</span></code>). A <code class="docutils literal notranslate"><span class="pre">Search</span> <span class="pre">API</span>
-<span class="pre">failed</span></code> warning gives the reason (HTTP status, network error or rate
-limit); a field holding more than 100 objects is truncated with a
-warning. <code class="docutils literal notranslate"><span class="pre">RPP_TNS_SANDBOX=1</span></code> targets <code class="docutils literal notranslate"><span class="pre">sandbox.wis-tns.org</span></code>, whose
+<span class="pre">failed</span></code> message gives the reason (HTTP status, network error or rate
+limit); a field holding more than 100 objects is truncated with an
+info note. <code class="docutils literal notranslate"><span class="pre">RPP_TNS_SANDBOX=1</span></code> targets <code class="docutils literal notranslate"><span class="pre">sandbox.wis-tns.org</span></code>, whose
 keys differ from production.</p></li>
 <li><p>An HTTP 403/401 on the staging URL means the request was refused (check
 the proxy and the marker); on the Search API it means the key or the
 <code class="docutils literal notranslate"><span class="pre">tns_marker</span></code> is invalid. HTTP 429 is the TNS rate limit.</p></li>
-<li><p>A warning about the 20 or 30 arcsec tier means the association is loose:
+<li><p>An info note about the 20 or 30 arcsec tier means the association is
+loose:
 transient positions are not always astrometrically accurate, so check
 it visually in Aladin.</p></li>
 <li><p>The step is best-effort: without the catalogue the export simply omits
@@ -589,8 +591,8 @@ and start the analysis again.</p></li>
 <h2>Transient and Astro-Colibri Template Cutouts<a class="headerlink" href="#transient-and-astro-colibri-template-cutouts" title="Link to this heading"></a></h2>
 <p><strong>The reference template panel is missing from a cutout</strong></p>
 <ul class="simple">
-<li><p><strong>Problem</strong>: the science cutout is shown without the HiPS template, and a
-warning lists the surveys that were tried.</p></li>
+<li><p><strong>Problem</strong>: the science cutout is shown without the HiPS template, and an
+info note lists the surveys that were tried.</p></li>
 <li><p><strong>Solution</strong>: the template follows a chain: PanSTARRS (north) or SkyMapper
 (south), then SDSS, then DSS2, which covers the whole sky.</p>
 <ul>

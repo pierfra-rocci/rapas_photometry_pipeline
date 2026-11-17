@@ -67,6 +67,7 @@
 <li class="toctree-l1"><a class="reference internal" href="TUTORIAL_FR.html">Tutoriel pas à pas – Pipeline de Photométrie RAPAS</a></li>
 <li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
 <li class="toctree-l1"><a class="reference internal" href="advanced_features.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PHOTOMETRY_FORMULAS.html">Photometry Formulas and Error Calculations</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
@@ -195,11 +196,11 @@ the PSF is fitted in a compact region around each source while the ePSF itself
 is extracted from a larger cutout so its wings are preserved, and the aperture
 correction is derived from the exact model used for the fits.</p>
 <p>If the run cannot use PSF photometry, it continues with calibrated aperture
-photometry and displays the shared warning:</p>
+photometry and displays the shared fallback message as an info note:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PSF</span> <span class="n">photometry</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">available</span><span class="p">;</span> <span class="n">using</span> <span class="n">calibrated</span> <span class="n">aperture</span> <span class="n">photometry</span> <span class="n">instead</span><span class="o">.</span>
 </pre></div>
 </div>
-<p>The transient finder shows the same short warning above the Aladin viewer; the
+<p>The transient finder shows the same short message above the Aladin viewer; the
 aperture it relies on (the calibrated 1.1 x FWHM aperture magnitude) is named in
 the transient table:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PSF</span> <span class="n">photometry</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">available</span><span class="p">;</span> <span class="n">using</span> <span class="n">calibrated</span> <span class="n">aperture</span> <span class="n">photometry</span> <span class="n">instead</span><span class="o">.</span>
@@ -209,7 +210,7 @@ the transient table:</p>
 photometry in both workflows, while the transient message identifies the
 specific 1.1 x FWHM aperture used for its candidates.</p>
 <p>To help verify that the two methods agree, each run reports the median
-<code class="docutils literal notranslate"><span class="pre">psf_mag</span> <span class="pre">-</span> <span class="pre">aperture_mag</span></code> offset per aperture and raises a warning when it
+<code class="docutils literal notranslate"><span class="pre">psf_mag</span> <span class="pre">-</span> <span class="pre">aperture_mag</span></code> offset per aperture and shows an info note when it
 exceeds 0.15 mag. Because the aperture fluxes are corrected to the same
 total-flux scale as the PSF, the offset should be near zero; a large value
 points to an ePSF shape/normalisation or local-background problem.</p>
@@ -284,7 +285,7 @@ field, then one <code class="docutils literal notranslate"><span class="pre">get
 The CSV and VOTable outputs carry the same <code class="docutils literal notranslate"><span class="pre">tns_name</span></code> and <code class="docutils literal notranslate"><span class="pre">tns_type</span></code>
 columns whichever source was used.</p>
 <p>These services are best-effort integrations. Timeouts, empty responses, or
-temporary network failures are reported in the logs and warnings, and the
+temporary network failures are reported in the logs and info notes, and the
 pipeline continues whenever partial results are still usable.</p>
 </section>
 <section id="transient-candidates">
@@ -304,7 +305,8 @@ photometry catalog within a seeing-based radius (the FWHM, clamped to
 Vizier sources. Matched detections use the calibrated PSF magnitudes; when PSF
 photometry is unavailable (missing columns or non-finite values), the finder
 falls back to the calibrated 1.1 x FWHM aperture magnitude instead of aborting
-and shows the shared PSF warning described in <a class="reference internal" href="#psf-photometry"><span class="std std-ref">PSF Photometry</span></a>, followed
+and shows the shared PSF fallback message described in <a class="reference internal" href="#psf-photometry"><span class="std std-ref">PSF Photometry</span></a>,
+followed
 by <code class="docutils literal notranslate"><span class="pre">Transient</span> <span class="pre">candidates</span> <span class="pre">use</span> <span class="pre">the</span> <span class="pre">calibrated</span> <span class="pre">1.1</span> <span class="pre">x</span> <span class="pre">FWHM</span> <span class="pre">aperture</span> <span class="pre">magnitude.</span></code>
 The catalog matching radius is half the seeing FWHM, and a source that
 coincides with a catalog entry is kept only when it is a genuine

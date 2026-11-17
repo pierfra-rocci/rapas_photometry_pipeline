@@ -339,9 +339,9 @@ and are not included in the ZIP.
 - Matched detections use the calibrated PSF magnitude. When PSF photometry is
   unavailable (missing columns or no finite value for the matched detections),
   the calibrated 1.1 x FWHM aperture magnitude is used instead, so transient
-  filtering is not blocked. The app then shows the shared PSF warning
+  filtering is not blocked. The app then shows the shared PSF fallback message
   `PSF photometry is not available; using calibrated aperture photometry instead.`
-  The app shows only this short warning above the Aladin viewer.
+  as an info note, with only this short message above the Aladin viewer.
 - Detections coincident with a reference-survey or Vizier source are rejected
   within half the seeing FWHM, unless they are a genuine brightness excess
   (`mag_threshold`, default 2.0 mag brighter than the catalog counterpart)
@@ -505,7 +505,7 @@ viewer is usually a WebGL2 or a network issue, not a caching one.
   directory by default, `RPP_TNS_CACHE_DIR` for a shared cache drive): the first
   run of the day downloads it, the others read it, and a copy older than 24
   hours is downloaded again and overwritten. If the refresh fails the previous
-  copy is still used, with a warning. A catalogue already on disk can be used
+  copy is still used, with an info note. A catalogue already on disk can be used
   with `RPP_TNS_CATALOG_PATH`, and `RPP_TNS_MIRROR_URL` makes the step query a
   shared `tns-mirror` HTTP API (`GET /v1/nearest`) instead of reading the
   catalogue. If the staged catalogue cannot be downloaded, the TNS Search API
@@ -530,8 +530,8 @@ viewer is usually a WebGL2 or a network issue, not a caching one.
 ### Current Release (1.9.4)
 
 - **HiPS template chain**: Astro-Colibri stamps and transient cutouts try `PanSTARRS/DR1` (north) or `SkyMapper/DR4` (south), then `SDSS/DR9/color`, then `CDS/P/DSS2/color`, skipping an unreachable survey or an uncovered field; if none answers, CDS hips2fits is queried directly with an explicit timeout on two hosts.
-- **CDS X-Match outage tolerated**: transient filtering retries once, then runs without the extra VizieR cross-match (with a warning) instead of returning no candidates.
-- **Shorter PSF warning**: the short shared message is shown above the Aladin viewer; the 1.1 x FWHM aperture detail stays in the transient table.
+- **CDS X-Match outage tolerated**: transient filtering retries once, then runs without the extra VizieR cross-match (with an info note) instead of returning no candidates.
+- **Shorter PSF fallback message**: the short shared message is shown as an info note above the Aladin viewer; the 1.1 x FWHM aperture detail stays in the transient table.
 
 ### Version 1.9.3
 

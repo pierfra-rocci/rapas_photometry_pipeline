@@ -17,7 +17,7 @@ Version 1.9.4
 *   When no survey answers, a second method queries CDS hips2fits directly with
     an explicit 20-second timeout on two CDS hosts before giving up, so a
     stalled request cannot hang the cutouts.
-*   Warnings name the surveys tried and distinguish an unreachable service from
+*   Info notes name the surveys tried and distinguish an unreachable service from
     missing coverage; the cutout keeps its science frame either way, and its
     title names the survey actually used.
 
@@ -25,13 +25,13 @@ Version 1.9.4
 
 *   Transient filtering retries a network failure once, then runs without the
     extra VizieR cross-match (``gaiaedr3``, ``ps1``, ``skymapper``, ``sdss``,
-    ``atlas``, ``apass``, ``gsc``) instead of returning no candidates. A warning
-    states that only the reference-survey catalogue was applied, and other
+    ``atlas``, ``apass``, ``gsc``) instead of returning no candidates. An info
+    note states that only the reference-survey catalogue was applied, and other
     errors are still reported with their traceback.
 
-**Shorter PSF fallback warning above the viewer**
+**Shorter PSF fallback message above the viewer**
 
-*   The Aladin viewer shows the short shared warning (``PSF photometry is not
+*   The Aladin viewer shows the short shared message (``PSF photometry is not
     available; using calibrated aperture photometry instead.``); the
     1.1 x FWHM aperture detail stays in the transient table instead of a long
     message above the viewer.
@@ -302,7 +302,7 @@ Version 1.9.0
     1.1 x FWHM aperture magnitude (``aperture_mag_1_1`` and its error) instead
     of aborting with "No transient candidates found". The app displays a
     warning when candidates rely on this fallback, using the same
-    PSF-unavailable wording as the main pipeline. The shared warning is
+    PSF-unavailable wording as the main pipeline. The shared message is
     ``PSF photometry is not available; using calibrated aperture photometry instead.``;
     the full transient variant is
     ``PSF photometry is not available; using calibrated aperture photometry instead. Transient candidates use the calibrated 1.1 x FWHM aperture magnitude.``

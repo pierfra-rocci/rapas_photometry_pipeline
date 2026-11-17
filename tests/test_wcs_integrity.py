@@ -75,7 +75,11 @@ def test_invalid_cd_matrix_is_not_replaced_by_a_fabricated_wcs() -> None:
     assert data is not None
     assert parsed is None
     assert error
-    assert any(level == "warning" for level, _, _ in messages)
+    # The invalid matrix is reported in the log, never replaced by a guess.
+    assert any(
+        log_level == "INFO" and "celestial WCS" in message
+        for _, log_level, message in messages
+    )
     assert fixed["CRVAL1"] == original["CRVAL1"]
     assert fixed["CRVAL2"] == original["CRVAL2"]
     assert header == original
@@ -339,8 +343,8 @@ def test_invalid_wcs_skips_transient_search_and_cutouts(
 
     header = _header()
     header["CTYPE1"] = header["CTYPE2"] = "LINEAR"
-    warnings: list[str] = []
-    monkeypatch.setattr(transient.st, "warning", warnings.append)
+    infos: list[str] = []
+    monkeypatch.setattr(transient.st, "info", infos.append)
     monkeypatch.setattr(transient, "resolve_effective_gain", lambda *_args: 1.0)
 
     def unexpected_query(*_args: object, **_kwargs: object) -> None:
@@ -361,7 +365,7 @@ def test_invalid_wcs_skips_transient_search_and_cutouts(
         )
         == []
     )
-    assert len(warnings) == 2
+    assert len(infos) == 2
 
 
 @pytest.mark.parametrize("frame", ["galactic", "swapped"])
@@ -463,7 +467,7 @@ def test_forced_solve_rejects_invalid_header_and_retains_original(
     assert not page.session_state["proceed_without_wcs"]
     assert page.session_state["calibrated_header"]["CTYPE1"] == header["CTYPE1"]
     assert any(
-        "using the original valid WCS" in warning.value for warning in page.warning
+        "using the original valid WCS" in info.value for info in page.info
     )
     assert any("invalid WCS" in error.value for error in page.error)
     assert not any(
@@ -754,7 +758,7 @@ def test_offline_failures_preserve_catalog_archive(
                 assert "psf_instrumental_mag" not in csv.columns
                 assert any(
                     "Could not merge PSF photometry" in item.value
-                    for item in page.warning
+                    for item in page.info
                 )
             else:
                 assert csv["psf_instrumental_mag"].iloc[0] == -4.9
@@ -762,7 +766,7 @@ def test_offline_failures_preserve_catalog_archive(
             assert "image_transients.csv" not in names
             assert not transient_calls
             assert any(
-                "Transient search skipped" in item.value for item in page.warning
+                "Transient search skipped" in item.value for item in page.info
             )
 
     assert page.session_state["last_result_zip_path"] == str(archives[0])

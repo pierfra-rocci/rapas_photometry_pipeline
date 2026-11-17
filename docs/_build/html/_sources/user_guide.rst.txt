@@ -100,11 +100,11 @@ is extracted from a larger cutout so its wings are preserved, and the aperture
 correction is derived from the exact model used for the fits.
 
 If the run cannot use PSF photometry, it continues with calibrated aperture
-photometry and displays the shared warning::
+photometry and displays the shared fallback message as an info note::
 
     PSF photometry is not available; using calibrated aperture photometry instead.
 
-The transient finder shows the same short warning above the Aladin viewer; the
+The transient finder shows the same short message above the Aladin viewer; the
 aperture it relies on (the calibrated 1.1 x FWHM aperture magnitude) is named in
 the transient table::
 
@@ -115,7 +115,7 @@ photometry in both workflows, while the transient message identifies the
 specific 1.1 x FWHM aperture used for its candidates.
 
 To help verify that the two methods agree, each run reports the median
-``psf_mag - aperture_mag`` offset per aperture and raises a warning when it
+``psf_mag - aperture_mag`` offset per aperture and shows an info note when it
 exceeds 0.15 mag. Because the aperture fluxes are corrected to the same
 total-flux scale as the PSF, the offset should be near zero; a large value
 points to an ePSF shape/normalisation or local-background problem.
@@ -193,7 +193,7 @@ The CSV and VOTable outputs carry the same ``tns_name`` and ``tns_type``
 columns whichever source was used.
 
 These services are best-effort integrations. Timeouts, empty responses, or
-temporary network failures are reported in the logs and warnings, and the
+temporary network failures are reported in the logs and info notes, and the
 pipeline continues whenever partial results are still usable.
 
 Transient Candidates
@@ -215,7 +215,8 @@ photometry catalog within a seeing-based radius (the FWHM, clamped to
 Vizier sources. Matched detections use the calibrated PSF magnitudes; when PSF
 photometry is unavailable (missing columns or non-finite values), the finder
 falls back to the calibrated 1.1 x FWHM aperture magnitude instead of aborting
-and shows the shared PSF warning described in :ref:`psf-photometry`, followed
+and shows the shared PSF fallback message described in :ref:`psf-photometry`,
+followed
 by ``Transient candidates use the calibrated 1.1 x FWHM aperture magnitude.``
 The catalog matching radius is half the seeing FWHM, and a source that
 coincides with a catalog entry is kept only when it is a genuine

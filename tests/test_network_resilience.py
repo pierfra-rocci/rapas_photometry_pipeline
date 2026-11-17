@@ -255,16 +255,16 @@ def test_filter_skybot_candidates_returns_input_on_timeout(monkeypatch):
 
     monkeypatch.setattr("requests.get", _raise_timeout)
 
-    warnings = []
-    monkeypatch.setattr("streamlit.warning", warnings.append)
+    infos = []
+    monkeypatch.setattr("streamlit.info", infos.append)
 
     result = filter_skybot_candidates(candidates, "2026-01-01T00:00:00")
 
     assert result is candidates
     assert len(result) == len(candidates)
-    assert warnings
-    assert "SkyBoT query failed" in warnings[0]
-    assert "Skipping Solar System object filtering" in warnings[0]
+    assert infos
+    assert "SkyBoT query failed" in infos[0]
+    assert "Skipping Solar System object filtering" in infos[0]
 
 
 def test_filter_skybot_candidates_requests_votable_response(monkeypatch):
@@ -288,7 +288,7 @@ def test_filter_skybot_candidates_requests_votable_response(monkeypatch):
 
     monkeypatch.setattr("requests.get", _capture_request)
     monkeypatch.setattr("src.transient.Skybot._parse_result", lambda _response: Table())
-    monkeypatch.setattr("streamlit.warning", lambda _message: None)
+    monkeypatch.setattr("streamlit.info", lambda _message: None)
 
     result = filter_skybot_candidates(candidates, "2026-01-01T00:00:00")
 
@@ -316,14 +316,14 @@ def test_filter_skybot_candidates_does_not_treat_parse_error_as_empty(monkeypatc
         raise ExpatError("not well-formed")
 
     monkeypatch.setattr("src.transient.Skybot._parse_result", _raise_parse_error)
-    warnings = []
-    monkeypatch.setattr("streamlit.warning", warnings.append)
+    infos = []
+    monkeypatch.setattr("streamlit.info", infos.append)
 
     result = filter_skybot_candidates(candidates, "2026-01-01T00:00:00")
 
     assert result is candidates
-    assert any("unreadable response" in message for message in warnings)
-    assert not any("No Solar System objects found" in message for message in warnings)
+    assert any("unreadable response" in message for message in infos)
+    assert not any("No Solar System objects found" in message for message in infos)
 
 
 def test_cross_match_with_gaia_returns_none_after_vizier_and_tap_failures(monkeypatch):

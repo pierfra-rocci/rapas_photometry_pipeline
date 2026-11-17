@@ -52,6 +52,7 @@
 <li class="toctree-l1"><a class="reference internal" href="TUTORIAL_FR.html">Tutoriel pas à pas – Pipeline de Photométrie RAPAS</a></li>
 <li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
 <li class="toctree-l1"><a class="reference internal" href="advanced_features.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PHOTOMETRY_FORMULAS.html">Photometry Formulas and Error Calculations</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">API Reference</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#application-modules">Application Modules</a><ul>
@@ -154,7 +155,8 @@ extraction, background estimation, and calibrated magnitude helpers.</p>
 </dl>
 <p><code class="docutils literal notranslate"><span class="pre">src/pipeline.py</span></code> also exposes <code class="docutils literal notranslate"><span class="pre">check_psf_aperture_consistency()</span></code>, which
 matches PSF and aperture sources by position and reports the median
-<code class="docutils literal notranslate"><span class="pre">psf_mag</span> <span class="pre">-</span> <span class="pre">aperture_mag</span></code> per aperture, warning when the offset exceeds
+<code class="docutils literal notranslate"><span class="pre">psf_mag</span> <span class="pre">-</span> <span class="pre">aperture_mag</span></code> per aperture, with an info note when the offset
+exceeds
 <code class="docutils literal notranslate"><span class="pre">PSF_APERTURE_CONSISTENCY_THRESHOLD</span></code> (0.15 mag). Diagnostics are stored in
 <code class="docutils literal notranslate"><span class="pre">st.session_state[&quot;psf_aperture_consistency&quot;]</span></code>, and <code class="docutils literal notranslate"><span class="pre">add_calibrated_magnitudes</span></code>
 exports the per-source difference as <code class="docutils literal notranslate"><span class="pre">psf_minus_aperture_mag_X_X</span></code> (with

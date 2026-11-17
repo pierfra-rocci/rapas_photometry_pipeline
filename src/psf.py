@@ -118,7 +118,7 @@ def perform_psf_photometry(
             )
         except Exception as local_bkg_error:
             local_bkg_estimator = None
-            st.warning(
+            st.info(
                 f"Local background estimator unavailable: {local_bkg_error}. "
                 "PSF photometry continues without it."
             )
@@ -363,7 +363,7 @@ def perform_psf_photometry(
             # No peak data available; use image maximum as fallback.
             img_max = float(np.nanmax(img))
             saturation_limit = img_max * 0.995
-            st.warning(
+            st.info(
                 f"  ⓘ No peak flux in catalog; using 99.5% of image max "
                 f"({saturation_limit:.0f}) as saturation limit"
             )
@@ -612,7 +612,7 @@ def perform_psf_photometry(
                 # )
                 coverage_threshold = 0.35
                 if coverage_x < coverage_threshold or coverage_y < coverage_threshold:
-                    st.warning(
+                    st.info(
                         (
                             "Les étoiles sélectionnées couvrent une zone "
                             "restreinte du champ. Envisagez d'ajouter des "
@@ -620,7 +620,7 @@ def perform_psf_photometry(
                         )
                     )
             except Exception as coverage_error:
-                st.warning(
+                st.info(
                     f"Impossible d'évaluer la couverture spatiale: {coverage_error}"
                 )
 
@@ -642,12 +642,12 @@ def perform_psf_photometry(
                 f"(target: ≥{min_stars_optimal})"
             )
         elif len(filtered_photo_table) >= min_stars_good:
-            st.warning(
+            st.info(
                 f"⚠ {len(filtered_photo_table)} PSF stars (acceptable but <{min_stars_optimal}). "
                 f"PSF model may have reduced accuracy."
             )
         elif len(filtered_photo_table) >= min_stars_acceptable:
-            st.warning(
+            st.info(
                 f"⚠ Only {len(filtered_photo_table)} PSF stars (<{min_stars_good}): "
                 f"the PSF model quality may be poor. Interpret PSF photometry with caution."
             )
@@ -745,7 +745,7 @@ def perform_psf_photometry(
                 )
         except Exception as star_bkg_error:
             epsf_nddata = nddata
-            st.warning(f"Could not de-contaminate ePSF star cutouts: {star_bkg_error}")
+            st.info(f"Could not de-contaminate ePSF star cutouts: {star_bkg_error}")
 
     try:
         stars = extract_stars(epsf_nddata, stars_table, size=psf_extraction_size)
@@ -763,7 +763,7 @@ def perform_psf_photometry(
         if hasattr(stars, "data") and stars.data is not None:
             if isinstance(stars.data, list) and len(stars.data) > 0:
                 if any(np.isnan(star_data).any() for star_data in stars.data):
-                    st.warning(
+                    st.info(
                         "Some extracted PSF stars contain NaN pixels; they will "
                         "be filtered out before ePSF building."
                     )
@@ -802,7 +802,7 @@ def perform_psf_photometry(
                     else:
                         mask_valid.append(True)
             except Exception as iter_error:
-                st.warning(
+                st.info(
                     f"Could not iterate through stars for validation: {iter_error}"
                 )
                 mask_valid = [True] * len(stars)
@@ -838,7 +838,7 @@ def perform_psf_photometry(
                         continue
                     valid_stars.append(star)
         except Exception as e:
-            st.warning(f"Error during initial filtering of stars for ePSF: {e}")
+            st.info(f"Error during initial filtering of stars for ePSF: {e}")
             valid_stars = []
 
         n_valid = len(valid_stars)
@@ -887,7 +887,7 @@ def perform_psf_photometry(
                     epsf_data = np.asarray(epsf.data)
                     break
             except Exception as build_error:
-                st.warning(f"Échec EPSFBuilder oversampling={oversamp}: {build_error}")
+                st.info(f"Échec EPSFBuilder oversampling={oversamp}: {build_error}")
                 epsf = None
 
         # Check if EPSFBuilder succeeded
@@ -895,7 +895,7 @@ def perform_psf_photometry(
             hasattr(epsf, "data")
             and (epsf.data is None or np.asarray(epsf.data).size == 0)
         ):
-            st.warning(
+            st.info(
                 "⚠️ EPSFBuilder failed to create a valid PSF model. Continuing without PSF photometry."
             )
             return None, None
@@ -904,13 +904,13 @@ def perform_psf_photometry(
 
         # Validate epsf_data
         if epsf_data is None or epsf_data.size == 0:
-            st.warning(
+            st.info(
                 "⚠️ ePSF data is invalid or empty. Continuing without PSF photometry."
             )
             return None, None
 
         if np.isnan(epsf_data).any():
-            st.warning(
+            st.info(
                 "⚠️ ePSF data contains NaN values. Continuing without PSF photometry."
             )
             return None, None
@@ -920,7 +920,7 @@ def perform_psf_photometry(
         st.session_state["used_gaussian_fallback"] = False
 
     except Exception as e:
-        st.warning(f"Error fitting PSF model: {e}. Continuing without PSF photometry.")
+        st.info(f"Error fitting PSF model: {e}. Continuing without PSF photometry.")
         return None, None
 
     # Ensure we have a usable PSF model for PSFPhotometry
@@ -940,7 +940,7 @@ def perform_psf_photometry(
             psf_for_phot = ImagePSF(epsf_data, oversampling=oversamp)
             st.write(f"Created ImagePSF with oversampling={oversamp}")
         except Exception as ipsf_err:
-            st.warning(f"ImagePSF creation failed: {ipsf_err}")
+            st.info(f"ImagePSF creation failed: {ipsf_err}")
             psf_for_phot = epsf
 
         # Verify PSF model center. The centre of an N-pixel grid is (N-1)/2
@@ -957,7 +957,7 @@ def perform_psf_photometry(
         offset_x = (peak_x - psf_center_x) / oversamp
         offset_y = (peak_y - psf_center_y) / oversamp
         if abs(offset_x) > 0.5 or abs(offset_y) > 0.5:
-            st.warning(
+            st.info(
                 f"⚠ PSF peak is offset from center by ({offset_x:.2f}, {offset_y:.2f}) pixels. "
                 f"Attempting sub-pixel re-centering..."
             )
@@ -994,23 +994,23 @@ def perform_psf_photometry(
                         psf_for_phot = ImagePSF(epsf_data, oversampling=oversamp)
                     except Exception:
                         pass  # Keep the previously created psf_for_phot
-                    st.warning(
+                    st.info(
                         f"✓ PSF re-centered: new peak offset "
                         f"({new_offset_x:.2f}, {new_offset_y:.2f}) px "
                         f"(was ({offset_x:.2f}, {offset_y:.2f}) px)"
                     )
                 else:
-                    st.warning(
+                    st.info(
                         "ⓘ Re-centering did not improve alignment "
                         f"(new offset: ({new_offset_x:.2f}, {new_offset_y:.2f}) px); "
                         "keeping original PSF."
                     )
             except Exception as _recenter_err:
-                st.warning(
+                st.info(
                     f"PSF re-centering skipped: {_recenter_err}. Keeping original PSF."
                 )
         else:
-            st.warning(
+            st.info(
                 f"✓ PSF peak offset from center: ({offset_x:.2f}, {offset_y:.2f}) pixels (acceptable)"
             )
 
@@ -1088,9 +1088,9 @@ def perform_psf_photometry(
             st.pyplot(fig_epsf_model)
             plt.close(fig_epsf_model)
         except Exception as e:
-            st.warning(f"Error working with PSF model display/save: {e}")
+            st.info(f"Error working with PSF model display/save: {e}")
     except Exception as e:
-        st.warning(
+        st.info(
             f"Error preparing PSF model for photometry: {e}. Continuing without PSF photometry."
         )
         return None, None
@@ -1098,12 +1098,12 @@ def perform_psf_photometry(
     # Create PSF photometry object and perform photometry
     try:
         if error is not None and not isinstance(error, np.ndarray):
-            st.warning(
+            st.info(
                 "Invalid error array provided, proceeding without error estimation"
             )
             error = None
         elif error is not None and error.shape != img.shape:
-            st.warning(
+            st.info(
                 "Error array shape mismatch, proceeding without error estimation"
             )
             error = None
@@ -1196,7 +1196,7 @@ def perform_psf_photometry(
                     f"{len(local_bkg_values)} PSF fits."
                 )
             except Exception as local_bkg_error:
-                st.warning(
+                st.info(
                     f"Local background estimation failed: {local_bkg_error}. "
                     "PSF photometry continues without it."
                 )
@@ -1211,7 +1211,7 @@ def perform_psf_photometry(
         return phot_epsf_result, epsf
 
     except Exception as e:
-        st.warning(
+        st.info(
             f"Error executing PSF photometry: {e}. Continuing without PSF photometry."
         )
         return None, None

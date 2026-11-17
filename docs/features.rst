@@ -184,8 +184,8 @@ Source Detection & Photometry
    - PSF-specific quality flags for reliability assessment
    - PSF model visualization and FITS output
    - **PSF-vs-aperture consistency check**: the median
-     ``psf_mag − aperture_mag`` offset is reported per aperture, with a warning
-     when it exceeds ``PSF_APERTURE_CONSISTENCY_THRESHOLD`` (0.15 mag) — a
+     ``psf_mag − aperture_mag`` offset is reported per aperture, with an info
+     note when it exceeds ``PSF_APERTURE_CONSISTENCY_THRESHOLD`` (0.15 mag) — a
      direct indicator of an ePSF shape/normalisation problem
    - Per-source difference columns ``psf_minus_aperture_mag_X_X`` (with
      filter-prefixed aliases) for every aperture, NaN where only one method
@@ -316,7 +316,7 @@ Multi-Catalog Cross-Matching
      ``RPP_TNS_SANDBOX=1`` selects ``sandbox.wis-tns.org``
    - Progressive cross-match radius 5 -> 10 -> 15 -> 20 -> 30 arcsec (nearest
      event per source, radius reached reported in the log); matches found only
-     at the 15, 20 or 30 arcsec tier raise a warning; the match outcome is
+     at the 15, 20 or 30 arcsec tier show an info note; the match outcome is
      displayed in the app
    - Every source returned by Astro-Colibri for the field is listed (name,
      RA/Dec, type, classification, observatory, trigger ID, position error,
@@ -333,8 +333,8 @@ Multi-Catalog Cross-Matching
    - One copy is shared by every user of the deployment: the first run of the
      day downloads it, the other runs read it, and a copy older than 24 hours
      is downloaded again and overwritten in place; a lock file serialises
-     concurrent downloads, and a failed refresh keeps the previous copy with a
-     warning (``RPP_TNS_CACHE_DIR`` sets the cache location,
+     concurrent downloads, and a failed refresh keeps the previous copy with an
+     info note (``RPP_TNS_CACHE_DIR`` sets the cache location,
      ``RPP_TNS_CATALOG_PATH`` reads a local CSV/ZIP instead)
    - ``TNS_API_KEY`` plus ``TNS_BOT_ID``/``TNS_BOT_NAME`` (bot) or
      ``TNS_USER_ID``/``TNS_USER_NAME`` (user) are optional and only used by the
@@ -346,7 +346,7 @@ Multi-Catalog Cross-Matching
      catalogue, and fields with more than 500 sources use the catalogue directly
    - Progressive cross-match radius 5 -> 10 -> 15 -> 20 -> 30 arcsec keeping the
      closest object per source; matches found only at the 20 or 30 arcsec tier
-     raise a warning
+     show an info note
    - Spatial index: the parsed catalogue carries a ``scipy`` KD-tree over the
      object positions, so the objects of a field are selected by walking the
      tree instead of comparing every catalogue row with the field centre

@@ -19,7 +19,7 @@
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Backend API" href="api.html" />
+    <link rel="next" title="Photometry Formulas and Error Calculations" href="PHOTOMETRY_FORMULAS.html" />
     <link rel="prev" title="Features" href="features.html" /> 
 </head>
 
@@ -64,6 +64,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#standalone-utilities">Standalone Utilities</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="PHOTOMETRY_FORMULAS.html">Photometry Formulas and Error Calculations</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
@@ -142,8 +143,8 @@ designed to be rerunnable.</p>
     <span class="n">get_zips_for_fits</span><span class="p">,</span>
 <span class="p">)</span>
 
-<span class="n">fits_files</span> <span class="o">=</span> <span class="n">get_fits_files_for_user</span><span class="p">(</span><span class="s2">"alice"</span><span class="p">)</span>
-<span class="n">archives</span> <span class="o">=</span> <span class="n">get_zip_archives_for_user</span><span class="p">(</span><span class="s2">"alice"</span><span class="p">)</span>
+<span class="n">fits_files</span> <span class="o">=</span> <span class="n">get_fits_files_for_user</span><span class="p">(</span><span class="s2">&quot;alice&quot;</span><span class="p">)</span>
+<span class="n">archives</span> <span class="o">=</span> <span class="n">get_zip_archives_for_user</span><span class="p">(</span><span class="s2">&quot;alice&quot;</span><span class="p">)</span>
 <span class="n">related_zips</span> <span class="o">=</span> <span class="n">get_zips_for_fits</span><span class="p">(</span><span class="n">wcs_fits_id</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
 </pre></div>
 </div>
@@ -267,7 +268,7 @@ sources are matched by position and the median <code class="docutils literal not
 reported for each aperture. Because the aperture fluxes are placed on the same
 total-flux scale as the PSF (see <code class="docutils literal notranslate"><span class="pre">docs/PHOTOMETRY_FORMULAS.md</span></code>), the offset
 should be near zero; a median larger than
-<code class="docutils literal notranslate"><span class="pre">PSF_APERTURE_CONSISTENCY_THRESHOLD</span></code> (0.15 mag) raises a warning and the
+<code class="docutils literal notranslate"><span class="pre">PSF_APERTURE_CONSISTENCY_THRESHOLD</span></code> (0.15 mag) shows an info note and the
 per-aperture diagnostics are stored in
 <code class="docutils literal notranslate"><span class="pre">st.session_state[&quot;psf_aperture_consistency&quot;]</span></code>.</p>
 <p>The results view plots these offsets with <code class="docutils literal notranslate"><span class="pre">plot_photometry_offsets</span></code>: one
@@ -308,7 +309,7 @@ than day-to-day frontend use.</p>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="features.html" class="btn btn-neutral float-left" title="Features" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="api.html" class="btn btn-neutral float-right" title="Backend API" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="PHOTOMETRY_FORMULAS.html" class="btn btn-neutral float-right" title="Photometry Formulas and Error Calculations" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

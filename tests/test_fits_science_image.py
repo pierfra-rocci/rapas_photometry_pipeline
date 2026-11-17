@@ -108,7 +108,7 @@ def test_table_only_or_non_image_dimensions_are_reported() -> None:
     data, header, messages = tools_app._parse_fits_bytes.__wrapped__(payload)
     assert data is None and header is None
     assert any(
-        ui in {"warning", "error"} and "image" in message.lower()
+        ui in {"info", "error"} and "image" in message.lower()
         for ui, _, message in messages
     )
 

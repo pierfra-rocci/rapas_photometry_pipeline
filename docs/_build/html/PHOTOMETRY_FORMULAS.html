@@ -13,12 +13,14 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=f333a941"></script>
+      <script src="_static/documentation_options.js?v=38ba398c"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
-    <link rel="search" title="Search" href="search.html" /> 
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Backend API" href="api.html" />
+    <link rel="prev" title="Advanced Features" href="advanced_features.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -42,7 +44,7 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
-<ul>
+<ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="usage.html">Usage Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide.html">User Guide</a></li>
@@ -50,6 +52,53 @@
 <li class="toctree-l1"><a class="reference internal" href="TUTORIAL_FR.html">Tutoriel pas à pas – Pipeline de Photométrie RAPAS</a></li>
 <li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
 <li class="toctree-l1"><a class="reference internal" href="advanced_features.html">Advanced Features</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Photometry Formulas and Error Calculations</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#table-of-contents">Table of Contents</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#signal-to-noise-ratio-s-n">Signal-to-Noise Ratio (S/N)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#formula">Formula</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#implementation-details">Implementation Details</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#aperture-correction">Aperture Correction</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#example">Example</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#magnitude-error-calculation">Magnitude Error Calculation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id1">Formula</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#mathematical-derivation">Mathematical Derivation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#relationship-to-s-n">Relationship to S/N</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id2">Example</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#error-propagation">Error Propagation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#sky-background-model">Sky Background Model</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#local-background-subtraction-and-its-error">Local Background Subtraction and its Error</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#centroid-position-error">Centroid-Position Error</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#calibrated-magnitude-error">Calibrated Magnitude Error</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id3">Example</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#effective-gain">Effective gain</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#the-poisson-term-must-follow-the-units-of-the-frame">The Poisson term must follow the units of the frame</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#why-a-fits-gain-is-not-always-e-adu">Why a FITS <code class="docutils literal notranslate"><span class="pre">GAIN</span></code> is not always e-/ADU</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#atmospheric-extinction-optional">Atmospheric Extinction (Optional)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#color-term-calibration-optional">Color-Term Calibration (Optional)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#practical-limitation">Practical Limitation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#quality-flags">Quality Flags</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#rationale">Rationale</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#usage-example">Usage Example</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#summary-table">Summary Table</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#implementation-notes">Implementation Notes</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#numerical-precision">Numerical Precision</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#edge-cases">Edge Cases</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#testing">Testing</a></li>
+</ul>
+</li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="api.html">Backend API</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
@@ -87,7 +136,7 @@
 <section id="table-of-contents">
 <h2>Table of Contents<a class="headerlink" href="#table-of-contents" title="Link to this heading"></a></h2>
 <ol class="arabic simple">
-<li><p><a class="reference internal" href="#signal-to-noise-ratio-sn"><span class="xref myst">Signal-to-Noise Ratio (S/N)</span></a></p></li>
+<li><p><a class="reference internal" href="#signal-to-noise-ratio-s-n"><span class="xref myst">Signal-to-Noise Ratio (S/N)</span></a></p></li>
 <li><p><a class="reference internal" href="#magnitude-error-calculation"><span class="xref myst">Magnitude Error Calculation</span></a></p></li>
 <li><p><a class="reference internal" href="#error-propagation"><span class="xref myst">Error Propagation</span></a></p></li>
 <li><p><a class="reference internal" href="#quality-flags"><span class="xref myst">Quality Flags</span></a></p></li>
@@ -154,7 +203,7 @@ approximate S/N derived from <code class="docutils literal notranslate"><span cl
 and reports the median <code class="docutils literal notranslate"><span class="pre">psf_mag</span> <span class="pre">−</span> <span class="pre">aperture_mag</span></code> for each aperture. Both methods
 are placed on the same total-flux scale (see the aperture correction above), so
 the difference should be centred on zero. A median offset larger than
-<code class="docutils literal notranslate"><span class="pre">PSF_APERTURE_CONSISTENCY_THRESHOLD</span></code> (<code class="docutils literal notranslate"><span class="pre">0.15</span></code> mag) raises a warning; the
+<code class="docutils literal notranslate"><span class="pre">PSF_APERTURE_CONSISTENCY_THRESHOLD</span></code> (<code class="docutils literal notranslate"><span class="pre">0.15</span></code> mag) shows an info note; the
 per-aperture counts, medians and robust (MAD) scatter are stored in
 <code class="docutils literal notranslate"><span class="pre">st.session_state[&quot;psf_aperture_consistency&quot;]</span></code>. The per-source value is also
 exported for every aperture as <code class="docutils literal notranslate"><span class="pre">psf_minus_aperture_mag_X_X</span></code> (with
@@ -456,7 +505,7 @@ physically plausible result. A flat sky carries no gain information and is
 rejected;</p>
 </li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">effective_gain</span> <span class="pre">=</span> <span class="pre">1</span></code></strong> (data treated as electrons) as the last resort,
-with an explicit warning.</p></li>
+with an explicit info note.</p></li>
 </ol>
 <p>Step 4 is the conservative choice, but it is <em>not</em> neutral: with data in ADU and
 an unknown true gain <code class="docutils literal notranslate"><span class="pre">g</span></code>, the source Poisson variance <code class="docutils literal notranslate"><span class="pre">flux/gain</span></code> is
@@ -637,13 +686,13 @@ usable catalog colors, keep the standard zero-point-calibrated magnitudes only.<
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 
 <span class="c1"># Load photometry catalog</span>
-<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="s1">'photometry.csv'</span><span class="p">)</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="s2">&quot;photometry.csv&quot;</span><span class="p">)</span>
 
 <span class="c1"># Filter for reliable sources only</span>
-<span class="n">reliable_sources</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s1">'quality_flag_1_1'</span><span class="p">]</span> <span class="o">==</span> <span class="s1">'good'</span><span class="p">]</span>
+<span class="n">reliable_sources</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;quality_flag_1_1&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;good&quot;</span><span class="p">]</span>
 
 <span class="c1"># Include marginal detections with warning</span>
-<span class="n">usable_sources</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s1">'quality_flag_1_1'</span><span class="p">]</span><span class="o">.</span><span class="n">isin</span><span class="p">([</span><span class="s1">'good'</span><span class="p">,</span> <span class="s1">'marginal'</span><span class="p">])]</span>
+<span class="n">usable_sources</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;quality_flag_1_1&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">isin</span><span class="p">([</span><span class="s2">&quot;good&quot;</span><span class="p">,</span> <span class="s2">&quot;marginal&quot;</span><span class="p">])]</span>
 </pre></div>
 </div>
 </section>
@@ -795,7 +844,10 @@ reliability indicator.</p></li>
 
            </div>
           </div>
-          <footer>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="advanced_features.html" class="btn btn-neutral float-left" title="Advanced Features" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="api.html" class="btn btn-neutral float-right" title="Backend API" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
 
   <hr/>
 

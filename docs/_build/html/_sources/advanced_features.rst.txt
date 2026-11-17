@@ -189,7 +189,7 @@ sources are matched by position and the median ``psf_mag − aperture_mag`` is
 reported for each aperture. Because the aperture fluxes are placed on the same
 total-flux scale as the PSF (see ``docs/PHOTOMETRY_FORMULAS.md``), the offset
 should be near zero; a median larger than
-``PSF_APERTURE_CONSISTENCY_THRESHOLD`` (0.15 mag) raises a warning and the
+``PSF_APERTURE_CONSISTENCY_THRESHOLD`` (0.15 mag) shows an info note and the
 per-aperture diagnostics are stored in
 ``st.session_state["psf_aperture_consistency"]``.
 

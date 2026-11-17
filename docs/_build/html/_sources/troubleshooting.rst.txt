@@ -252,7 +252,7 @@ service.
 
 **Unrealistic S/N or Magnitude Errors / Gain Reported as Ignored**
 
-*   **Problem**: The warning "... is outside the plausible effective-gain
+*   **Problem**: The info note "... is outside the plausible effective-gain
     range" appears, or bright-source magnitude errors look far too small (and
     the cosmic-ray mask covers a large part of the frame). On several CMOS
     cameras the FITS ``GAIN`` keyword stores an abstract *driver* setting
@@ -301,7 +301,7 @@ service.
 Catalog Query Issues (SIMBAD, SkyBoT, etc.)
 -------------------------------------------
 
-**Warning: "Query failed: Network error / Timeout"**
+**Info note: "Query failed: Network error / Timeout"**
 
 *   **Problem**: A temporary network issue occurred or the external catalog
     service is down or slow.
@@ -329,8 +329,8 @@ Catalog Query Issues (SIMBAD, SkyBoT, etc.)
     so parsing failed.
 *   **Solution**:
 
-    *   The pipeline now treats this as a warning and continues without SkyBoT
-        matches.
+    *   The pipeline now treats this as a non-fatal info note and continues
+        without SkyBoT matches.
     *   Re-run later to retry the external service response.
     *   If the preview starts with ``# Flag: -1``, SkyBoT reports a service-side
         error. Keep the accompanying ticket number and report it to IMCCE if the
@@ -351,8 +351,8 @@ Catalog Query Issues (SIMBAD, SkyBoT, etc.)
     *   Check the Astro-Colibri service status.
     *   HTTP 429 means the daily quota (100 requests/day) is exhausted; the
         log message states the reason returned by the API.
-    *   A warning about the 15, 20 or 30 arcsec tier means the association is
-        loose: check it visually in Aladin.
+    *   An info note about the 15, 20 or 30 arcsec tier means the association
+        is loose: check it visually in Aladin.
 
 **TNS: No matches, skipped or Error**
 
@@ -371,8 +371,8 @@ Catalog Query Issues (SIMBAD, SkyBoT, etc.)
         it, the others read it, and a copy older than 24 hours is downloaded
         again and overwritten. ``RPP_TNS_CACHE_DIR`` moves the cache (use the
         shared cache drive) and removing ``tns_public_objects.csv`` forces a
-        refresh. If the refresh fails the previous copy is still used and a
-        warning gives its age.
+        refresh. If the refresh fails the previous copy is still used and an
+        info note gives its age.
     *   ``RPP_TNS_CATALOG_PATH`` uses a CSV or ZIP catalogue already on disk and
         skips the download entirely.
     *   ``RPP_TNS_MIRROR_URL`` queries a shared ``tns-mirror`` API instead of
@@ -385,14 +385,15 @@ Catalog Query Issues (SIMBAD, SkyBoT, etc.)
         ``TNS_BOT_ID``/``TNS_BOT_NAME`` (bot) or ``TNS_USER_ID``/
         ``TNS_USER_NAME`` (user) are set, the TNS Search API is queried instead
         (``INFO: TNS: querying the Search API instead.``). A ``Search API
-        failed`` warning gives the reason (HTTP status, network error or rate
-        limit); a field holding more than 100 objects is truncated with a
-        warning. ``RPP_TNS_SANDBOX=1`` targets ``sandbox.wis-tns.org``, whose
+        failed`` message gives the reason (HTTP status, network error or rate
+        limit); a field holding more than 100 objects is truncated with an
+        info note. ``RPP_TNS_SANDBOX=1`` targets ``sandbox.wis-tns.org``, whose
         keys differ from production.
     *   An HTTP 403/401 on the staging URL means the request was refused (check
         the proxy and the marker); on the Search API it means the key or the
         ``tns_marker`` is invalid. HTTP 429 is the TNS rate limit.
-    *   A warning about the 20 or 30 arcsec tier means the association is loose:
+    *   An info note about the 20 or 30 arcsec tier means the association is
+        loose:
         transient positions are not always astrometrically accurate, so check
         it visually in Aladin.
     *   The step is best-effort: without the catalogue the export simply omits
@@ -454,8 +455,8 @@ Transient and Astro-Colibri Template Cutouts
 
 **The reference template panel is missing from a cutout**
 
-*   **Problem**: the science cutout is shown without the HiPS template, and a
-    warning lists the surveys that were tried.
+*   **Problem**: the science cutout is shown without the HiPS template, and an
+    info note lists the surveys that were tried.
 *   **Solution**: the template follows a chain: PanSTARRS (north) or SkyMapper
     (south), then SDSS, then DSS2, which covers the whole sky.
 
