@@ -1,22 +1,24 @@
+# Single light (solarized) theme, used regardless of the system preference.
 [theme]
+base = "light"
+font = "Styrene B"
+codeFont = "Fira Code:https://fonts.googleapis.com/css2?family=Fira+Code:wght@300..700&display=swap"
+showSidebarBorder = true
+headingFontSizes = ["40px", "32px", "24px"]
+headingFontWeights = 500
 primaryColor = "#bb5a38"
-backgroundColor = "#f4f3ed"
-secondaryBackgroundColor = "#ecebe3"
+backgroundColor = "#f7f2e4"
+secondaryBackgroundColor = "#efe8d6"
 textColor = "#3d3a2a"
 linkColor = "#3d3a2a"
 borderColor = "#d3d2ca"
 showWidgetBorder = true
 baseRadius = "0.6rem"
-font = "Styrene B"
-codeFont = "Fira Code:https://fonts.googleapis.com/css2?family=Fira+Code:wght@300..700&display=swap"
-codeBackgroundColor = "#ecebe4"
-showSidebarBorder = true
-headingFontSizes = ["40px", "32px", "24px"]
-headingFontWeights = 500
+codeBackgroundColor = "#efe9d8"
 
 [theme.sidebar]
-backgroundColor = "#e8e7dd"
-secondaryBackgroundColor = "#ecebe3"
+backgroundColor = "#f0ead9"
+secondaryBackgroundColor = "#efe8d6"
 
 [global]
 developmentMode = false
