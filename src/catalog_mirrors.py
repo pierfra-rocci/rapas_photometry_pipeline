@@ -7,12 +7,17 @@ TAP mirror. Each helper below tries the primary endpoint first, then the
 mirrors, so one unreachable service no longer fails a catalogue cross-match.
 
 The CDS page also lists NAOJ and China-VO VizieR mirrors, but publishes them
-over HTTP while astroquery hardcodes HTTPS, so they are not used here.
+over HTTP while astroquery hardcodes HTTPS, so they are only reachable through
+the ASU-TSV helper at the end of this module.
 """
 
 from __future__ import annotations
 
 import threading
+
+import numpy as np
+import requests
+from astropy.table import Table
 
 # VizieR mirrors, primary first. The Harvard mirror is the first fallback
 # because it is the one astroquery has historically used.
@@ -23,6 +28,17 @@ VIZIER_SERVERS = (
     VIZIER_FALLBACK_SERVER,
     "vizier.idia.ac.za",
 )
+
+# VizieR mirrors reachable through the ASU-TSV interface. astroquery can only
+# talk to HTTPS servers, so NAOJ and China-VO (HTTP-only, and listed by CDS as
+# official mirrors) are reachable exclusively through this path.
+VIZIER_TSV_SERVERS = (
+    "https://vizier.cfa.harvard.edu",
+    "https://vizier.idia.ac.za",
+    "http://vizier.nao.ac.jp",
+    "http://vizier.china-vo.org",
+)
+VIZIER_TSV_TIMEOUT_SECONDS = 60
 
 # SIMBAD mirrors, primary first (CDS, CfA Harvard, IDIA).
 SIMBAD_PRIMARY_SERVER = "simbad.cds.unistra.fr"
@@ -163,3 +179,100 @@ def query_gaia_with_fallback(
                 f"{primary_error}; the fallback mirror "
                 f"{GAIA_FALLBACK_TAP_SERVER} also failed: {fallback_error}"
             ) from fallback_error
+
+
+def _parse_vizier_asu_tsv(text: str) -> Table | None:
+    """Parse a VizieR ASU-TSV answer into an astropy Table.
+
+    The format is a ``#`` comment block, a tab-separated header, a units line,
+    a line of dashes and the data rows. ``None`` is returned when the answer
+    carries no table at all, which is how a degraded server replies; a header
+    with zero data rows yields an empty table instead, so the caller can tell
+    an unavailable catalogue from an uncovered field.
+    """
+    lines = [
+        line for line in text.splitlines() if line.strip() and not line.startswith("#")
+    ]
+    if len(lines) < 2:
+        return None
+
+    header = [name.strip() for name in lines[0].split("\t")]
+    first_data_line = None
+    for index, line in enumerate(lines[1:], start=1):
+        cells = [cell.strip() for cell in line.split("\t")]
+        if cells and all(set(cell) <= {"-"} for cell in cells if cell):
+            first_data_line = index + 1
+            break
+    if first_data_line is None:
+        return None
+
+    rows = [line.split("\t") for line in lines[first_data_line:] if line.strip()]
+    columns = {}
+    for position, name in enumerate(header):
+        values = [row[position].strip() if position < len(row) else "" for row in rows]
+        try:
+            data = np.array(
+                [float(value) if value else np.nan for value in values], dtype=float
+            )
+        except ValueError:
+            data = np.array(values, dtype=str)
+        columns[name or f"column{position}"] = data
+    return Table(columns)
+
+
+def query_vizier_asu_tsv(
+    catalog: str,
+    ra0: float,
+    dec0: float,
+    sr0: float,
+    filters: dict[str, str] | None = None,
+    servers: tuple[str, ...] = VIZIER_TSV_SERVERS,
+    timeout: float = VIZIER_TSV_TIMEOUT_SECONDS,
+) -> tuple[Table, str]:
+    """Query VizieR through the ASU-TSV interface of the mirrors.
+
+    Unlike :func:`get_vizier_catalog_with_fallback`, which goes through
+    astroquery's VOTable client, this uses the plain TSV interface and also
+    reaches the HTTP-only NAOJ and China-VO mirrors. ``-out.all`` is requested
+    because the explicit column selection astroquery sends (``-out=*``) is not
+    answered with data by the current servers.
+
+    Returns the catalogue table and the mirror that served it. The table is
+    empty when the field is simply not covered; ``RuntimeError`` is raised when
+    no mirror returns a table, so callers can report an unavailable service
+    instead of treating it as an empty field.
+    """
+    payload = [
+        f"-source={catalog}",
+        "-out.all",
+        "-out.max=unlimited",
+        f"-c={ra0:.8f} {dec0:.8f}",
+        f"-c.rd={sr0:.8f}",
+    ]
+    for column, expression in (filters or {}).items():
+        payload.append(f"{column}={expression}")
+    body = "\n".join(payload)
+
+    errors: list[str] = []
+    for server in servers:
+        url = server.rstrip("/") + "/viz-bin/asu-tsv"
+        try:
+            response = requests.post(url, data=body, timeout=timeout)
+        except requests.exceptions.RequestException as error:
+            errors.append(f"{server}: {error}")
+            continue
+        if response.status_code != 200:
+            errors.append(f"{server}: HTTP {response.status_code}")
+            continue
+        table = _parse_vizier_asu_tsv(response.text)
+        if table is None:
+            errors.append(f"{server}: no catalogue table in the TSV answer")
+            continue
+        return table, server
+
+    raise RuntimeError(
+        "VizieR ASU-TSV query failed on every mirror ("
+        + ", ".join(servers)
+        + "): "
+        + "; ".join(errors)
+    )

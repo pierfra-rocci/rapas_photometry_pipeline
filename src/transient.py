@@ -30,7 +30,7 @@ from src.tools_pipeline import (
     safe_wcs_create,
 )
 from src.utils import prepare_export_table, skybot_cone_search
-from src.catalog_mirrors import get_vizier_catalog_with_fallback
+from src.catalog_mirrors import get_vizier_catalog_with_fallback, query_vizier_asu_tsv
 
 # Shared singleton: configure once at import, never per request.
 Skybot._get_raw_response = False
@@ -346,6 +346,54 @@ def _is_transient_network_error(error, depth=0):
     ) or _is_transient_network_error(error.__context__, depth + 1)
 
 
+# Coordinate column names used by the reference surveys, in order of preference.
+CATALOG_RA_COLUMNS = ("raMean", "_RAJ2000", "RAICRS", "RAJ2000", "RA", "ra")
+CATALOG_DEC_COLUMNS = ("decMean", "_DEJ2000", "DEICRS", "DEJ2000", "DEC", "dec")
+
+# VizieR applies the reference magnitude limit on its side, so the filter must
+# name a column of the survey table itself: PanSTARRS DR1 serves gmag/rmag/imag,
+# while SkyMapper DR4 serves gPSF/rPSF/iPSF (stdpipe derives ``rmag`` from
+# ``rPSF`` only after the query, so filtering on the derived name returns
+# nothing).
+CATALOG_MAGNITUDE_SUFFIXES = {
+    "ps1": "mag",
+    "skymapper": "PSF",
+}
+
+
+def reference_magnitude_column(catalog, filter_name):
+    """Return the reference-survey magnitude column used by the VizieR filter.
+
+    Unknown surveys fall back to the ``<band>mag`` naming used by PanSTARRS and
+    SDSS.
+    """
+    return f"{filter_name}{CATALOG_MAGNITUDE_SUFFIXES.get(catalog, 'mag')}"
+
+
+def _normalise_catalog_columns(cat):
+    """Add ``ra``/``dec`` aliases to a reference catalogue and return the names.
+
+    PanSTARRS serves ``RAJ2000``/``DEJ2000`` while SkyMapper serves
+    ``RAICRS``/``DEICRS``, and stdpipe's transient filter defaults to
+    ``RAJ2000``/``DEJ2000``. The aliases are added instead of renaming because
+    stdpipe may still access the original names, and the names actually present
+    are returned so they can be given to the filter explicitly.
+    """
+    ra_col = next((name for name in CATALOG_RA_COLUMNS if name in cat.colnames), None)
+    dec_col = next((name for name in CATALOG_DEC_COLUMNS if name in cat.colnames), None)
+    if ra_col is None or dec_col is None:
+        return None, None
+    for alias, source in (
+        ("ra", ra_col),
+        ("dec", dec_col),
+        ("RA", ra_col),
+        ("DEC", dec_col),
+    ):
+        if alias not in cat.colnames:
+            cat[alias] = cat[source]
+    return ra_col, dec_col
+
+
 def find_candidates(
     photometry_table: pd.DataFrame,
     image: np.ndarray,
@@ -580,7 +628,15 @@ def find_candidates(
         st.info("No photometry_table provided - cannot get PSF magnitudes")
         return []
 
-    # Query the appropriate catalog
+    # Query the reference catalogue. VizieR's VOTable service (primary and
+    # astroquery mirrors) answers with no catalogue table at all while its data
+    # service is degraded, which used to be reported as an empty field. The
+    # ASU-TSV interface of the mirrors is tried next, and a catalogue that
+    # cannot be retrieved at all is reported as such.
+    vizier_id = catalogs.catalogs.get(catalog, {}).get("vizier", catalog)
+    catalog_filters = {reference_magnitude_column(catalog, filter_name): mag_limit}
+    cat = None
+    catalog_error = None
     try:
         cat, used_vizier_fallback = get_vizier_catalog_with_fallback(
             catalogs,
@@ -588,63 +644,51 @@ def find_candidates(
             dec_center,
             sr,
             catalog,
-            filters={filter_name + "mag": mag_limit},
+            filters=catalog_filters,
         )
         if used_vizier_fallback:
             st.info("VizieR primary mirror unavailable; using a fallback mirror.")
-
-        # Debug: show what columns we got
-        if cat is not None and len(cat) > 0:
-            st.write(f"Catalog query returned {len(cat)} sources.")
-
-            # Normalize coordinate column names for stdpipe compatibility
-            # Different catalogs use different column names:
-            # - SkyMapper: RAICRS/DEICRS
-            # - PanSTARRS: RAJ2000/DEJ2000 or raMean/decMean or _RAJ2000/_DEJ2000
-            # - Vizier internal: _RAJ2000/_DEJ2000
-            # stdpipe expects 'ra' and 'dec' columns (lowercase)
-            # IMPORTANT: We ADD columns instead of renaming, because stdpipe may
-            # internally access the original column names (e.g., 'RAJ2000')
-
-            # Find the RA column and create 'ra' alias
-            ra_col = None
-            dec_col = None
-            for col in ["raMean", "_RAJ2000", "RAICRS", "RAJ2000", "RA", "ra"]:
-                if col in cat.colnames:
-                    ra_col = col
-                    break
-            for col in ["decMean", "_DEJ2000", "DEICRS", "DEJ2000", "DEC", "dec"]:
-                if col in cat.colnames:
-                    dec_col = col
-                    break
-
-            if ra_col and dec_col:
-                # Add lowercase 'ra' and 'dec' columns (stdpipe standard)
-                if "ra" not in cat.colnames:
-                    cat["ra"] = cat[ra_col]
-                if "dec" not in cat.colnames:
-                    cat["dec"] = cat[dec_col]
-                # Also add uppercase 'RA' and 'DEC' for compatibility
-                if "RA" not in cat.colnames:
-                    cat["RA"] = cat[ra_col]
-                if "DEC" not in cat.colnames:
-                    cat["DEC"] = cat[dec_col]
-                st.write(f"✓ Added ra/dec columns from '{ra_col}'/'{dec_col}'")
-            else:
-                st.error(
-                    f"ERROR: Could not find RA/DEC columns. Available: {cat.colnames}"
-                )
-                return []
-        else:
-            st.info("Catalog query returned no sources")
-            return []
-
     except Exception as e:
-        st.error(f"Failed to query {catalog} catalog: {e}")
-        import traceback
+        catalog_error = e
 
-        st.error(traceback.format_exc())
+    if cat is None or len(cat) == 0:
+        try:
+            cat, tsv_server = query_vizier_asu_tsv(
+                vizier_id,
+                ra_center,
+                dec_center,
+                sr,
+                filters=catalog_filters,
+            )
+        except RuntimeError as tsv_error:
+            cause = catalog_error if catalog_error is not None else "no table returned"
+            st.error(
+                f"Reference catalogue unavailable: could not retrieve {catalog} "
+                f"({vizier_id}) around RA={ra_center:.3f}, Dec={dec_center:.3f} "
+                f"(radius {sr:.3f} deg). Transient candidates cannot be "
+                "identified without it - this is a catalogue-service failure, "
+                f"not an empty field ({cause}; {tsv_error})."
+            )
+            return []
+        st.info(
+            "VizieR VOTable service returned no catalogue; the ASU-TSV "
+            f"interface of {tsv_server} answered instead."
+        )
+
+    if len(cat) == 0:
+        st.info(
+            f"Reference catalogue {catalog} ({vizier_id}) has no sources within "
+            f"{sr:.3f} deg of RA={ra_center:.3f}, Dec={dec_center:.3f}; no "
+            "transient candidates can be identified in this field."
+        )
         return []
+
+    st.write(f"Catalog query returned {len(cat)} sources.")
+    ra_col, dec_col = _normalise_catalog_columns(cat)
+    if ra_col is None or dec_col is None:
+        st.error(f"ERROR: Could not find RA/DEC columns. Available: {cat.colnames}")
+        return []
+    st.write(f"✓ Added ra/dec columns from '{ra_col}'/'{dec_col}'")
 
     obj = Table(obj)
     if "flag" in obj.colnames and "flags" not in obj.colnames:
@@ -662,6 +706,12 @@ def find_candidates(
         return pipeline.filter_transient_candidates(
             obj,
             cat=cat,
+            # PanSTARRS serves RAJ2000/DEJ2000 but SkyMapper serves
+            # RAICRS/DEICRS, while stdpipe defaults to RAJ2000/DEJ2000, so the
+            # resolved names must be passed or southern fields fail with
+            # KeyError: 'RAJ2000'.
+            cat_col_ra=ra_col,
+            cat_col_dec=dec_col,
             # 'fwhm' is in pixels and 'pixscale' must be in deg/pixel (our
             # 'pixel_scale' is arcsec/pixel), so stdpipe derives the catalogue
             # matching radius as half the FWHM.  Previously an already

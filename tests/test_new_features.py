@@ -1103,6 +1103,316 @@ class TestTransientAladinSources:
         assert build_transient_aladin_sources(pd.DataFrame({"x": [1]})) == []
 
 
+def _run_find_candidates_with_catalog(monkeypatch, catalog_result, dec_center=2.0):
+    """Run find_candidates() up to the catalogue step with mocked detection.
+
+    *catalog_result* is what stdpipe's VizieR helper returns. Returns the kwargs
+    the module passes to stdpipe's transient filter, the result and the ``st``
+    mock so tests can inspect the messages shown to the user.
+    """
+    from astropy.table import Table
+    from astropy.wcs import WCS
+
+    import src.transient as transient_module
+
+    wcs = WCS(naxis=2)
+    wcs.wcs.crpix = [32.0, 32.0]
+    wcs.wcs.cdelt = [-0.0002777778, 0.0002777778]
+    wcs.wcs.crval = [150.0, dec_center]
+    wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+    header = wcs.to_header()
+
+    detections = Table(
+        {
+            "x": [10.0],
+            "y": [12.0],
+            "ra": [150.0],
+            "dec": [dec_center],
+            "flux": [1000.0],
+            "fluxerr": [10.0],
+            "flags": [0],
+        }
+    )
+    photometry_table = pd.DataFrame(
+        {"ra": [150.0], "dec": [dec_center], "psf_mag": [17.0], "psf_mag_err": [0.05]}
+    )
+
+    monkeypatch.setattr(
+        transient_module.photometry,
+        "get_objects_sextractor",
+        lambda *args, **kwargs: detections,
+    )
+    monkeypatch.setattr(transient_module, "fix_header", lambda h: (header, None))
+    monkeypatch.setattr(
+        transient_module, "resolve_effective_gain", lambda *args, **kwargs: 1.0
+    )
+    monkeypatch.setattr(
+        transient_module.stdpipe_astrometry,
+        "spherical_match",
+        lambda *args, **kwargs: (np.array([0]), np.array([0]), np.array([0.0])),
+    )
+    catalog_calls = {}
+
+    def fake_get_cat_vizier(*args, **kwargs):
+        catalog_calls.update(kwargs)
+        if isinstance(catalog_result, Exception):
+            raise catalog_result
+        return catalog_result
+
+    monkeypatch.setattr(
+        transient_module.catalogs, "get_cat_vizier", fake_get_cat_vizier
+    )
+
+    captured = {}
+
+    def fake_filter(obj, **kwargs):
+        captured.update(kwargs)
+        return obj[:0]
+
+    monkeypatch.setattr(
+        transient_module.pipeline, "filter_transient_candidates", fake_filter
+    )
+    mock_st = MagicMock()
+    monkeypatch.setattr(transient_module, "st", mock_st)
+
+    result = transient_module.find_candidates(
+        photometry_table,
+        np.zeros((64, 64)),
+        header,
+        fwhm=3.0,
+        pixel_scale=1.0,
+        ra_center=150.0,
+        dec_center=dec_center,
+        sr=0.1,
+        filter_cat="psf_mag",
+        filter_name="r",
+    )
+    return {
+        "captured": captured,
+        "catalog_filters": catalog_calls.get("filters"),
+        "result": result,
+        "st": mock_st,
+    }
+
+
+class TestTransientReferenceCatalogue:
+    """SkyMapper coordinate columns and an unavailable reference catalogue."""
+
+    def test_skymapper_coordinate_columns_are_passed_to_stdpipe(self, monkeypatch):
+        from astropy.table import Table
+
+        skymapper = Table(
+            {"RAICRS": [150.0], "DEICRS": [-2.0], "rPSF": [19.0], "flags": [0]}
+        )
+        outcome = _run_find_candidates_with_catalog(
+            monkeypatch, skymapper, dec_center=-2.0
+        )
+
+        assert outcome["captured"]["cat_col_ra"] == "RAICRS"
+        assert outcome["captured"]["cat_col_dec"] == "DEICRS"
+        # SkyMapper serves rPSF, not the derived rmag stdpipe adds later.
+        assert outcome["catalog_filters"] == {"rPSF": "<20.0"}
+
+    def test_northern_reference_filter_uses_mag_column(self, monkeypatch):
+        from astropy.table import Table
+
+        panstarrs = Table(
+            {"RAJ2000": [150.0], "DEJ2000": [2.0], "rmag": [19.0], "flags": [0]}
+        )
+        outcome = _run_find_candidates_with_catalog(monkeypatch, panstarrs)
+
+        assert outcome["catalog_filters"] == {"rmag": "<20.0"}
+
+    def test_unavailable_catalogue_is_reported_not_as_empty_field(self, monkeypatch):
+        import src.transient as transient_module
+
+        def unavailable(*args, **kwargs):
+            raise RuntimeError("no mirror answered")
+
+        monkeypatch.setattr(transient_module, "query_vizier_asu_tsv", unavailable)
+        outcome = _run_find_candidates_with_catalog(monkeypatch, None)
+
+        assert outcome["result"] == []
+        errors = [call.args[0] for call in outcome["st"].error.call_args_list]
+        infos = [call.args[0] for call in outcome["st"].info.call_args_list]
+        assert any("Reference catalogue unavailable" in message for message in errors)
+        assert not any("no sources" in message for message in infos)
+
+    def test_recovers_candidates_through_asu_tsv_fallback(self, monkeypatch):
+        """The VOTable path returns no table; the ASU-TSV mirror does.
+
+        The real stdpipe filter runs (only the remote X-Match catalogues are
+        dropped), so a candidate really has to survive the reference-catalogue
+        filtering with the table served by the fallback.
+        """
+        import matplotlib.pyplot as plt
+        from astropy.table import Table
+        from astropy.wcs import WCS
+        from stdpipe import pipeline as stdpipe_pipeline
+
+        import src.transient as transient_module
+
+        wcs = WCS(naxis=2)
+        wcs.wcs.crpix = [32.0, 32.0]
+        wcs.wcs.cdelt = [-0.0002777778, 0.0002777778]
+        wcs.wcs.crval = [150.0, 2.0]
+        wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+        header = wcs.to_header()
+
+        # Four detections, the last one without a counterpart in the catalogue.
+        detections = Table(
+            {
+                "x": [10.0, 11.0, 12.0, 14.0],
+                "y": [12.0, 13.0, 14.0, 16.0],
+                "ra": [150.0, 150.01, 150.02, 150.04],
+                "dec": [2.0, 2.01, 2.02, 2.04],
+                "flux": [1000.0, 900.0, 800.0, 300.0],
+                "fluxerr": [10.0, 10.0, 10.0, 10.0],
+                "flags": [0, 0, 0, 0],
+            }
+        )
+        photometry_table = pd.DataFrame(
+            {
+                "ra": [150.0, 150.01, 150.02, 150.04],
+                "dec": [2.0, 2.01, 2.02, 2.04],
+                "psf_mag": [17.0, 17.5, 18.0, 20.5],
+                "psf_mag_err": [0.05, 0.06, 0.07, 0.3],
+            }
+        )
+
+        # The astroquery VOTable path answers with no catalogue table at all.
+        monkeypatch.setattr(
+            transient_module.catalogs, "get_cat_vizier", lambda *args, **kwargs: None
+        )
+
+        # The ASU-TSV fallback serves the three catalogued positions.
+        tsv_answer = (
+            "#  VizieR Astronomical Server\n"
+            "RAJ2000\tDEJ2000\trmag\tgmag\n"
+            "\tdeg\tdeg\tmag\tmag\n"
+            "--------\t--------\t---\t---\n"
+            "150.000000\t+2.000000\t19.0\t19.6\n"
+            "150.010000\t+2.010000\t19.2\t19.8\n"
+            "150.020000\t+2.020000\t19.4\t20.0\n"
+        )
+
+        class _TSVResponse:
+            status_code = 200
+            text = tsv_answer
+
+        monkeypatch.setattr(
+            "src.catalog_mirrors.requests.post",
+            lambda *args, **kwargs: _TSVResponse(),
+        )
+
+        # Drop the remote VizieR cross-match but keep stdpipe's real filtering.
+        real_filter = stdpipe_pipeline.filter_transient_candidates
+
+        def filter_without_xmatch(obj, **kwargs):
+            kwargs["vizier"] = []
+            return real_filter(obj, **kwargs)
+
+        monkeypatch.setattr(
+            transient_module.pipeline,
+            "filter_transient_candidates",
+            filter_without_xmatch,
+        )
+
+        monkeypatch.setattr(
+            transient_module.photometry,
+            "get_objects_sextractor",
+            lambda *args, **kwargs: detections,
+        )
+        monkeypatch.setattr(transient_module, "fix_header", lambda h: (header, None))
+        monkeypatch.setattr(
+            transient_module, "resolve_effective_gain", lambda *args, **kwargs: 1.0
+        )
+        # Keep the candidate cutouts offline.
+        monkeypatch.setattr(
+            transient_module.cutouts,
+            "get_cutout",
+            lambda *args, **kwargs: {
+                "image": np.zeros((8, 8)),
+                "header": header,
+                "template": None,
+            },
+        )
+        monkeypatch.setattr(
+            transient_module,
+            "_fetch_hips_template",
+            lambda *args, **kwargs: (None, "PanSTARRS/DR1/r"),
+        )
+        monkeypatch.setattr(transient_module, "plot_cutout", lambda *a, **k: plt.figure())
+        mock_st = MagicMock()
+        monkeypatch.setattr(transient_module, "st", mock_st)
+
+        result = transient_module.find_candidates(
+            photometry_table,
+            np.zeros((64, 64)),
+            header,
+            fwhm=3.0,
+            pixel_scale=1.0,
+            ra_center=150.0,
+            dec_center=2.0,
+            sr=0.1,
+            filter_cat="psf_mag",
+            filter_name="r",
+        )
+
+        assert result is not None
+        assert len(result) == 1
+        assert float(result["ra"][0]) == pytest.approx(150.04, abs=0.01)
+        infos = [call.args[0] for call in mock_st.info.call_args_list]
+        assert any("ASU-TSV" in message for message in infos)
+        assert mock_st.error.call_args_list == []
+
+    def test_unavailable_catalogue_when_every_mirror_is_down(self, monkeypatch):
+        """Both VizieR paths failing must be reported, not read as an empty field."""
+        from src.catalog_mirrors import VIZIER_TSV_SERVERS
+
+        mirror_attempts = []
+
+        def unreachable(url, data, timeout):
+            mirror_attempts.append(url)
+            raise requests.exceptions.ConnectTimeout("VizieR is unreachable")
+
+        monkeypatch.setattr("src.catalog_mirrors.requests.post", unreachable)
+        outcome = _run_find_candidates_with_catalog(
+            monkeypatch, requests.exceptions.ConnectTimeout("VizieR is unreachable")
+        )
+
+        assert outcome["result"] == []
+        errors = [call.args[0] for call in outcome["st"].error.call_args_list]
+        infos = [call.args[0] for call in outcome["st"].info.call_args_list]
+        assert len(errors) == 1
+        assert "Reference catalogue unavailable" in errors[0]
+        assert "II/349/ps1" in errors[0]
+        assert "VizieR is unreachable" in errors[0]
+        assert not any("no sources" in message for message in infos)
+
+        # The whole ASU-TSV mirror chain was tried before giving up.
+        assert len(mirror_attempts) == len(VIZIER_TSV_SERVERS)
+        assert all(server in errors[0] for server in VIZIER_TSV_SERVERS)
+
+    def test_empty_catalogue_is_reported_as_uncovered_field(self, monkeypatch):
+        from astropy.table import Table
+
+        import src.transient as transient_module
+
+        empty = Table(
+            {"RAJ2000": np.array([], dtype=float), "DEJ2000": np.array([], dtype=float)}
+        )
+        monkeypatch.setattr(
+            transient_module,
+            "query_vizier_asu_tsv",
+            lambda *args, **kwargs: (empty, "https://vizier.example"),
+        )
+        outcome = _run_find_candidates_with_catalog(monkeypatch, empty)
+
+        infos = [call.args[0] for call in outcome["st"].info.call_args_list]
+        assert any("has no sources" in message for message in infos)
+
+
 def _run_transient_finder(monkeypatch, photometry_table):
     """Run find_candidates() with detection/catalog/filtering mocked out.
 

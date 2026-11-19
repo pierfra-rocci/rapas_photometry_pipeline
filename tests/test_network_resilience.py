@@ -39,6 +39,80 @@ from src.utils import ensure_source_ids, safe_catalog_query
 from src.xmatch_catalogs import cross_match_with_gaia, enhance_catalog
 
 
+# ─── VizieR ASU-TSV mirror fallback ─────────────────────────────────────────
+
+_VIZIER_TSV_SAMPLE = (
+    "#\n"
+    "#  VizieR Astronomical Server\n"
+    "RAJ2000\tDEJ2000\trmag\n"
+    "\tdeg\tdeg\tmag\n"
+    "--------\t--------\t---\n"
+    "150.000000\t+32.780000\t18.5000\n"
+    "150.100000\t+32.880000\t19.5000\n"
+)
+
+
+class _FakeTSVResponse:
+    def __init__(self, status_code, text):
+        self.status_code = status_code
+        self.text = text
+
+
+def test_parse_vizier_asu_tsv_reads_rows_and_types():
+    from src.catalog_mirrors import _parse_vizier_asu_tsv
+
+    table = _parse_vizier_asu_tsv(_VIZIER_TSV_SAMPLE)
+
+    assert list(table.colnames) == ["RAJ2000", "DEJ2000", "rmag"]
+    assert len(table) == 2
+    assert table["RAJ2000"][0] == pytest.approx(150.0)
+    assert table["rmag"][1] == pytest.approx(19.5)
+
+
+def test_parse_vizier_asu_tsv_distinguishes_failure_from_empty_field():
+    """No table at all is a failure; a header with no rows is an empty field."""
+    from src.catalog_mirrors import _parse_vizier_asu_tsv
+
+    header_only = "RAJ2000\tDEJ2000\n\tdeg\tdeg\n--------\t--------\n"
+    assert len(_parse_vizier_asu_tsv(header_only)) == 0
+    assert _parse_vizier_asu_tsv("<html>Page unavailable</html>") is None
+
+
+def test_query_vizier_asu_tsv_skips_unreachable_mirrors(monkeypatch):
+    from src.catalog_mirrors import VIZIER_TSV_SERVERS, query_vizier_asu_tsv
+
+    requested = []
+
+    def fake_post(url, data, timeout):
+        requested.append(url)
+        if "cfa.harvard" in url:
+            raise requests.exceptions.ConnectTimeout("timed out")
+        if "idia" in url:
+            return _FakeTSVResponse(404, "<html>Page unavailable</html>")
+        return _FakeTSVResponse(200, _VIZIER_TSV_SAMPLE)
+
+    monkeypatch.setattr("src.catalog_mirrors.requests.post", fake_post)
+    table, server = query_vizier_asu_tsv("II/349/ps1", 150.0, 32.78, 0.1)
+
+    assert len(table) == 2
+    assert server == VIZIER_TSV_SERVERS[2]
+    assert len(requested) == 3
+
+
+def test_query_vizier_asu_tsv_reports_total_failure(monkeypatch):
+    from src.catalog_mirrors import query_vizier_asu_tsv
+
+    monkeypatch.setattr(
+        "src.catalog_mirrors.requests.post",
+        lambda url, data, timeout: _FakeTSVResponse(
+            200, "<html>Page unavailable</html>"
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="ASU-TSV query failed on every mirror"):
+        query_vizier_asu_tsv("II/349/ps1", 150.0, 32.78, 0.1)
+
+
 def _make_candidates_table() -> Table:
     """Create a minimal candidate table for SkyBoT filtering tests."""
     return Table(
