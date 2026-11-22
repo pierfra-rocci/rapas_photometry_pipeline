@@ -1,5 +1,4 @@
 from stdpipe import pipeline, cutouts, catalogs, photometry, plots
-from stdpipe import pipeline, cutouts, catalogs, photometry, plots
 from typing import Any
 
 from stdpipe import astrometry as stdpipe_astrometry
@@ -31,7 +30,6 @@ from src.tools_pipeline import (
     safe_wcs_create,
 )
 from src.utils import prepare_export_table, skybot_cone_search
-from src.catalog_mirrors import get_vizier_catalog_with_fallback, query_vizier_asu_tsv
 from src.catalog_mirrors import get_vizier_catalog_with_fallback, query_vizier_asu_tsv
 
 # Shared singleton: configure once at import, never per request.
@@ -97,7 +95,6 @@ TRANSIENT_PSF_FALLBACK_MESSAGE = format_psf_fallback_message(
 # Magnitude excess (detected - catalogue) above which a source positionally
 # coincident with a reference catalogue entry is still kept as a transient
 # candidate.  Defaults to the long-standing 2.0 mag threshold.
-DEFAULT_TRANSIENT_MAG_THRESHOLD = 2.0
 DEFAULT_TRANSIENT_MAG_THRESHOLD = 2.0
 
 filter_ab_offset = {
@@ -328,7 +325,6 @@ def _resolve_photometry_columns(table, mag_column, err_column, filter_band=None)
 # just without the extra VizieR cross-checks.
 TRANSIENT_FILTER_ATTEMPTS = 2
 TRANSIENT_FILTER_RETRY_DELAY_SECONDS = 1.5
-TRANSIENT_FILTER_RETRY_DELAY_SECONDS = 1.5
 # Socket errno values that mean the peer could not be reached.
 NETWORK_ERRNOS = {101, 104, 110, 111, 113}
 
@@ -348,54 +344,6 @@ def _is_transient_network_error(error, depth=0):
     return _is_transient_network_error(
         error.__cause__, depth + 1
     ) or _is_transient_network_error(error.__context__, depth + 1)
-
-
-# Coordinate column names used by the reference surveys, in order of preference.
-CATALOG_RA_COLUMNS = ("raMean", "_RAJ2000", "RAICRS", "RAJ2000", "RA", "ra")
-CATALOG_DEC_COLUMNS = ("decMean", "_DEJ2000", "DEICRS", "DEJ2000", "DEC", "dec")
-
-# VizieR applies the reference magnitude limit on its side, so the filter must
-# name a column of the survey table itself: PanSTARRS DR1 serves gmag/rmag/imag,
-# while SkyMapper DR4 serves gPSF/rPSF/iPSF (stdpipe derives ``rmag`` from
-# ``rPSF`` only after the query, so filtering on the derived name returns
-# nothing).
-CATALOG_MAGNITUDE_SUFFIXES = {
-    "ps1": "mag",
-    "skymapper": "PSF",
-}
-
-
-def reference_magnitude_column(catalog, filter_name):
-    """Return the reference-survey magnitude column used by the VizieR filter.
-
-    Unknown surveys fall back to the ``<band>mag`` naming used by PanSTARRS and
-    SDSS.
-    """
-    return f"{filter_name}{CATALOG_MAGNITUDE_SUFFIXES.get(catalog, 'mag')}"
-
-
-def _normalise_catalog_columns(cat):
-    """Add ``ra``/``dec`` aliases to a reference catalogue and return the names.
-
-    PanSTARRS serves ``RAJ2000``/``DEJ2000`` while SkyMapper serves
-    ``RAICRS``/``DEICRS``, and stdpipe's transient filter defaults to
-    ``RAJ2000``/``DEJ2000``. The aliases are added instead of renaming because
-    stdpipe may still access the original names, and the names actually present
-    are returned so they can be given to the filter explicitly.
-    """
-    ra_col = next((name for name in CATALOG_RA_COLUMNS if name in cat.colnames), None)
-    dec_col = next((name for name in CATALOG_DEC_COLUMNS if name in cat.colnames), None)
-    if ra_col is None or dec_col is None:
-        return None, None
-    for alias, source in (
-        ("ra", ra_col),
-        ("dec", dec_col),
-        ("RA", ra_col),
-        ("DEC", dec_col),
-    ):
-        if alias not in cat.colnames:
-            cat[alias] = cat[source]
-    return ra_col, dec_col
 
 
 # Coordinate column names used by the reference surveys, in order of preference.
@@ -689,15 +637,6 @@ def find_candidates(
     catalog_filters = {reference_magnitude_column(catalog, filter_name): mag_limit}
     cat = None
     catalog_error = None
-    # Query the reference catalogue. VizieR's VOTable service (primary and
-    # astroquery mirrors) answers with no catalogue table at all while its data
-    # service is degraded, which used to be reported as an empty field. The
-    # ASU-TSV interface of the mirrors is tried next, and a catalogue that
-    # cannot be retrieved at all is reported as such.
-    vizier_id = catalogs.catalogs.get(catalog, {}).get("vizier", catalog)
-    catalog_filters = {reference_magnitude_column(catalog, filter_name): mag_limit}
-    cat = None
-    catalog_error = None
     try:
         cat, used_vizier_fallback = get_vizier_catalog_with_fallback(
             catalogs,
@@ -705,7 +644,6 @@ def find_candidates(
             dec_center,
             sr,
             catalog,
-            filters=catalog_filters,
             filters=catalog_filters,
         )
         if used_vizier_fallback:
@@ -744,51 +682,12 @@ def find_candidates(
             "transient candidates can be identified in this field."
         )
         return []
-    except Exception as e:
-        catalog_error = e
-
-    if cat is None or len(cat) == 0:
-        try:
-            cat, tsv_server = query_vizier_asu_tsv(
-                vizier_id,
-                ra_center,
-                dec_center,
-                sr,
-                filters=catalog_filters,
-            )
-        except RuntimeError as tsv_error:
-            cause = catalog_error if catalog_error is not None else "no table returned"
-            st.error(
-                f"Reference catalogue unavailable: could not retrieve {catalog} "
-                f"({vizier_id}) around RA={ra_center:.3f}, Dec={dec_center:.3f} "
-                f"(radius {sr:.3f} deg). Transient candidates cannot be "
-                "identified without it - this is a catalogue-service failure, "
-                f"not an empty field ({cause}; {tsv_error})."
-            )
-            return []
-        st.info(
-            "VizieR VOTable service returned no catalogue; the ASU-TSV "
-            f"interface of {tsv_server} answered instead."
-        )
-
-    if len(cat) == 0:
-        st.info(
-            f"Reference catalogue {catalog} ({vizier_id}) has no sources within "
-            f"{sr:.3f} deg of RA={ra_center:.3f}, Dec={dec_center:.3f}; no "
-            "transient candidates can be identified in this field."
-        )
-        return []
 
     st.write(f"Catalog query returned {len(cat)} sources.")
     ra_col, dec_col = _normalise_catalog_columns(cat)
     if ra_col is None or dec_col is None:
         st.error(f"ERROR: Could not find RA/DEC columns. Available: {cat.colnames}")
-    st.write(f"Catalog query returned {len(cat)} sources.")
-    ra_col, dec_col = _normalise_catalog_columns(cat)
-    if ra_col is None or dec_col is None:
-        st.error(f"ERROR: Could not find RA/DEC columns. Available: {cat.colnames}")
         return []
-    st.write(f"✓ Added ra/dec columns from '{ra_col}'/'{dec_col}'")
     st.write(f"✓ Added ra/dec columns from '{ra_col}'/'{dec_col}'")
 
     obj = Table(obj)
@@ -807,12 +706,6 @@ def find_candidates(
         return pipeline.filter_transient_candidates(
             obj,
             cat=cat,
-            # PanSTARRS serves RAJ2000/DEJ2000 but SkyMapper serves
-            # RAICRS/DEICRS, while stdpipe defaults to RAJ2000/DEJ2000, so the
-            # resolved names must be passed or southern fields fail with
-            # KeyError: 'RAJ2000'.
-            cat_col_ra=ra_col,
-            cat_col_dec=dec_col,
             # PanSTARRS serves RAJ2000/DEJ2000 but SkyMapper serves
             # RAICRS/DEICRS, while stdpipe defaults to RAJ2000/DEJ2000, so the
             # resolved names must be passed or southern fields fail with
@@ -913,32 +806,10 @@ def find_candidates(
 
     st.info(
         "Generating cutouts and retrieving template images for the first 10 candidates (best S/N first)..."
-        "Generating cutouts and retrieving template images for the first 10 candidates (best S/N first)..."
     )
     # Sort by best S/N: smallest mag_calib_err = highest S/N (S/N ≈ 1.0857 / mag_err)
     sorted_indices = np.argsort(candidates["mag_calib_err"])
     sorted_candidates = candidates[sorted_indices]
-    _show_candidate_cutouts(image, header, sorted_candidates, filter_name, dec_center)
-
-    # Let the Streamlit app warn the user when candidates rely on the aperture
-    # fallback instead of PSF photometry.
-    candidates.meta[TRANSIENT_MAGNITUDE_SOURCE_META] = magnitude_source
-    return candidates
-
-
-def _show_candidate_cutouts(
-    image, header, sorted_candidates, filter_name, dec_center, limit=10
-):
-    """Display a science/template cutout for each transient candidate.
-
-    hips2fits is queried for the first candidate only: when every fallback
-    fails, the service is down and the remaining candidates are shown with
-    their science frame alone after a single one-line note, instead of waiting
-    through the same timeouts again.
-    """
-    hips_service_down = False
-    coverage_note_shown = False
-    for _, cand in list(enumerate(sorted_candidates))[:limit]:
     _show_candidate_cutouts(image, header, sorted_candidates, filter_name, dec_center)
 
     # Let the Streamlit app warn the user when candidates rely on the aperture
@@ -967,22 +838,7 @@ def _show_candidate_cutouts(
         # The cutout's header carries the WCS, so the template matches its
         # exact field of view. _fetch_hips_template walks the survey chain:
         # reference survey, then SDSS, then DSS2, within one time budget.
-        # reference survey, then SDSS, then DSS2, within one time budget.
         cand_dec = float(cand_dict.get("dec", dec_center))
-        cutout["template"] = None
-        if not hips_service_down:
-            try:
-                cutout["template"], _template_survey = _fetch_hips_template(
-                    cutout.get("header"), filter_name, cand_dec
-                )
-            except Exception:
-                # HipsTemplateServiceError: no CDS host answered in time.
-                hips_service_down = True
-                st.info(HIPS_TEMPLATE_CONNECTION_MESSAGE)
-            else:
-                if cutout["template"] is None and not coverage_note_shown:
-                    coverage_note_shown = True
-                    st.info(HIPS_TEMPLATE_COVERAGE_MESSAGE)
         cutout["template"] = None
         if not hips_service_down:
             try:
@@ -1079,10 +935,6 @@ HIPS_TEMPLATE_DSS = "CDS/P/DSS2/color"
 # timeout: one request never waits more than HIPS2FITS_TIMEOUT_SECONDS and the
 # whole survey/host chain stops at HIPS_TEMPLATE_TIMEOUT_SECONDS, so an
 # unreachable CDS service delays a cutout by at most 30 seconds.
-# hips2fits is queried directly, so every fallback carries an explicit
-# timeout: one request never waits more than HIPS2FITS_TIMEOUT_SECONDS and the
-# whole survey/host chain stops at HIPS_TEMPLATE_TIMEOUT_SECONDS, so an
-# unreachable CDS service delays a cutout by at most 30 seconds.
 HIPS2FITS_URLS = (
     "https://alasky.cds.unistra.fr/hips-image-services/hips2fits",
     "https://alasky.u-strasbg.fr/hips-image-services/hips2fits",
@@ -1093,20 +945,11 @@ HIPS_TEMPLATE_TIMEOUT_SECONDS = 30.0
 # One-line notes shown under a cutout instead of the full requests error.
 HIPS_TEMPLATE_CONNECTION_MESSAGE = "No cutouts: connection problem with the HiPS URL."
 HIPS_TEMPLATE_COVERAGE_MESSAGE = "No cutouts: no HiPS coverage at this position."
-HIPS2FITS_TIMEOUT_SECONDS = 10.0
-HIPS_TEMPLATE_TIMEOUT_SECONDS = 30.0
-
-# One-line notes shown under a cutout instead of the full requests error.
-HIPS_TEMPLATE_CONNECTION_MESSAGE = "No cutouts: connection problem with the HiPS URL."
-HIPS_TEMPLATE_COVERAGE_MESSAGE = "No cutouts: no HiPS coverage at this position."
 
 
 class HipsTemplateServiceError(RuntimeError):
     """No CDS hips2fits host answered any of the template requests.
-    """No CDS hips2fits host answered any of the template requests.
 
-    The exception text keeps the surveys and the last network error for
-    debugging; the app only shows HIPS_TEMPLATE_CONNECTION_MESSAGE.
     The exception text keeps the surveys and the last network error for
     debugging; the app only shows HIPS_TEMPLATE_CONNECTION_MESSAGE.
     """
@@ -1149,31 +992,12 @@ def _fetch_hips_template_direct(cutout_header, surveys, deadline=None):
     survey/host chain stops once *deadline* (default: now plus
     ``HIPS_TEMPLATE_TIMEOUT_SECONDS``) passes, so an unreachable CDS service
     cannot stall the cutouts for minutes.
-def _hips2fits_image(url, hips, params, timeout):
-    """Download one template image from one hips2fits host."""
-    from astropy.io import fits
-
-    response = requests.get(url, params={**params, "hips": hips}, timeout=timeout)
-    response.raise_for_status()
-    with fits.open(io.BytesIO(response.content)) as hdul:
-        return np.asarray(hdul[0].data, dtype=float)
-
-
-def _fetch_hips_template_direct(cutout_header, surveys, deadline=None):
-    """Fetch a template straight from hips2fits, within a time budget.
-
-    A request never waits longer than ``HIPS2FITS_TIMEOUT_SECONDS`` and the
-    survey/host chain stops once *deadline* (default: now plus
-    ``HIPS_TEMPLATE_TIMEOUT_SECONDS``) passes, so an unreachable CDS service
-    cannot stall the cutouts for minutes.
 
     Returns ``(template, survey)``; raises ``HipsTemplateServiceError`` when no
     host answered at all.
     """
     from astropy.wcs import WCS
 
-    if deadline is None:
-        deadline = time.monotonic() + HIPS_TEMPLATE_TIMEOUT_SECONDS
     if deadline is None:
         deadline = time.monotonic() + HIPS_TEMPLATE_TIMEOUT_SECONDS
     if cutout_header is None:
@@ -1203,13 +1027,6 @@ def _fetch_hips_template_direct(cutout_header, surveys, deadline=None):
                 image = _hips2fits_image(
                     url, hips, params, min(HIPS2FITS_TIMEOUT_SECONDS, remaining)
                 )
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            try:
-                image = _hips2fits_image(
-                    url, hips, params, min(HIPS2FITS_TIMEOUT_SECONDS, remaining)
-                )
             except Exception as e:
                 last_error = e
                 continue
@@ -1219,11 +1036,8 @@ def _fetch_hips_template_direct(cutout_header, surveys, deadline=None):
             break  # This survey has no tiles here: try the next one.
         if deadline - time.monotonic() <= 0:
             break
-        if deadline - time.monotonic() <= 0:
-            break
     if not answered and last_error is not None:
         raise HipsTemplateServiceError(
-            "hips2fits did not answer for " + ", ".join(surveys) + f": {last_error}"
             "hips2fits did not answer for " + ", ".join(surveys) + f": {last_error}"
         )
     return None, None
@@ -1236,24 +1050,13 @@ def _fetch_hips_template(cutout_header, filter_name, dec_center):
     through the explicitly timed hips2fits request so the whole chain stays
     within ``HIPS_TEMPLATE_TIMEOUT_SECONDS``. A survey is abandoned on error,
     on no response, or when the field has no usable pixels in it.
-    Tries the reference survey for the hemisphere, then SDSS, then DSS2, all
-    through the explicitly timed hips2fits request so the whole chain stays
-    within ``HIPS_TEMPLATE_TIMEOUT_SECONDS``. A survey is abandoned on error,
-    on no response, or when the field has no usable pixels in it.
 
     Returns ``(template, survey)`` with the full HiPS identifier; ``template``
     is None when a survey answered but none had usable (finite, non-empty)
     data. Raises ``HipsTemplateServiceError`` when nothing answered.
-    data. Raises ``HipsTemplateServiceError`` when nothing answered.
     """
     if cutout_header is None:
-    if cutout_header is None:
         return None, None
-    return _fetch_hips_template_direct(
-        cutout_header,
-        _hips_template_surveys(filter_name, dec_center),
-        deadline=time.monotonic() + HIPS_TEMPLATE_TIMEOUT_SECONDS,
-    )
     return _fetch_hips_template_direct(
         cutout_header,
         _hips_template_surveys(filter_name, dec_center),
@@ -1327,10 +1130,6 @@ def plot_astrocolibri_cutouts(
     # their science frame only, and a coverage gap is noted just once.
     hips_service_down = False
     coverage_note_shown = False
-    # One HiPS request per run: after an outage the remaining cutouts keep
-    # their science frame only, and a coverage gap is noted just once.
-    hips_service_down = False
-    coverage_note_shown = False
     for i, (_, row) in enumerate(ac_rows.iterrows()):
         # Build a minimal dict compatible with stdpipe's get_cutout
         ra = row.get("ra")
@@ -1364,20 +1163,6 @@ def plot_astrocolibri_cutouts(
             continue
 
         survey = None
-        cutout["template"] = None
-        if not hips_service_down:
-            try:
-                cutout["template"], survey = _fetch_hips_template(
-                    cutout.get("header"), filter_name, float(dec)
-                )
-            except Exception:
-                # HipsTemplateServiceError: no CDS host answered in time.
-                hips_service_down = True
-                st.info(HIPS_TEMPLATE_CONNECTION_MESSAGE)
-            else:
-                if cutout["template"] is None and not coverage_note_shown:
-                    coverage_note_shown = True
-                    st.info(HIPS_TEMPLATE_COVERAGE_MESSAGE)
         cutout["template"] = None
         if not hips_service_down:
             try:
