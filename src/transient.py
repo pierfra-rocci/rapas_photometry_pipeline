@@ -836,8 +836,9 @@ def _show_candidate_cutouts(
         # Create the cutout from image based on the candidate
         cutout = cutouts.get_cutout(image, cand_dict, 25, header=header)
         # The cutout's header carries the WCS, so the template matches its
-        # exact field of view. _fetch_hips_template walks the survey chain:
-        # reference survey, then SDSS, then DSS2, within one time budget.
+        # exact field of view. _fetch_hips_template walks the chain within one
+        # time budget: the reference survey through hips2fits, then that
+        # survey's own cutout service (PS1 north, SkyMapper south).
         cand_dec = float(cand_dict.get("dec", dec_center))
         cutout["template"] = None
         if not hips_service_down:
@@ -925,16 +926,18 @@ def sanitize_astrocolibri_name(name) -> str:
     return "".join(c if c.isalnum() or c in "_-" else "_" for c in str(name))
 
 
-# Template cutouts come from CDS HiPS. The reference survey depends on the
-# hemisphere; SDSS then DSS2 follow, DSS2 being all-sky, so a field the
-# reference survey does not cover - or an unreachable survey server - still
-# gets a template.
-HIPS_TEMPLATE_SDSS = "SDSS/DR9/color"
-HIPS_TEMPLATE_DSS = "CDS/P/DSS2/color"
-# hips2fits is queried directly, so every fallback carries an explicit
-# timeout: one request never waits more than HIPS2FITS_TIMEOUT_SECONDS and the
-# whole survey/host chain stops at HIPS_TEMPLATE_TIMEOUT_SECONDS, so an
-# unreachable CDS service delays a cutout by at most 30 seconds.
+# Template cutouts come from the reference survey: PanSTARRS/DR1 in the
+# north, SkyMapper/DR4 in the south. The survey is requested from CDS HiPS
+# first; when hips2fits cannot deliver it (no tiles at the position, an
+# unreachable host), the survey's own cutout service is queried instead: the
+# PS1 Image Cutout Service for northern fields, the SkyMapper Image Cutout
+# Service for southern ones. Both answer with a FITS stamp carrying a WCS,
+# which is resampled onto the science cutout so the panels stay aligned.
+#
+# hips2fits is queried directly, so every request carries an explicit timeout:
+# one request never waits more than HIPS2FITS_TIMEOUT_SECONDS and the whole
+# chain stops at HIPS_TEMPLATE_TIMEOUT_SECONDS, so an unreachable service
+# delays a cutout by at most 30 seconds.
 HIPS2FITS_URLS = (
     "https://alasky.cds.unistra.fr/hips-image-services/hips2fits",
     "https://alasky.u-strasbg.fr/hips-image-services/hips2fits",
@@ -942,29 +945,53 @@ HIPS2FITS_URLS = (
 HIPS2FITS_TIMEOUT_SECONDS = 10.0
 HIPS_TEMPLATE_TIMEOUT_SECONDS = 30.0
 
+# Survey cutout services, documented at
+# https://outerspace.stsci.edu/spaces/PANSTARRS/pages/298812251 and
+# https://skymapper.anu.edu.au/how-to-access/ . ps1filenames.py lists the
+# skycell file covering a position and fitscut.cgi extracts the stamp from it;
+# the SkyMapper DR4 Simple Image Access service lists the available cutouts
+# with the URL of each FITS stamp in its get_fits column.
+PS1_FILENAMES_URL = "https://ps1images.stsci.edu/cgi-bin/ps1filenames.py"
+PS1_FITSCUT_URL = "https://ps1images.stsci.edu/cgi-bin/fitscut.cgi"
+PS1_FILTERS = "grizy"
+PS1_PIXEL_SCALE_ARCSEC = 0.25
+PS1_CUTOUT_LABEL = "PanSTARRS/DR1/{band} (cutout service)"
+SKYMAPPER_SIAP_URL = "https://api.skymapper.nci.org.au/public/siap/dr4/query"
+SKYMAPPER_HOST = "https://api.skymapper.nci.org.au"
+SKYMAPPER_FILTERS = "uvgriz"
+SKYMAPPER_CUTOUT_LABEL = "SkyMapper/DR4/{band} (cutout service)"
+# The cutout services are called with at most this much time per request, and
+# never past the shared template deadline.
+SURVEY_CUTOUT_TIMEOUT_SECONDS = 10.0
+
 # One-line notes shown under a cutout instead of the full requests error.
-HIPS_TEMPLATE_CONNECTION_MESSAGE = "No cutouts: connection problem with the HiPS URL."
-HIPS_TEMPLATE_COVERAGE_MESSAGE = "No cutouts: no HiPS coverage at this position."
+HIPS_TEMPLATE_CONNECTION_MESSAGE = (
+    "No cutouts: connection problem with the survey image services."
+)
+HIPS_TEMPLATE_COVERAGE_MESSAGE = (
+    "No cutouts: no reference-survey coverage at this position."
+)
 
 
 class HipsTemplateServiceError(RuntimeError):
-    """No CDS hips2fits host answered any of the template requests.
+    """No template service answered the cutout requests.
 
-    The exception text keeps the surveys and the last network error for
-    debugging; the app only shows HIPS_TEMPLATE_CONNECTION_MESSAGE.
+    Raised when neither CDS hips2fits nor the reference survey's own cutout
+    service could be reached. The exception text keeps the services and the
+    last network error for debugging; the app only shows
+    HIPS_TEMPLATE_CONNECTION_MESSAGE.
     """
 
 
 def _hips_template_surveys(filter_name, dec_center):
-    """Return the HiPS identifiers tried for a template, in order.
+    """Return the HiPS identifiers tried for a template.
 
-    PanSTARRS (north) or SkyMapper (south) is the reference survey. SDSS and
-    then DSS2 follow, so an uncovered field or an unreachable survey server
-    still yields a template.
+    PanSTARRS/DR1 (north) or SkyMapper/DR4 (south) is the reference survey.
+    When hips2fits cannot deliver it, :func:`_fetch_survey_cutout` asks the
+    survey's own cutout service for the same field.
     """
     primary = "SkyMapper/DR4/" if dec_center < 0 else "PanSTARRS/DR1/"
-    return [primary + filter_name, HIPS_TEMPLATE_SDSS, HIPS_TEMPLATE_DSS]
-
+    return [primary + filter_name]
 
 def _fix_panstarrs_scaling(image, hips):
     """Undo the non-linear asinh scaling of the PanSTARRS HiPS, as stdpipe."""
@@ -1043,24 +1070,300 @@ def _fetch_hips_template_direct(cutout_header, surveys, deadline=None):
     return None, None
 
 
+def _cutout_geometry(cutout_header):
+    """Return ``(ra, dec, width_deg, height_deg)`` of a cutout header.
+
+    The centre and the angular size come from the cutout's own WCS, so a
+    survey cutout covers the same sky region as the science stamp. ``None`` is
+    returned when the header carries no usable celestial WCS.
+    """
+    from astropy.wcs import WCS
+    from astropy.wcs.utils import proj_plane_pixel_scales
+
+    try:
+        wcs = WCS(cutout_header)
+        if not wcs.is_celestial:
+            return None
+        nx = int(cutout_header["NAXIS1"])
+        ny = int(cutout_header["NAXIS2"])
+        ra, dec = wcs.all_pix2world(nx / 2.0, ny / 2.0, 0)
+        scales = np.asarray(proj_plane_pixel_scales(wcs), dtype=float)
+    except Exception:
+        return None
+    ra, dec = float(np.ravel(ra)[0]), float(np.ravel(dec)[0])
+    if not (np.isfinite(ra) and np.isfinite(dec)):
+        return None
+    if scales.size != 2 or not np.all(np.isfinite(scales)) or not np.all(scales):
+        return None
+    return ra, dec, nx * abs(scales[0]), ny * abs(scales[1])
+
+
+def _resample_to_cutout(image, source_header, cutout_header):
+    """Resample a survey stamp onto the science cutout pixel grid.
+
+    The survey stamp covers the same position but a different pixel grid (0.25
+    arcsec/pixel for PS1, a rotated CCD frame for SkyMapper), so it is sampled
+    through its own WCS. ``None`` is returned when either WCS is unusable.
+    """
+    from astropy.wcs import WCS
+    from scipy.ndimage import map_coordinates
+
+    try:
+        source_wcs = WCS(source_header)
+        target_wcs = WCS(cutout_header)
+        if not (source_wcs.is_celestial and target_wcs.is_celestial):
+            return None
+        ny = int(cutout_header["NAXIS2"])
+        nx = int(cutout_header["NAXIS1"])
+        yy, xx = np.mgrid[0:ny, 0:nx]
+        ra, dec = target_wcs.all_pix2world(xx, yy, 0)
+        sx, sy = source_wcs.all_world2pix(ra, dec, 0)
+        if not (np.isfinite(sx).any() and np.isfinite(sy).any()):
+            return None
+        return map_coordinates(
+            np.asarray(image, dtype=float),
+            [sy, sx],
+            order=1,
+            cval=np.nan,
+            mode="constant",
+        )
+    except Exception:
+        return None
+
+
+def _survey_stamp_template(content, cutout_header):
+    """Read a survey FITS stamp and resample it onto the cutout grid.
+
+    Returns ``None`` when the response is not a usable two-dimensional image
+    or cannot be resampled.
+    """
+    from astropy.io import fits
+
+    try:
+        with fits.open(io.BytesIO(content)) as hdul:
+            image = np.asarray(hdul[0].data, dtype=float)
+            source_header = hdul[0].header.copy()
+    except Exception:
+        return None
+    if image.ndim != 2 or not np.isfinite(image).any():
+        return None
+    template = _resample_to_cutout(image, source_header, cutout_header)
+    if template is None or not np.isfinite(template).any():
+        return None
+    return template
+
+
+def _ps1_band(filter_name):
+    """Return the PS1 filter to request for *filter_name* (``r`` if absent)."""
+    band = str(filter_name or "r").strip().lower()
+    return band if band in PS1_FILTERS else "r"
+
+
+def _fetch_ps1_cutout(
+    cutout_header, filter_name, ra, dec, width_deg, height_deg, deadline
+):
+    """Fetch a template stamp from the PS1 Image Cutout Service.
+
+    ``ps1filenames.py`` returns the skycell file covering the position for the
+    requested filter, and ``fitscut.cgi`` extracts the stamp from it in FITS
+    format. Returns ``(template, survey)``; raises
+    ``HipsTemplateServiceError`` when the service cannot be reached.
+    """
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise HipsTemplateServiceError("no time left for the PS1 cutout service")
+    band = _ps1_band(filter_name)
+    try:
+        response = requests.get(
+            PS1_FILENAMES_URL,
+            params={"ra": ra, "dec": dec, "filters": band},
+            timeout=min(SURVEY_CUTOUT_TIMEOUT_SECONDS, remaining),
+        )
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        raise HipsTemplateServiceError(f"PS1 cutout service unreachable: {e}")
+    try:
+        listing = Table.read(response.text, format="ascii")
+    except Exception:
+        return None, None
+    if len(listing) == 0 or "filename" not in listing.colnames:
+        return None, None
+    filename = str(listing["filename"][0]).strip()
+    if not filename:
+        return None, None
+
+    # fitscut.cgi works in PS1 pixels (0.25 arcsec/pixel); ask for the same
+    # field of view as the science cutout, capped at the 6000 px limit.
+    size = int(round(max(width_deg, height_deg) * 3600.0 / PS1_PIXEL_SCALE_ARCSEC))
+    size = int(np.clip(size, 1, 6000))
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return None, None
+    try:
+        response = requests.get(
+            PS1_FITSCUT_URL,
+            params={
+                "ra": ra,
+                "dec": dec,
+                "size": size,
+                "format": "fits",
+                "red": filename,
+            },
+            timeout=min(SURVEY_CUTOUT_TIMEOUT_SECONDS, remaining),
+        )
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        raise HipsTemplateServiceError(f"PS1 cutout service unreachable: {e}")
+
+    template = _survey_stamp_template(response.content, cutout_header)
+    if template is None:
+        return None, None
+    return template, PS1_CUTOUT_LABEL.format(band=band)
+
+
+def _fetch_skymapper_cutout(
+    cutout_header, filter_name, ra, dec, width_deg, height_deg, deadline
+):
+    """Fetch a template stamp from the SkyMapper DR4 cutout service.
+
+    The Simple Image Access query lists the cutouts covering the position and
+    the ``get_fits`` column holds the URL of each FITS stamp, which is then
+    downloaded. Returns ``(template, survey)``; raises
+    ``HipsTemplateServiceError`` when the service cannot be reached.
+    """
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise HipsTemplateServiceError(
+            "no time left for the SkyMapper cutout service"
+        )
+    band = str(filter_name or "r").strip().lower()
+    if band not in SKYMAPPER_FILTERS:
+        band = "r"
+    # The service restricts a cutout side to 10 arcmin.
+    size = min(max(width_deg, height_deg), 10.0 / 60.0)
+    try:
+        response = requests.get(
+            SKYMAPPER_SIAP_URL,
+            params={
+                "POS": f"{ra},{dec}",
+                "SIZE": f"{size:.6f}",
+                "BAND": band,
+                "FORMAT": "image/fits",
+                "INTERSECT": "CENTER",
+                "RESPONSEFORMAT": "CSV",
+            },
+            timeout=min(SURVEY_CUTOUT_TIMEOUT_SECONDS, remaining),
+        )
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        raise HipsTemplateServiceError(f"SkyMapper cutout service unreachable: {e}")
+    try:
+        listing = pd.read_csv(io.StringIO(response.text))
+    except Exception:
+        return None, None
+    if len(listing) == 0:
+        return None, None
+    url = None
+    for column in ("get_fits", "get_image"):
+        if column not in listing.columns:
+            continue
+        value = listing[column].iloc[0]
+        if isinstance(value, str) and value.strip():
+            url = value.strip()
+            break
+    if url is None:
+        return None, None
+    if url.startswith("/"):
+        url = SKYMAPPER_HOST + url
+    elif not url.lower().startswith("http"):
+        return None, None
+
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return None, None
+    try:
+        response = requests.get(
+            url, timeout=min(SURVEY_CUTOUT_TIMEOUT_SECONDS, remaining)
+        )
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        raise HipsTemplateServiceError(f"SkyMapper cutout service unreachable: {e}")
+
+    template = _survey_stamp_template(response.content, cutout_header)
+    if template is None:
+        return None, None
+    return template, SKYMAPPER_CUTOUT_LABEL.format(band=band)
+
+
+def _fetch_survey_cutout(cutout_header, filter_name, dec_center, deadline):
+    """Fetch the reference-survey stamp from the survey's own cutout service.
+
+    The PS1 Image Cutout Service serves northern fields and the SkyMapper
+    Image Cutout Service southern ones. Returns ``(template, survey)``;
+    ``(None, None)`` when the service answers without usable pixels, and
+    ``HipsTemplateServiceError`` when it cannot be reached.
+    """
+    geometry = _cutout_geometry(cutout_header)
+    if geometry is None:
+        return None, None
+    ra, dec, width_deg, height_deg = geometry
+    if dec_center < 0:
+        return _fetch_skymapper_cutout(
+            cutout_header, filter_name, ra, dec, width_deg, height_deg, deadline
+        )
+    return _fetch_ps1_cutout(
+        cutout_header, filter_name, ra, dec, width_deg, height_deg, deadline
+    )
+
+
 def _fetch_hips_template(cutout_header, filter_name, dec_center):
-    """Fetch a HiPS template matching *cutout_header*.
+    """Fetch a template matching *cutout_header*.
 
-    Tries the reference survey for the hemisphere, then SDSS, then DSS2, all
-    through the explicitly timed hips2fits request so the whole chain stays
-    within ``HIPS_TEMPLATE_TIMEOUT_SECONDS``. A survey is abandoned on error,
-    on no response, or when the field has no usable pixels in it.
+    Asks CDS hips2fits for the reference survey of the hemisphere first; when
+    that does not yield a usable stamp, the same survey is requested from its
+    own cutout service (PS1 north, SkyMapper south). The whole chain stays
+    within ``HIPS_TEMPLATE_TIMEOUT_SECONDS``, and a service is abandoned on
+    error, on no response, or when the field has no usable pixels in it.
 
-    Returns ``(template, survey)`` with the full HiPS identifier; ``template``
-    is None when a survey answered but none had usable (finite, non-empty)
+    Returns ``(template, survey)`` with the survey identifier; ``template`` is
+    None when the services answered but none had usable (finite, non-empty)
     data. Raises ``HipsTemplateServiceError`` when nothing answered.
     """
     if cutout_header is None:
         return None, None
-    return _fetch_hips_template_direct(
-        cutout_header,
-        _hips_template_surveys(filter_name, dec_center),
-        deadline=time.monotonic() + HIPS_TEMPLATE_TIMEOUT_SECONDS,
+    filter_name = filter_name or "r"
+    deadline = time.monotonic() + HIPS_TEMPLATE_TIMEOUT_SECONDS
+    answered = False
+    failures = []
+
+    try:
+        template, survey = _fetch_hips_template_direct(
+            cutout_header,
+            _hips_template_surveys(filter_name, dec_center),
+            deadline=deadline,
+        )
+    except HipsTemplateServiceError as e:
+        failures.append(str(e))
+    else:
+        if template is not None:
+            return template, survey
+        answered = True
+
+    try:
+        template, survey = _fetch_survey_cutout(
+            cutout_header, filter_name, dec_center, deadline
+        )
+    except HipsTemplateServiceError as e:
+        failures.append(str(e))
+    else:
+        if template is not None:
+            return template, survey
+        answered = True
+
+    if answered:
+        return None, None
+    raise HipsTemplateServiceError(
+        "; ".join(failures) or "no template service answered"
     )
 
 

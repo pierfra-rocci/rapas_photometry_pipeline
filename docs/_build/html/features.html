@@ -442,9 +442,10 @@ final catalog lacks usable color information for a source</p></li>
 <li><p>Event classification and discovery information</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">plot_astrocolibri_cutouts()</span></code>: postage-stamp cutouts of Astro-Colibri
 candidates extracted from the science frame for rapid visual inspection;
-each stamp shows the HiPS template (PanSTARRS north, SkyMapper south, then
-SDSS and DSS2 for uncovered fields or unreachable servers), the circled
-source and its calibrated magnitude</p></li>
+each stamp shows the reference-survey template (PanSTARRS north,
+SkyMapper south; when hips2fits cannot serve it, the survey’s own PS1 or
+SkyMapper cutout service is used), the circled source and its calibrated
+magnitude</p></li>
 <li><p>Search API fallback: if the staged catalogue cannot be obtained, one
 <code class="docutils literal notranslate"><span class="pre">/api/get/search</span></code> cone search over the field followed by
 <code class="docutils literal notranslate"><span class="pre">/api/get/object</span></code> for each object (up to 100) is used instead;

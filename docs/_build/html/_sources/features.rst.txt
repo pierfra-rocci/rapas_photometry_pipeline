@@ -309,9 +309,10 @@ Multi-Catalog Cross-Matching
    - Event classification and discovery information
    - ``plot_astrocolibri_cutouts()``: postage-stamp cutouts of Astro-Colibri
      candidates extracted from the science frame for rapid visual inspection;
-     each stamp shows the HiPS template (PanSTARRS north, SkyMapper south, then
-     SDSS and DSS2 for uncovered fields or unreachable servers), the circled
-     source and its calibrated magnitude
+     each stamp shows the reference-survey template (PanSTARRS north,
+     SkyMapper south; when hips2fits cannot serve it, the survey's own PS1 or
+     SkyMapper cutout service is used), the circled source and its calibrated
+     magnitude
    - Search API fallback: if the staged catalogue cannot be obtained, one
      ``/api/get/search`` cone search over the field followed by
      ``/api/get/object`` for each object (up to 100) is used instead;

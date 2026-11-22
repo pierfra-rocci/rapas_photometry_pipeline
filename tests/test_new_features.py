@@ -124,6 +124,21 @@ def _hips2fits_response(image):
     return _Response()
 
 
+def _text_response(text):
+    """Fake HTTP response whose body is the ASCII/CSV text *text*."""
+
+    class _Response:
+        content = text.encode()
+
+        def __init__(self):
+            self.text = text
+
+        def raise_for_status(self):
+            return None
+
+    return _Response()
+
+
 def _hips2fits_fetcher(images):
     """``requests.get`` replacement serving *images* keyed by HiPS id."""
 
@@ -307,20 +322,23 @@ class TestAstrocolibriSurveySelection:
 
 
 class TestAstrocolibriSurveyFallback:
-    """The next survey in the chain is used when one has no data."""
+    """The survey cutout service is used when hips2fits has no data."""
 
-    def test_falls_back_to_sdss_when_primary_has_no_data(self):
+    def test_falls_back_to_the_cutout_service_when_hips_has_no_data(self):
         from src.transient import _fetch_hips_template
 
-        images = {
-            "SkyMapper/DR4/r": np.full((5, 5), np.nan),
-            "SDSS/DR9/color": np.ones((5, 5)),
-        }
-        with patch(
-            "src.transient.requests.get", side_effect=_hips2fits_fetcher(images)
+        images = {"SkyMapper/DR4/r": np.full((5, 5), np.nan)}
+        with (
+            patch(
+                "src.transient.requests.get", side_effect=_hips2fits_fetcher(images)
+            ),
+            patch(
+                "src.transient._fetch_survey_cutout",
+                return_value=(np.ones((5, 5)), "SkyMapper/DR4/r (cutout service)"),
+            ),
         ):
             tmpl, survey = _fetch_hips_template(_cutout_header(), "r", -10.0)
-        assert survey == "SDSS/DR9/color"
+        assert survey == "SkyMapper/DR4/r (cutout service)"
         assert np.isfinite(tmpl).all()
 
 
@@ -374,14 +392,18 @@ class TestAstrocolibriTemplateFailureReporting:
 
         assert messages == [HIPS_TEMPLATE_COVERAGE_MESSAGE]
 
-    def test_one_answering_survey_means_a_coverage_gap(self):
-        """A survey that did answer rules out a service outage."""
-        from src.transient import HIPS_TEMPLATE_COVERAGE_MESSAGE
+    def test_one_answering_service_means_a_coverage_gap(self):
+        """A service that did answer rules out a global outage."""
+        from src.transient import HIPS_TEMPLATE_COVERAGE_MESSAGE, PS1_FILENAMES_URL
 
         def fetcher(url, params=None, timeout=None):
-            if params["hips"].startswith("PanSTARRS"):
-                raise requests.exceptions.ConnectTimeout("no response")
-            return _hips2fits_response(np.full((5, 5), np.nan))
+            if url == PS1_FILENAMES_URL:
+                # Empty PS1 listing: the service answered, the field is
+                # outside the survey footprint.
+                return _text_response(
+                    "projcell subcell ra dec filter mjd type filename shortname\n"
+                )
+            raise requests.exceptions.ConnectTimeout("no response")
 
         messages = self._messages(fetcher)
 
@@ -399,44 +421,39 @@ class TestAstrocolibriTemplateFailureReporting:
 
         message = str(excinfo.value)
         assert "SkyMapper/DR4/g" in message
-        assert "CDS/P/DSS2/color" in message
+        assert "SkyMapper cutout service" in message
 
 
 class TestHipsTemplateSurveyChain:
-    """PanSTARRS/SkyMapper, then SDSS, then DSS2, then the direct request."""
+    """PanSTARRS/SkyMapper through HiPS, then through the survey cutout service."""
 
-    def test_northern_field_tries_panstarrs_then_sdss_then_dss(self):
+    def test_northern_field_uses_panstarrs_hips(self):
         from src.transient import _hips_template_surveys
 
-        assert _hips_template_surveys("r", 10.0) == [
-            "PanSTARRS/DR1/r",
-            "SDSS/DR9/color",
-            "CDS/P/DSS2/color",
-        ]
+        assert _hips_template_surveys("r", 10.0) == ["PanSTARRS/DR1/r"]
 
-    def test_southern_field_tries_skymapper_then_sdss_then_dss(self):
+    def test_southern_field_uses_skymapper_hips(self):
         from src.transient import _hips_template_surveys
 
-        assert _hips_template_surveys("i", -30.0) == [
-            "SkyMapper/DR4/i",
-            "SDSS/DR9/color",
-            "CDS/P/DSS2/color",
-        ]
+        assert _hips_template_surveys("i", -30.0) == ["SkyMapper/DR4/i"]
 
-    def test_dss_is_used_when_the_first_two_surveys_have_no_data(self):
+    def test_cutout_service_is_asked_when_hips_has_no_data(self):
         from src.transient import _fetch_hips_template
 
-        images = {
-            "PanSTARRS/DR1/r": np.full((5, 5), np.nan),
-            "SDSS/DR9/color": np.full((5, 5), np.nan),
-            "CDS/P/DSS2/color": np.ones((5, 5)),
-        }
-        with patch(
-            "src.transient.requests.get", side_effect=_hips2fits_fetcher(images)
+        images = {"PanSTARRS/DR1/r": np.full((5, 5), np.nan)}
+        with (
+            patch(
+                "src.transient.requests.get", side_effect=_hips2fits_fetcher(images)
+            ),
+            patch(
+                "src.transient._fetch_survey_cutout",
+                return_value=(np.ones((5, 5)), "PanSTARRS/DR1/r (cutout service)"),
+            ) as cutout_service,
         ):
             tmpl, survey = _fetch_hips_template(_cutout_header(10.0), "r", 10.0)
 
-        assert survey == "CDS/P/DSS2/color"
+        assert cutout_service.call_count == 1
+        assert survey == "PanSTARRS/DR1/r (cutout service)"
         assert np.isfinite(tmpl).all()
 
     def test_fetch_goes_through_the_timed_direct_request(self):
@@ -444,12 +461,12 @@ class TestHipsTemplateSurveyChain:
 
         with patch(
             "src.transient._fetch_hips_template_direct",
-            return_value=(np.ones((5, 5)), "CDS/P/DSS2/color"),
+            return_value=(np.ones((5, 5)), "PanSTARRS/DR1/r"),
         ) as direct:
             tmpl, survey = _fetch_hips_template(_cutout_header(10.0), "r", 10.0)
 
         assert direct.called
-        assert survey == "CDS/P/DSS2/color"
+        assert survey == "PanSTARRS/DR1/r"
         assert np.isfinite(tmpl).all()
 
     def test_direct_request_returns_the_image_with_the_survey(self):
@@ -480,7 +497,7 @@ class TestHipsTemplateSurveyChain:
 
         with patch("src.transient.requests.get", side_effect=fake_get):
             image, survey = _fetch_hips_template_direct(
-                header, ["PanSTARRS/DR1/r", "CDS/P/DSS2/color"]
+                header, ["PanSTARRS/DR1/r", "SkyMapper/DR4/r"]
             )
 
         from src.transient import HIPS2FITS_TIMEOUT_SECONDS
@@ -567,7 +584,7 @@ class TestHipsTemplateSurveyChain:
 
         def fake_template(cutout_header, filter_name, dec_center):
             templates_requested.append((filter_name, dec_center))
-            return np.ones((5, 5)), "CDS/P/DSS2/color"
+            return np.ones((5, 5)), "PanSTARRS/DR1/r"
 
         monkeypatch.setattr(
             transient_module, "_fetch_hips_template", fake_template
@@ -602,8 +619,139 @@ class TestHipsTemplateSurveyChain:
         assert result is not None
 
 
+class TestSurveyCutoutServiceFallback:
+    """PS1 and SkyMapper cutout services back up an unavailable HiPS survey."""
+
+    @staticmethod
+    def _source_stamp():
+        """FITS stamp covering a centred 5x5 cutout, at 0.25 arcsec/pixel."""
+        import io as _io
+
+        from astropy.io import fits
+        from astropy.wcs import WCS
+
+        wcs = WCS(naxis=2)
+        wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+        wcs.wcs.crval = [10.0, 15.0]
+        wcs.wcs.crpix = [41.0, 41.0]
+        wcs.wcs.cdelt = [-0.25 / 3600.0, 0.25 / 3600.0]
+        buffer = _io.BytesIO()
+        fits.PrimaryHDU(np.ones((81, 81)), header=wcs.to_header()).writeto(buffer)
+        return buffer.getvalue()
+
+    @staticmethod
+    def _centred_cutout_header():
+        """5x5 cutout whose centre sits at the CRVAL of the survey stamp."""
+        from astropy.wcs import WCS
+
+        wcs = WCS(naxis=2)
+        wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+        wcs.wcs.crval = [10.0, 15.0]
+        wcs.wcs.crpix = [3.0, 3.0]
+        wcs.wcs.cdelt = [-0.001, 0.001]
+        header = wcs.to_header()
+        header["NAXIS"] = 2
+        header["NAXIS1"] = 5
+        header["NAXIS2"] = 5
+        return header
+
+    def test_ps1_cutout_goes_through_ps1filenames_and_fitscut(self):
+        import time as _time
+
+        from src.transient import PS1_FILENAMES_URL, PS1_FITSCUT_URL, _fetch_ps1_cutout
+
+        listing = (
+            "projcell subcell ra dec filter mjd type filename shortname\n"
+            "1405 53 10.0 15.0 r 0.0 stack "
+            "/rings.v3.skycell/1405/053/x.stk.r.unconv.fits x.stk.r.fits\n"
+        )
+        stamp = self._source_stamp()
+        calls = []
+
+        class _Response:
+            def __init__(self, text="", content=b""):
+                self.text = text
+                self.content = content
+
+            def raise_for_status(self):
+                return None
+
+        def fake_get(url, params=None, timeout=None):
+            calls.append((url, params))
+            if url == PS1_FILENAMES_URL:
+                return _Response(text=listing)
+            return _Response(content=stamp)
+
+        header = self._centred_cutout_header()
+        with patch("src.transient.requests.get", side_effect=fake_get):
+            tmpl, survey = _fetch_ps1_cutout(
+                header, "r", 10.0, 15.0, 0.005, 0.005, _time.monotonic() + 30.0
+            )
+
+        assert [call[0] for call in calls] == [PS1_FILENAMES_URL, PS1_FITSCUT_URL]
+        assert calls[0][1]["filters"] == "r"
+        # 0.005 deg = 18 arcsec = 72 pixels at the PS1 0.25 arcsec/pixel scale.
+        assert calls[1][1]["size"] == 72
+        assert calls[1][1]["red"].endswith("x.stk.r.unconv.fits")
+        assert tmpl.shape == (5, 5)
+        assert np.isfinite(tmpl).all()
+        assert "PanSTARRS" in survey
+
+    def test_skymapper_cutout_uses_the_siap_get_fits_url(self):
+        import time as _time
+
+        from src.transient import SKYMAPPER_SIAP_URL, _fetch_skymapper_cutout
+
+        cutout_url = (
+            "https://api.skymapper.nci.org.au/public/siap/dr4/get_image"
+            "?IMAGE=1&SIZE=0.005&POS=10.0,15.0&FORMAT=fits"
+        )
+        listing = (
+            '"ID","ra","dec","band","get_fits"\n'
+            f'"1",10.0,15.0,"r","{cutout_url}"\n'
+        )
+        stamp = self._source_stamp()
+        calls = []
+
+        class _Response:
+            def __init__(self, text="", content=b""):
+                self.text = text
+                self.content = content
+
+            def raise_for_status(self):
+                return None
+
+        def fake_get(url, params=None, timeout=None):
+            calls.append((url, params))
+            if url == SKYMAPPER_SIAP_URL:
+                return _Response(text=listing)
+            return _Response(content=stamp)
+
+        header = self._centred_cutout_header()
+        with patch("src.transient.requests.get", side_effect=fake_get):
+            tmpl, survey = _fetch_skymapper_cutout(
+                header, "r", 10.0, 15.0, 0.005, 0.005, _time.monotonic() + 30.0
+            )
+
+        assert calls[0][0] == SKYMAPPER_SIAP_URL
+        assert calls[0][1]["POS"] == "10.0,15.0"
+        assert calls[0][1]["BAND"] == "r"
+        assert calls[0][1]["FORMAT"] == "image/fits"
+        assert calls[1][0] == cutout_url
+        assert tmpl.shape == (5, 5)
+        assert np.isfinite(tmpl).all()
+        assert "SkyMapper" in survey
+
+    def test_unsupported_filter_falls_back_to_r(self):
+        from src.transient import _ps1_band
+
+        assert _ps1_band("V") == "r"
+        assert _ps1_band("g") == "g"
+        assert _ps1_band(None) == "r"
+
+
 class TestHipsTemplateTimeBudget:
-    """Every HiPS fallback is bounded so an outage cannot stall the cutouts."""
+    """Every template fallback is bounded so an outage cannot stall cutouts."""
 
     def test_no_fallback_waits_more_than_thirty_seconds(self):
         from src.transient import (

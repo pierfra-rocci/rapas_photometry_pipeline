@@ -461,14 +461,18 @@ Transient and Astro-Colibri Template Cutouts
 *   **Problem**: the science cutout is shown without the HiPS template and a
     one-line note says why.
 *   **Solution**: the template follows a chain: PanSTARRS (north) or SkyMapper
-    (south), then SDSS, then DSS2, which covers the whole sky.
+    (south) through CDS hips2fits, then the same survey's own cutout service
+    (the PS1 Image Cutout Service in the north, the SkyMapper Image Cutout
+    Service in the south).
 
-    *   ``No cutouts: no HiPS coverage at this position.``: the field is outside those
-        survey footprints (low Galactic latitude, for example). The cutout
-        keeps its science frame and the candidates are unaffected.
-    *   ``No cutouts: connection problem with the HiPS URL.``: CDS hips2fits could
-        not be contacted. Every request has an explicit timeout and the whole
-        survey chain stops after 30 seconds; the exported files are unaffected.
+    *   ``No cutouts: no reference-survey coverage at this position.``: the
+        field is outside the survey footprint (low Galactic latitude, for
+        example) in both services. The cutout keeps its science frame and the
+        candidates are unaffected.
+    *   ``No cutouts: connection problem with the survey image services.``:
+        neither CDS hips2fits nor the survey cutout service could be
+        contacted. Every request has an explicit timeout and the whole chain
+        stops after 30 seconds; the exported files are unaffected.
 
 Aladin Lite Viewer Issues
 -------------------------

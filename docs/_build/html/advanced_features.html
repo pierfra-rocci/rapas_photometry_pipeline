@@ -227,10 +227,12 @@ dropped.</p></li>
 <li><p>No minimum S/N cutoff is applied to transient candidates. Low-S/N detections
 remain eligible if they pass the other catalog, known-source, and Solar
 System-object filters.</p></li>
-<li><p>Cutouts (science and HiPS template) are displayed and saved for the top 20
-candidates, ranked by signal-to-noise ratio. The template follows the field
-declination (PanSTARRS north, SkyMapper south) and falls back to SDSS, then
-DSS2, when that survey does not cover the field or cannot be reached.</p></li>
+<li><p>Cutouts (science and reference-survey template) are displayed and saved for
+the top 20 candidates, ranked by signal-to-noise ratio. The template follows
+the field declination (PanSTARRS north, SkyMapper south); when hips2fits
+does not cover the field or cannot be reached, the survey’s own cutout
+service is queried instead (PS1 Image Cutout Service north, SkyMapper Image
+Cutout Service south).</p></li>
 </ul>
 <p>This workflow should be treated as best-effort. Reference data, remote catalog
 services, and transient filtering may degrade gracefully when an external

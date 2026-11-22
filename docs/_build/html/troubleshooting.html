@@ -597,14 +597,18 @@ and start the analysis again.</p></li>
 <li><p><strong>Problem</strong>: the science cutout is shown without the HiPS template and a
 one-line note says why.</p></li>
 <li><p><strong>Solution</strong>: the template follows a chain: PanSTARRS (north) or SkyMapper
-(south), then SDSS, then DSS2, which covers the whole sky.</p>
+(south) through CDS hips2fits, then the same survey’s own cutout service
+(the PS1 Image Cutout Service in the north, the SkyMapper Image Cutout
+Service in the south).</p>
 <ul>
-<li><p><code class="docutils literal notranslate"><span class="pre">No</span> <span class="pre">cutouts:</span> <span class="pre">no</span> <span class="pre">HiPS</span> <span class="pre">coverage</span> <span class="pre">at</span> <span class="pre">this</span> <span class="pre">position.</span></code>: the field is outside those
-survey footprints (low Galactic latitude, for example). The cutout
-keeps its science frame and the candidates are unaffected.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">No</span> <span class="pre">cutouts:</span> <span class="pre">connection</span> <span class="pre">problem</span> <span class="pre">with</span> <span class="pre">the</span> <span class="pre">HiPS</span> <span class="pre">URL.</span></code>: CDS hips2fits could
-not be contacted. Every request has an explicit timeout and the whole
-survey chain stops after 30 seconds; the exported files are unaffected.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">No</span> <span class="pre">cutouts:</span> <span class="pre">no</span> <span class="pre">reference-survey</span> <span class="pre">coverage</span> <span class="pre">at</span> <span class="pre">this</span> <span class="pre">position.</span></code>: the
+field is outside the survey footprint (low Galactic latitude, for
+example) in both services. The cutout keeps its science frame and the
+candidates are unaffected.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">No</span> <span class="pre">cutouts:</span> <span class="pre">connection</span> <span class="pre">problem</span> <span class="pre">with</span> <span class="pre">the</span> <span class="pre">survey</span> <span class="pre">image</span> <span class="pre">services.</span></code>:
+neither CDS hips2fits nor the survey cutout service could be
+contacted. Every request has an explicit timeout and the whole chain
+stops after 30 seconds; the exported files are unaffected.</p></li>
 </ul>
 </li>
 </ul>

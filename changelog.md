@@ -12,6 +12,16 @@
   continues without that service's results, preserving the rest of the
   processing pipeline.
 
+### Survey cutout-service fallback for template cutouts
+
+- When CDS hips2fits cannot deliver the reference-survey template for a
+  transient-candidate or Astro-Colibri cutout, the same survey is requested
+  from its own cutout service: the PS1 Image Cutout Service for northern
+  fields and the SkyMapper Image Cutout Service for southern ones. The stamp
+  is resampled onto the science cutout so both panels stay aligned.
+- The SDSS and DSS2 HiPS fallbacks were removed: the reference survey is the
+  only template source, served by hips2fits or by its cutout service.
+
 ### Catalog-specific zero-point calibration plots
 
 - Both calibration plots identify the selected catalog in their titles and
