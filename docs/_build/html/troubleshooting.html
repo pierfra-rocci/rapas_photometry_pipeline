@@ -591,17 +591,17 @@ and start the analysis again.</p></li>
 <h2>Transient and Astro-Colibri Template Cutouts<a class="headerlink" href="#transient-and-astro-colibri-template-cutouts" title="Link to this heading"></a></h2>
 <p><strong>The reference template panel is missing from a cutout</strong></p>
 <ul class="simple">
-<li><p><strong>Problem</strong>: the science cutout is shown without the HiPS template, and an
-info note lists the surveys that were tried.</p></li>
+<li><p><strong>Problem</strong>: the science cutout is shown without the HiPS template and a
+one-line note says why.</p></li>
 <li><p><strong>Solution</strong>: the template follows a chain: PanSTARRS (north) or SkyMapper
 (south), then SDSS, then DSS2, which covers the whole sky.</p>
 <ul>
-<li><p><code class="docutils literal notranslate"><span class="pre">...</span> <span class="pre">returned</span> <span class="pre">no</span> <span class="pre">usable</span> <span class="pre">pixels</span> <span class="pre">there.</span></code>: the field is outside those
+<li><p><code class="docutils literal notranslate"><span class="pre">No</span> <span class="pre">cutouts:</span> <span class="pre">no</span> <span class="pre">HiPS</span> <span class="pre">coverage</span> <span class="pre">at</span> <span class="pre">this</span> <span class="pre">position.</span></code>: the field is outside those
 survey footprints (low Galactic latitude, for example). The cutout
 keeps its science frame and the candidates are unaffected.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">HiPS</span> <span class="pre">template</span> <span class="pre">service</span> <span class="pre">unreachable</span> <span class="pre">...</span></code>: CDS hips2fits could not be
-contacted. The helper retries with an explicit timeout on two CDS hosts
-before reporting this; the exported files are unaffected.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">No</span> <span class="pre">cutouts:</span> <span class="pre">connection</span> <span class="pre">problem</span> <span class="pre">with</span> <span class="pre">the</span> <span class="pre">HiPS</span> <span class="pre">URL.</span></code>: CDS hips2fits could
+not be contacted. Every request has an explicit timeout and the whole
+survey chain stops after 30 seconds; the exported files are unaffected.</p></li>
 </ul>
 </li>
 </ul>

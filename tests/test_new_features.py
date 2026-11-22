@@ -97,6 +97,80 @@ def _celestial_header(dec: float = 15.0) -> Header:
     return wcs.to_header()
 
 
+def _cutout_header(dec: float = 15.0) -> Header:
+    """Header of a 5x5 cutout, as handed to the HiPS template fetcher."""
+    header = _celestial_header(dec)
+    header["NAXIS"] = 2
+    header["NAXIS1"] = 5
+    header["NAXIS2"] = 5
+    return header
+
+
+def _hips2fits_response(image):
+    """Fake hips2fits HTTP response serving *image* as FITS."""
+    import io as _io
+
+    from astropy.io import fits
+
+    buffer = _io.BytesIO()
+    fits.PrimaryHDU(np.asarray(image, dtype=float)).writeto(buffer)
+
+    class _Response:
+        content = buffer.getvalue()
+
+        def raise_for_status(self):
+            return None
+
+    return _Response()
+
+
+def _hips2fits_fetcher(images):
+    """``requests.get`` replacement serving *images* keyed by HiPS id."""
+
+    def fake_get(url, params=None, timeout=None):
+        hips = params["hips"]
+        if hips not in images:
+            raise requests.exceptions.ConnectTimeout("unreachable")
+        return _hips2fits_response(images[hips])
+
+    return fake_get
+
+
+def _candidate_table():
+    """Three transient candidates, enough to count template requests."""
+    from astropy.table import Table
+
+    return Table(
+        {
+            "x": [1.0, 2.0, 3.0],
+            "y": [1.0, 2.0, 6.0],
+            "ra": [10.0, 10.1, 10.2],
+            "dec": [15.0, 15.1, 15.2],
+        }
+    )
+
+
+def _run_candidate_cutouts(transient_module, candidates, template):
+    """Run the transient cutout loop offline; return (infos, figure count)."""
+    mock_st = MagicMock()
+    with (
+        patch.object(transient_module, "_fetch_hips_template", template),
+        patch.object(
+            transient_module.cutouts,
+            "get_cutout",
+            return_value={"image": np.zeros((5, 5)), "header": None},
+        ),
+        patch.object(transient_module, "plot_cutout", return_value=MagicMock()),
+        patch.object(transient_module.plt, "close"),
+        patch.object(transient_module, "st", mock_st),
+    ):
+        transient_module._show_candidate_cutouts(
+            np.zeros((64, 64)), None, candidates, "r", 10.0
+        )
+    infos = [call.args[0] for call in mock_st.info.call_args_list]
+    return infos, mock_st.pyplot.call_count
+
+
 @pytest.fixture(autouse=True)
 def _no_direct_hips2fits(monkeypatch):
     """Unit tests never reach hips2fits; the direct-path tests patch it again."""
@@ -167,8 +241,8 @@ class TestPlotAstrocolibriCutoutsGuards:
 def _run_patched(dec_center, filter_name="r"):
     """Run plot_astrocolibri_cutouts with all external deps mocked.
 
-    Returns the first positional argument passed to templates.get_hips_image
-    (i.e. the survey + filter string), or None if the mock was never called.
+    Returns the first HiPS identifier requested from hips2fits, or None if the
+    service was never queried.
     """
     from src.transient import plot_astrocolibri_cutouts
 
@@ -178,58 +252,58 @@ def _run_patched(dec_center, filter_name="r"):
 
     image = np.zeros((500, 500))
     header = _celestial_header(dec_center)
-    mock_cutout = {"image": np.zeros((25, 25)), "header": header}
+    mock_cutout = {"image": np.zeros((25, 25)), "header": _cutout_header(dec_center)}
     mock_fig = MagicMock()
+    requested = []
+
+    def fake_get(url, params=None, timeout=None):
+        requested.append(params["hips"])
+        raise requests.exceptions.ConnectTimeout("network disabled")
 
     with (
         patch("src.transient.st"),
         patch("src.transient.fix_header", return_value=(header, None)),
         patch("src.transient.cutouts.get_cutout", return_value=mock_cutout),
-        patch(
-            "src.transient.templates.get_hips_image",
-            side_effect=Exception("network disabled"),
-        ) as mock_hips,
+        patch("src.transient.requests.get", side_effect=fake_get),
         patch("src.transient.plot_cutout", return_value=mock_fig),
         patch("src.transient.plt.close"),
     ):
         plot_astrocolibri_cutouts(
             df, image, header, "/tmp", "test", filter_name, dec_center
         )
-        return mock_hips.call_args_list[0] if mock_hips.call_args_list else None
+    return requested[0] if requested else None
 
 
 class TestAstrocolibriSurveySelection:
     """PanSTARRS chosen for dec ≥ 0, SkyMapper for dec < 0."""
 
     def test_panstarrs_for_northern_field(self):
-        call_args = _run_patched(dec_center=30.0)
-        assert call_args is not None
-        assert "PanSTARRS" in call_args.args[0]
+        survey = _run_patched(dec_center=30.0)
+        assert survey is not None
+        assert "PanSTARRS" in survey
 
     def test_skymapper_for_southern_field(self):
-        call_args = _run_patched(dec_center=-20.0)
-        assert call_args is not None
-        assert "SkyMapper" in call_args.args[0]
+        survey = _run_patched(dec_center=-20.0)
+        assert survey is not None
+        assert "SkyMapper" in survey
 
     def test_panstarrs_for_equatorial_field(self):
         """dec_center == 0.0 is not < 0, so PanSTARRS must be used."""
-        call_args = _run_patched(dec_center=0.0)
-        assert call_args is not None
-        assert "PanSTARRS" in call_args.args[0]
+        survey = _run_patched(dec_center=0.0)
+        assert survey is not None
+        assert "PanSTARRS" in survey
 
     def test_filter_name_included_in_survey_string(self):
         """The chosen filter is appended after the survey path."""
-        call_args = _run_patched(dec_center=10.0, filter_name="g")
-        assert call_args is not None
-        survey_arg = call_args.args[0]
-        assert survey_arg.endswith("g")
+        survey = _run_patched(dec_center=10.0, filter_name="g")
+        assert survey is not None
+        assert survey.endswith("g")
 
     def test_skymapper_filter_name_appended(self):
-        call_args = _run_patched(dec_center=-45.0, filter_name="i")
-        assert call_args is not None
-        survey_arg = call_args.args[0]
-        assert "SkyMapper" in survey_arg
-        assert survey_arg.endswith("i")
+        survey = _run_patched(dec_center=-45.0, filter_name="i")
+        assert survey is not None
+        assert "SkyMapper" in survey
+        assert survey.endswith("i")
 
 
 class TestAstrocolibriSurveyFallback:
@@ -238,23 +312,24 @@ class TestAstrocolibriSurveyFallback:
     def test_falls_back_to_sdss_when_primary_has_no_data(self):
         from src.transient import _fetch_hips_template
 
-        def fake(name, header=None, get_header=False):
-            if name.startswith("SkyMapper"):
-                return np.full((5, 5), np.nan)
-            return np.ones((5, 5))
-
-        with patch("src.transient.templates.get_hips_image", side_effect=fake):
-            tmpl, survey = _fetch_hips_template(None, "r", -10.0)
+        images = {
+            "SkyMapper/DR4/r": np.full((5, 5), np.nan),
+            "SDSS/DR9/color": np.ones((5, 5)),
+        }
+        with patch(
+            "src.transient.requests.get", side_effect=_hips2fits_fetcher(images)
+        ):
+            tmpl, survey = _fetch_hips_template(_cutout_header(), "r", -10.0)
         assert survey == "SDSS/DR9/color"
         assert np.isfinite(tmpl).all()
 
 
 class TestAstrocolibriTemplateFailureReporting:
-    """An unreachable hips2fits must read differently from a coverage gap."""
+    """An outage and a coverage gap each get one short, distinct note."""
 
     @staticmethod
-    def _messages(response):
-        """Run one cutout with *response* as get_hips_image; return infos."""
+    def _messages(fetcher):
+        """Run one cutout with *fetcher* as requests.get; return infos."""
         from src.transient import plot_astrocolibri_cutouts
 
         df = _make_ac_table(n_sources=1, n_matches=1)
@@ -264,9 +339,12 @@ class TestAstrocolibriTemplateFailureReporting:
             patch("src.transient.fix_header", return_value=(header, None)),
             patch(
                 "src.transient.cutouts.get_cutout",
-                return_value={"image": np.zeros((25, 25)), "header": header},
+                return_value={
+                    "image": np.zeros((25, 25)),
+                    "header": _cutout_header(10.0),
+                },
             ),
-            patch("src.transient.templates.get_hips_image", side_effect=response),
+            patch("src.transient.requests.get", side_effect=fetcher),
             patch("src.transient.plot_cutout", return_value=MagicMock()),
             patch("src.transient.plt.close"),
         ):
@@ -275,46 +353,49 @@ class TestAstrocolibriTemplateFailureReporting:
             )
         return [call.args[0] for call in mock_st.info.call_args_list]
 
-    def test_unreachable_service_names_the_surveys_and_filters(self):
-        messages = self._messages(lambda name, header=None, get_header=False: None)
+    def test_unreachable_service_shows_one_short_note(self):
+        from src.transient import HIPS_TEMPLATE_CONNECTION_MESSAGE
 
-        assert len(messages) == 1
-        assert "unreachable" in messages[0]
-        assert "PanSTARRS/DR1/r" in messages[0]
-        assert "CDS/P/DSS2/color" in messages[0]
-        assert "coverage" not in messages[0]
+        def timed_out(url, params=None, timeout=None):
+            raise requests.exceptions.ConnectTimeout("timed out")
 
-    def test_missing_coverage_names_the_surveys_and_filters(self):
-        messages = self._messages(
-            lambda name, header=None, get_header=False: np.full((5, 5), np.nan)
-        )
+        messages = self._messages(timed_out)
 
-        assert len(messages) == 1
-        assert "No HiPS template coverage" in messages[0]
-        assert "PanSTARRS/DR1/r" in messages[0]
-        assert "SDSS/DR9/color" in messages[0]
-        assert "CDS/P/DSS2/color" in messages[0]
-        assert "unreachable" not in messages[0]
+        assert messages == [HIPS_TEMPLATE_CONNECTION_MESSAGE]
+        assert "alasky" not in messages[0]
+
+    def test_missing_coverage_shows_one_short_note(self):
+        from src.transient import HIPS_TEMPLATE_COVERAGE_MESSAGE
+
+        def no_pixels(url, params=None, timeout=None):
+            return _hips2fits_response(np.full((5, 5), np.nan))
+
+        messages = self._messages(no_pixels)
+
+        assert messages == [HIPS_TEMPLATE_COVERAGE_MESSAGE]
 
     def test_one_answering_survey_means_a_coverage_gap(self):
         """A survey that did answer rules out a service outage."""
+        from src.transient import HIPS_TEMPLATE_COVERAGE_MESSAGE
 
-        def fake(name, header=None, get_header=False):
-            if name.startswith("PanSTARRS"):
-                return None
-            return np.full((5, 5), np.nan)
+        def fetcher(url, params=None, timeout=None):
+            if params["hips"].startswith("PanSTARRS"):
+                raise requests.exceptions.ConnectTimeout("no response")
+            return _hips2fits_response(np.full((5, 5), np.nan))
 
-        messages = self._messages(fake)
+        messages = self._messages(fetcher)
 
-        assert len(messages) == 1
-        assert "No HiPS template coverage" in messages[0]
+        assert messages == [HIPS_TEMPLATE_COVERAGE_MESSAGE]
 
     def test_helper_raises_a_dedicated_service_error(self):
         from src.transient import HipsTemplateServiceError, _fetch_hips_template
 
-        with patch("src.transient.templates.get_hips_image", return_value=None):
+        with patch(
+            "src.transient.requests.get",
+            side_effect=requests.exceptions.ConnectTimeout("timed out"),
+        ):
             with pytest.raises(HipsTemplateServiceError) as excinfo:
-                _fetch_hips_template(None, "g", -10.0)
+                _fetch_hips_template(_cutout_header(), "g", -10.0)
 
         message = str(excinfo.value)
         assert "SkyMapper/DR4/g" in message
@@ -345,28 +426,27 @@ class TestHipsTemplateSurveyChain:
     def test_dss_is_used_when_the_first_two_surveys_have_no_data(self):
         from src.transient import _fetch_hips_template
 
-        def fake(name, header=None, get_header=False):
-            if name == "CDS/P/DSS2/color":
-                return np.ones((5, 5))
-            return np.full((5, 5), np.nan)
-
-        with patch("src.transient.templates.get_hips_image", side_effect=fake):
-            tmpl, survey = _fetch_hips_template(None, "r", 10.0)
+        images = {
+            "PanSTARRS/DR1/r": np.full((5, 5), np.nan),
+            "SDSS/DR9/color": np.full((5, 5), np.nan),
+            "CDS/P/DSS2/color": np.ones((5, 5)),
+        }
+        with patch(
+            "src.transient.requests.get", side_effect=_hips2fits_fetcher(images)
+        ):
+            tmpl, survey = _fetch_hips_template(_cutout_header(10.0), "r", 10.0)
 
         assert survey == "CDS/P/DSS2/color"
         assert np.isfinite(tmpl).all()
 
-    def test_direct_request_is_used_when_nothing_answers(self):
+    def test_fetch_goes_through_the_timed_direct_request(self):
         from src.transient import _fetch_hips_template
 
-        with (
-            patch("src.transient.templates.get_hips_image", return_value=None),
-            patch(
-                "src.transient._fetch_hips_template_direct",
-                return_value=(np.ones((5, 5)), "CDS/P/DSS2/color"),
-            ) as direct,
-        ):
-            tmpl, survey = _fetch_hips_template(None, "r", 10.0)
+        with patch(
+            "src.transient._fetch_hips_template_direct",
+            return_value=(np.ones((5, 5)), "CDS/P/DSS2/color"),
+        ) as direct:
+            tmpl, survey = _fetch_hips_template(_cutout_header(10.0), "r", 10.0)
 
         assert direct.called
         assert survey == "CDS/P/DSS2/color"
@@ -403,9 +483,11 @@ class TestHipsTemplateSurveyChain:
                 header, ["PanSTARRS/DR1/r", "CDS/P/DSS2/color"]
             )
 
+        from src.transient import HIPS2FITS_TIMEOUT_SECONDS
+
         assert survey == "PanSTARRS/DR1/r"
         assert image.shape == (5, 5)
-        assert calls[0][2] == pytest.approx(20.0)
+        assert calls[0][2] == pytest.approx(HIPS2FITS_TIMEOUT_SECONDS)
 
     def test_direct_request_reports_an_unreachable_service(self):
         from src.transient import HipsTemplateServiceError, _fetch_hips_template_direct
@@ -520,6 +602,78 @@ class TestHipsTemplateSurveyChain:
         assert result is not None
 
 
+class TestHipsTemplateTimeBudget:
+    """Every HiPS fallback is bounded so an outage cannot stall the cutouts."""
+
+    def test_no_fallback_waits_more_than_thirty_seconds(self):
+        from src.transient import (
+            HIPS2FITS_TIMEOUT_SECONDS,
+            HIPS_TEMPLATE_TIMEOUT_SECONDS,
+        )
+
+        assert HIPS2FITS_TIMEOUT_SECONDS <= 30.0
+        assert HIPS_TEMPLATE_TIMEOUT_SECONDS <= 30.0
+
+    def test_chain_stops_once_the_budget_is_spent(self):
+        from src.transient import HipsTemplateServiceError, _fetch_hips_template
+
+        clock = [0.0]
+        timeouts = []
+
+        def fake_get(url, params=None, timeout=None):
+            timeouts.append(timeout)
+            clock[0] += timeout
+            raise requests.exceptions.ConnectTimeout("timed out")
+
+        with (
+            patch("src.transient.requests.get", side_effect=fake_get),
+            patch("src.transient.time.monotonic", side_effect=lambda: clock[0]),
+        ):
+            with pytest.raises(HipsTemplateServiceError):
+                _fetch_hips_template(_cutout_header(), "r", 10.0)
+
+        assert sum(timeouts) <= 30.0
+        assert len(timeouts) > 1
+
+
+class TestTransientCutoutTemplateFailures:
+    """A failed HiPS service must not be retried for every candidate."""
+
+    def test_outage_is_queried_once_and_noted_once(self):
+        import src.transient as transient_module
+
+        calls = []
+
+        def unreachable(*args, **kwargs):
+            calls.append(args)
+            raise transient_module.HipsTemplateServiceError("down")
+
+        infos, plotted = _run_candidate_cutouts(
+            transient_module, _candidate_table(), unreachable
+        )
+
+        assert len(calls) == 1
+        assert infos == [transient_module.HIPS_TEMPLATE_CONNECTION_MESSAGE]
+        assert plotted == 3
+
+    def test_coverage_gap_is_still_checked_per_candidate(self):
+        import src.transient as transient_module
+
+        calls = []
+
+        def no_coverage(*args, **kwargs):
+            calls.append(args)
+            return None, None
+
+        infos, plotted = _run_candidate_cutouts(
+            transient_module, _candidate_table(), no_coverage
+        )
+
+        assert len(calls) == 3
+        assert infos == [transient_module.HIPS_TEMPLATE_COVERAGE_MESSAGE]
+        assert plotted == 3
+
+
 # ─── 3. plot_astrocolibri_cutouts — PNG filename sanitisation ─────────────────
 
 
@@ -572,8 +726,8 @@ class TestAstrocolibriSafeFilename:
                 return_value={"image": np.zeros((25, 25)), "header": header},
             ),
             patch(
-                "src.transient.templates.get_hips_image",
-                side_effect=Exception("network disabled"),
+                "src.transient.requests.get",
+                side_effect=requests.exceptions.ConnectTimeout("network disabled"),
             ),
             patch("src.transient.plot_cutout", return_value=mock_fig),
             patch("src.transient.plt.close"),
@@ -664,8 +818,8 @@ class TestAstrocolibriMagColumnPriority:
                 return_value={"image": np.zeros((25, 25)), "header": header},
             ),
             patch(
-                "src.transient.templates.get_hips_image",
-                side_effect=Exception("network disabled"),
+                "src.transient.requests.get",
+                side_effect=requests.exceptions.ConnectTimeout("network disabled"),
             ),
             patch("src.transient.plot_cutout", return_value=mock_fig) as mock_plot,
             patch("src.transient.plt.close"),

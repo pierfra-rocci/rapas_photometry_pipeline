@@ -529,7 +529,7 @@ viewer is usually a WebGL2 or a network issue, not a caching one.
 
 ### Current Release (1.9.4)
 
-- **HiPS template chain**: Astro-Colibri stamps and transient cutouts try `PanSTARRS/DR1` (north) or `SkyMapper/DR4` (south), then `SDSS/DR9/color`, then `CDS/P/DSS2/color`, skipping an unreachable survey or an uncovered field; if none answers, CDS hips2fits is queried directly with an explicit timeout on two hosts.
+- **HiPS template chain**: Astro-Colibri stamps and transient cutouts try `PanSTARRS/DR1` (north) or `SkyMapper/DR4` (south), then `SDSS/DR9/color`, then `CDS/P/DSS2/color` through explicitly timed hips2fits requests (10 s each, 30 s for the whole chain), skipping an unreachable survey or an uncovered field; a single one-line note reports a connection problem, and once the service is down the remaining cutouts are shown without a template instead of retrying.
 - **CDS X-Match outage tolerated**: transient filtering retries once, then runs without the extra VizieR cross-match (with an info note) instead of returning no candidates.
 - **Shorter PSF fallback message**: the short shared message is shown as an info note above the Aladin viewer; the 1.1 x FWHM aperture detail stays in the transient table.
 

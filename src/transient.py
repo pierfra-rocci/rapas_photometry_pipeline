@@ -1,4 +1,4 @@
-from stdpipe import pipeline, cutouts, templates, catalogs, photometry, plots
+from stdpipe import pipeline, cutouts, catalogs, photometry, plots
 from typing import Any
 
 from stdpipe import astrometry as stdpipe_astrometry
@@ -95,7 +95,7 @@ TRANSIENT_PSF_FALLBACK_MESSAGE = format_psf_fallback_message(
 # Magnitude excess (detected - catalogue) above which a source positionally
 # coincident with a reference catalogue entry is still kept as a transient
 # candidate.  Defaults to the long-standing 2.0 mag threshold.
-DEFAULT_TRANSIENT_MAG_THRESHOLD = 1.5
+DEFAULT_TRANSIENT_MAG_THRESHOLD = 2.0
 
 filter_ab_offset = {
     "U": 0.79,
@@ -324,7 +324,7 @@ def _resolve_photometry_columns(table, mag_column, err_column, filter_band=None)
 # rides out the hiccup; if it keeps failing, transient filtering still runs,
 # just without the extra VizieR cross-checks.
 TRANSIENT_FILTER_ATTEMPTS = 2
-TRANSIENT_FILTER_RETRY_DELAY_SECONDS = 2.0
+TRANSIENT_FILTER_RETRY_DELAY_SECONDS = 1.5
 # Socket errno values that mean the peer could not be reached.
 NETWORK_ERRNOS = {101, 104, 110, 111, 113}
 
@@ -805,40 +805,54 @@ def find_candidates(
             st.info("(⚠️ Possibly due to a crowded field, filter band or bad S/N)")
 
     st.info(
-        "Generating cutouts and retrieving template images for the first 20 candidates (best S/N first)..."
+        "Generating cutouts and retrieving template images for the first 10 candidates (best S/N first)..."
     )
     # Sort by best S/N: smallest mag_calib_err = highest S/N (S/N ≈ 1.0857 / mag_err)
     sorted_indices = np.argsort(candidates["mag_calib_err"])
     sorted_candidates = candidates[sorted_indices]
-    for _, cand in list(enumerate(sorted_candidates))[:20]:
+    _show_candidate_cutouts(image, header, sorted_candidates, filter_name, dec_center)
+
+    # Let the Streamlit app warn the user when candidates rely on the aperture
+    # fallback instead of PSF photometry.
+    candidates.meta[TRANSIENT_MAGNITUDE_SOURCE_META] = magnitude_source
+    return candidates
+
+
+def _show_candidate_cutouts(
+    image, header, sorted_candidates, filter_name, dec_center, limit=10
+):
+    """Display a science/template cutout for each transient candidate.
+
+    hips2fits is queried for the first candidate only: when every fallback
+    fails, the service is down and the remaining candidates are shown with
+    their science frame alone after a single one-line note, instead of waiting
+    through the same timeouts again.
+    """
+    hips_service_down = False
+    coverage_note_shown = False
+    for _, cand in list(enumerate(sorted_candidates))[:limit]:
         # Convert row to dict for stdpipe compatibility
         cand_dict = {col: cand[col] for col in cand.colnames}
         # Create the cutout from image based on the candidate
         cutout = cutouts.get_cutout(image, cand_dict, 25, header=header)
         # The cutout's header carries the WCS, so the template matches its
         # exact field of view. _fetch_hips_template walks the survey chain:
-        # reference survey, then SDSS, then DSS2, then the direct CDS request.
+        # reference survey, then SDSS, then DSS2, within one time budget.
         cand_dec = float(cand_dict.get("dec", dec_center))
-        try:
-            cutout["template"], _template_survey = _fetch_hips_template(
-                cutout.get("header"), filter_name, cand_dec
-            )
-            if cutout["template"] is None:
-                tried = " or ".join(_hips_template_labels(filter_name, cand_dec))
-                st.info(
-                    "No HiPS template coverage for candidate at "
-                    f"RA={cand_dict.get('ra')}, Dec={cand_dict.get('dec')}: "
-                    f"{tried} returned no usable pixels there."
+        cutout["template"] = None
+        if not hips_service_down:
+            try:
+                cutout["template"], _template_survey = _fetch_hips_template(
+                    cutout.get("header"), filter_name, cand_dec
                 )
-        except HipsTemplateServiceError as e:
-            st.info(
-                f"HiPS template service unreachable for a candidate: {e}. "
-                "The science cutout is unaffected."
-            )
-            cutout["template"] = None
-        except Exception as e:
-            st.info(f"Failed to retrieve HiPS template image for candidate: {e}")
-            cutout["template"] = None
+            except Exception:
+                # HipsTemplateServiceError: no CDS host answered in time.
+                hips_service_down = True
+                st.info(HIPS_TEMPLATE_CONNECTION_MESSAGE)
+            else:
+                if cutout["template"] is None and not coverage_note_shown:
+                    coverage_note_shown = True
+                    st.info(HIPS_TEMPLATE_COVERAGE_MESSAGE)
 
         # Now we have two image planes in the cutout - let's display them
         fig = plot_cutout(
@@ -849,13 +863,7 @@ def find_candidates(
             qq=[1, 99],
             stretch="linear",
         )
-        st.pyplot(fig)
-        plt.close(fig)
-
-    # Let the Streamlit app warn the user when candidates rely on the aperture
-    # fallback instead of PSF photometry.
-    candidates.meta[TRANSIENT_MAGNITUDE_SOURCE_META] = magnitude_source
-    return candidates
+        st.pyplot(fig)        plt.close(fig)
 
 
 # Magnitude / error columns used for the Astro-Colibri cutout titles, in
@@ -922,20 +930,27 @@ def sanitize_astrocolibri_name(name) -> str:
 # gets a template.
 HIPS_TEMPLATE_SDSS = "SDSS/DR9/color"
 HIPS_TEMPLATE_DSS = "CDS/P/DSS2/color"
-# Second, resilient path: hips2fits queried directly with an explicit timeout.
+# hips2fits is queried directly, so every fallback carries an explicit
+# timeout: one request never waits more than HIPS2FITS_TIMEOUT_SECONDS and the
+# whole survey/host chain stops at HIPS_TEMPLATE_TIMEOUT_SECONDS, so an
+# unreachable CDS service delays a cutout by at most 30 seconds.
 HIPS2FITS_URLS = (
     "https://alasky.cds.unistra.fr/hips-image-services/hips2fits",
     "https://alasky.u-strasbg.fr/hips-image-services/hips2fits",
 )
-HIPS2FITS_TIMEOUT_SECONDS = 20.0
+HIPS2FITS_TIMEOUT_SECONDS = 10.0
+HIPS_TEMPLATE_TIMEOUT_SECONDS = 30.0
+
+# One-line notes shown under a cutout instead of the full requests error.
+HIPS_TEMPLATE_CONNECTION_MESSAGE = "No cutouts: connection problem with the HiPS URL."
+HIPS_TEMPLATE_COVERAGE_MESSAGE = "No cutouts: no HiPS coverage at this position."
 
 
 class HipsTemplateServiceError(RuntimeError):
-    """The CDS hips2fits service answered none of the template requests.
+    """No CDS hips2fits host answered any of the template requests.
 
-    ``templates.get_hips_image`` swallows download errors and returns ``None``,
-    so without this distinction an outage looks exactly like a field outside
-    the survey footprints. Raised only when every survey returned no response.
+    The exception text keeps the surveys and the last network error for
+    debugging; the app only shows HIPS_TEMPLATE_CONNECTION_MESSAGE.
     """
 
 
@@ -950,11 +965,6 @@ def _hips_template_surveys(filter_name, dec_center):
     return [primary + filter_name, HIPS_TEMPLATE_SDSS, HIPS_TEMPLATE_DSS]
 
 
-def _hips_template_labels(filter_name, dec_center):
-    """Return the survey identifiers tried, in attempt order."""
-    return _hips_template_surveys(filter_name, dec_center)
-
-
 def _fix_panstarrs_scaling(image, hips):
     """Undo the non-linear asinh scaling of the PanSTARRS HiPS, as stdpipe."""
     if "PanSTARRS" not in hips or hips == "PanSTARRS/DR1/g":
@@ -964,19 +974,31 @@ def _fix_panstarrs_scaling(image, hips):
         return np.exp(x) - np.exp(-x)
 
 
-def _fetch_hips_template_direct(cutout_header, surveys):
-    """Fetch a template straight from hips2fits (second, resilient path).
+def _hips2fits_image(url, hips, params, timeout):
+    """Download one template image from one hips2fits host."""
+    from astropy.io import fits
 
-    Only used when the stdpipe helper returned no image at all, which also
-    happens when a request hangs or the service drops the connection: this
-    path sets an explicit timeout and tries both CDS hosts before giving up.
+    response = requests.get(url, params={**params, "hips": hips}, timeout=timeout)
+    response.raise_for_status()
+    with fits.open(io.BytesIO(response.content)) as hdul:
+        return np.asarray(hdul[0].data, dtype=float)
+
+
+def _fetch_hips_template_direct(cutout_header, surveys, deadline=None):
+    """Fetch a template straight from hips2fits, within a time budget.
+
+    A request never waits longer than ``HIPS2FITS_TIMEOUT_SECONDS`` and the
+    survey/host chain stops once *deadline* (default: now plus
+    ``HIPS_TEMPLATE_TIMEOUT_SECONDS``) passes, so an unreachable CDS service
+    cannot stall the cutouts for minutes.
 
     Returns ``(template, survey)``; raises ``HipsTemplateServiceError`` when no
     host answered at all.
     """
-    from astropy.io import fits
     from astropy.wcs import WCS
 
+    if deadline is None:
+        deadline = time.monotonic() + HIPS_TEMPLATE_TIMEOUT_SECONDS
     if cutout_header is None:
         return None, None
     try:
@@ -997,15 +1019,13 @@ def _fetch_hips_template_direct(cutout_header, surveys):
     last_error = None
     for hips in surveys:
         for url in HIPS2FITS_URLS:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
             try:
-                response = requests.get(
-                    url,
-                    params={**params, "hips": hips},
-                    timeout=HIPS2FITS_TIMEOUT_SECONDS,
+                image = _hips2fits_image(
+                    url, hips, params, min(HIPS2FITS_TIMEOUT_SECONDS, remaining)
                 )
-                response.raise_for_status()
-                with fits.open(io.BytesIO(response.content)) as hdul:
-                    image = np.asarray(hdul[0].data, dtype=float)
             except Exception as e:
                 last_error = e
                 continue
@@ -1013,11 +1033,11 @@ def _fetch_hips_template_direct(cutout_header, surveys):
             if np.isfinite(image).any():
                 return _fix_panstarrs_scaling(image, hips), hips
             break  # This survey has no tiles here: try the next one.
+        if deadline - time.monotonic() <= 0:
+            break
     if not answered and last_error is not None:
         raise HipsTemplateServiceError(
-            "direct hips2fits request failed for "
-            + ", ".join(surveys)
-            + f": {last_error}"
+            "hips2fits did not answer for " + ", ".join(surveys) + f": {last_error}"
         )
     return None, None
 
@@ -1025,43 +1045,22 @@ def _fetch_hips_template_direct(cutout_header, surveys):
 def _fetch_hips_template(cutout_header, filter_name, dec_center):
     """Fetch a HiPS template matching *cutout_header*.
 
-    Tries the reference survey for the hemisphere, then SDSS, then DSS2. A
-    survey is abandoned on error, on no response, or when the field has no
-    usable pixels in it.
+    Tries the reference survey for the hemisphere, then SDSS, then DSS2, all
+    through the explicitly timed hips2fits request so the whole chain stays
+    within ``HIPS_TEMPLATE_TIMEOUT_SECONDS``. A survey is abandoned on error,
+    on no response, or when the field has no usable pixels in it.
 
     Returns ``(template, survey)`` with the full HiPS identifier; ``template``
     is None when a survey answered but none had usable (finite, non-empty)
-    data. Raises ``HipsTemplateServiceError`` when nothing answered, after a
-    second attempt through the direct hips2fits path.
+    data. Raises ``HipsTemplateServiceError`` when nothing answered.
     """
-    surveys = _hips_template_surveys(filter_name, dec_center)
-    last_error = None
-    answered = False
-    for hips in surveys:
-        try:
-            template = templates.get_hips_image(
-                hips, header=cutout_header, get_header=False
-            )
-        except Exception as e:
-            last_error = e
-            continue
-        if template is None:
-            # No response at all: the service, not the survey, is the problem.
-            continue
-        answered = True
-        if np.isfinite(template).any():
-            return template, hips
-    if answered:
+    if cutout_header is None:
         return None, None
-    # Second, resilient method: stdpipe cannot tell a timeout from an outage,
-    # so ask hips2fits again with an explicit timeout on both CDS hosts.
-    template, hips = _fetch_hips_template_direct(cutout_header, surveys)
-    if template is not None:
-        return template, hips
-    message = "CDS hips2fits did not answer for " + ", ".join(surveys)
-    if last_error is not None:
-        message += f": {last_error}"
-    raise HipsTemplateServiceError(message)
+    return _fetch_hips_template_direct(
+        cutout_header,
+        _hips_template_surveys(filter_name, dec_center),
+        deadline=time.monotonic() + HIPS_TEMPLATE_TIMEOUT_SECONDS,
+    )
 
 
 def plot_astrocolibri_cutouts(
@@ -1126,6 +1125,10 @@ def plot_astrocolibri_cutouts(
     st.subheader("Astro-Colibri Match Cutouts")
 
     saved_paths = []
+    # One HiPS request per run: after an outage the remaining cutouts keep
+    # their science frame only, and a coverage gap is noted just once.
+    hips_service_down = False
+    coverage_note_shown = False
     for i, (_, row) in enumerate(ac_rows.iterrows()):
         # Build a minimal dict compatible with stdpipe's get_cutout
         ra = row.get("ra")
@@ -1159,27 +1162,20 @@ def plot_astrocolibri_cutouts(
             continue
 
         survey = None
-        survey_labels = " or ".join(
-            _hips_template_labels(filter_name, float(dec))
-        )
-        try:
-            cutout["template"], survey = _fetch_hips_template(
-                cutout.get("header"), filter_name, float(dec)
-            )
-            if cutout["template"] is None:
-                st.info(
-                    f"No HiPS template coverage for {name}: {survey_labels} "
-                    "returned no usable pixels there."
+        cutout["template"] = None
+        if not hips_service_down:
+            try:
+                cutout["template"], survey = _fetch_hips_template(
+                    cutout.get("header"), filter_name, float(dec)
                 )
-        except HipsTemplateServiceError as e:
-            st.info(
-                f"HiPS template service unreachable for {name}: {e}. "
-                "The science cutout is unaffected."
-            )
-            cutout["template"] = None
-        except Exception as e:
-            st.info(f"Could not retrieve HiPS template for {name}: {e}")
-            cutout["template"] = None
+            except Exception:
+                # HipsTemplateServiceError: no CDS host answered in time.
+                hips_service_down = True
+                st.info(HIPS_TEMPLATE_CONNECTION_MESSAGE)
+            else:
+                if cutout["template"] is None and not coverage_note_shown:
+                    coverage_note_shown = True
+                    st.info(HIPS_TEMPLATE_COVERAGE_MESSAGE)
 
         # Build a descriptive title
         title_parts = [str(name)]

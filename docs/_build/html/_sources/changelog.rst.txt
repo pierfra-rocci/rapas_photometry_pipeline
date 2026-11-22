@@ -14,12 +14,12 @@ Version 1.9.4
     ``SDSS/DR9/color``, then ``CDS/P/DSS2/color``, which covers the whole sky.
     An unreachable survey, a missing HiPS entry, or a field without tiles is
     skipped instead of dropping the template.
-*   When no survey answers, a second method queries CDS hips2fits directly with
-    an explicit 20-second timeout on two CDS hosts before giving up, so a
-    stalled request cannot hang the cutouts.
-*   Info notes name the surveys tried and distinguish an unreachable service from
-    missing coverage; the cutout keeps its science frame either way, and its
-    title names the survey actually used.
+*   Every fallback is a direct, explicitly timed hips2fits request: a single
+    request waits at most 10 seconds and the whole survey/host chain stops at
+    30 seconds, so an unreachable CDS service delays a cutout by seconds.
+*   A single one-line note distinguishes an unreachable service from missing
+    coverage; once the service is down the remaining cutouts are shown with
+    their science frame only, instead of retrying the same timeouts.
 
 **Transient filtering survives a CDS X-Match outage**
 
