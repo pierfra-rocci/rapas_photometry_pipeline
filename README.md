@@ -10,9 +10,13 @@
 
 ![RAPAS Logo](rapas_logo.png)
 
-![Version](https://img.shields.io/badge/version-1.9.4-blue)
+![Version](https://img.shields.io/badge/version-1.9.5-blue)
 
 A comprehensive astronomical photometry pipeline built with Streamlit, featuring local astrometric plate solving with an optional online fallback, multi-catalog cross-matching, and advanced photometric analysis capabilities.
+
+The project currently targets version 1.9.5. See [changelog.md](changelog.md)
+for the latest release notes and [docs/changelog.rst](docs/changelog.rst) for
+the release history.
 
 ## Documentation
 
@@ -523,68 +527,6 @@ viewer is usually a WebGL2 or a network issue, not a caching one.
 - Check the generated log file to see which catalog steps completed, timed out,
   or were skipped.
 
-## Changelog
-
-> The project currently targets version 1.9.4. Recent releases are listed here; the full history is in `docs/changelog.rst`.
-
-### Current Release (1.9.4)
-
-- **HiPS template chain**: Astro-Colibri stamps and transient cutouts try `PanSTARRS/DR1` (north) or `SkyMapper/DR4` (south), then `SDSS/DR9/color`, then `CDS/P/DSS2/color` through explicitly timed hips2fits requests (10 s each, 30 s for the whole chain), skipping an unreachable survey or an uncovered field; a single one-line note reports a connection problem, and once the service is down the remaining cutouts are shown without a template instead of retrying.
-- **CDS X-Match outage tolerated**: transient filtering retries once, then runs without the extra VizieR cross-match (with an info note) instead of returning no candidates.
-- **Shorter PSF fallback message**: the short shared message is shown as an info note above the Aladin viewer; the 1.1 x FWHM aperture detail stays in the transient table.
-
-### Version 1.9.3
-
-- **TNS public catalogue without an API key**: the daily `tns_public_objects.csv.zip` is downloaded from `https://www.wis-tns.org/sites/default/files/tns_public_objects/` with a plain `GET` that only carries the `tns_marker` user agent (a guest marker, named with `RPP_TNS_MARKER_NAME`); the older `/system/files/` path is tried if it fails. One copy is cached and shared by every user: the first run of the day downloads it, the others read it, and a copy older than 24 hours is downloaded again and overwritten, with a lock file so concurrent sessions do not download it twice. TNS credentials are now only needed by the Search API fallback.
-- **TNS catalogue warm-up**: the shared catalogue is prepared at app startup in a background daemon thread (once per process), so neither the first page load nor the first analysis of the day pays for the download; an analysis that needs it meanwhile waits on the download lock and reuses the downloaded file, and the warm-up is skipped when `RPP_TNS_MIRROR_URL` is set.
-- **TNS cache cleanup**: the download lock and any half-written `tns_public_objects.csv.<pid>.tmp` left by an interrupted download are removed by the next catalogue load once they are older than 10 minutes, reported as one `INFO: TNS: removed stale cache file(s) ...` line.
-- **TNS status line**: the TNS status panel reports the catalogue state — how long ago it was downloaded, when the next refresh is due, and whether a background download is running.
-- **Partial results and downloads**: when calibration is unavailable, the pipeline exports instrumental CSV and VOTable catalogs instead of calibrated results and skips transient finding. A failed later cross-match or transient search does not prevent the photometry catalog from being exported. The archived ZIP remains downloadable after a Streamlit rerun.
-- **Aladin Lite resilience**: if the CDS script fails, the viewer tries the pinned jsDelivr module; a source-coordinate table remains available without the viewer. If CDS HiPS imagery is unreachable, the survey layer falls back to the CDS-listed mirrors (ESA Sky, CASDA, STPub, China-VO) before switching surveys.
-- **Catalog service mirrors**: failed VizieR and SIMBAD requests retry on the Harvard and IDIA mirrors, and Gaia TAP queries on the Heidelberg mirror (following https://cds.unistra.fr/). This retries the same service, not a different photometric catalog.
-- **Private account storage**: new archives and WCS FITS files use account-ID-based paths; global in-app logs are restricted to configured administrator IDs.
-- **Local astrometry timeout**: local plate-solving attempts share a configurable 180-second budget before the existing fallback is attempted.
-- **VOTable export**: duplicate catalog columns are removed before CSV and VOTable export.
-
-### Version 1.9.2
-
-- **TNS (Transient Name Server) cross-match**: sources are also matched against the public TNS objects from the daily staged catalogue (`tns_public_objects.csv.zip`, downloaded at most once per UTC day and cached), with a progressive radius of 5, 10, 15, 20 and 30 arcsec that keeps the closest object per source. `tns_name`, `tns_type`, `tns_ra` and `tns_dec` are added to the catalog files, `TNS; ` is added to `catalog_matches`, the objects found in the field are listed in the app, and the Aladin popups name them. A missing key or network/HTTP error is reported as a warning and the run continues. Configure `TNS_API_KEY` with `TNS_BOT_ID`/`TNS_BOT_NAME` (or `TNS_USER_ID`/`TNS_USER_NAME`); `RPP_TNS_CACHE_DIR` and `RPP_TNS_CATALOG_PATH` control the cache location and an offline catalogue.
-- **TNS Search API fallback**: when the staged catalogue cannot be obtained and TNS credentials are set, one `/api/get/search` cone search over the field followed by `/api/get/object` calls (up to 100 objects) provides the name, position and type of the objects; matching and the `tns_name`/`tns_type`/`tns_ra`/`tns_dec` output columns are unchanged. `RPP_TNS_SANDBOX=1` selects the TNS sandbox.
-- **TNS spatial index**: the parsed TNS catalogue now carries a `scipy` KD-tree over its object positions, so selecting the objects of a field no longer compares all ~170k rows with the field centre. The index is built once when the catalogue is parsed, kept with it in the cache, and `tns_field_mask` falls back to the angular separation when no index is available.
-- **TNS shared mirror**: setting `RPP_TNS_MIRROR_URL` to a shared `tns-mirror` HTTP API makes the TNS step query `GET /v1/nearest` once per detected source instead of downloading the catalogue; the mirror is authoritative when it answers and any failure falls back to the daily cached catalogue (fields with more than 500 sources use the catalogue directly).
-- **Astro-Colibri radius extended to 30 arcsec**: the progressive Astro-Colibri match now runs 5, 10, 15, 20 and 30 arcsec (was 20); loose associations found only at 15, 20 or 30 arcsec are still flagged with a warning.
-
-### Version 1.9.1
-
-- **Aladin Lite diagnostics**: the widget reports why the sky image is missing instead of showing an empty viewer, both on a red line above the viewer and in the browser console: no WebGL2 context (hardware acceleration off, blocklisted GPU, `webgl.disabled`), or `aladin.js` not downloadable from `aladin.cds.unistra.fr`. It also logs the Aladin Lite release actually loaded (`[RPP Aladin] version ...`).
-- **Aladin fallback survey**: the `fallback_survey` argument of `display_catalog_in_aladin()` defaults to `CDS/P/DSS2/red`. The HiPS `properties` document is probed with a 12 s timeout and, when it cannot be read, the base layer is switched to the fallback survey; the swap is reported above the viewer, and an explicit message is shown when neither survey is reachable.
-- **Aladin troubleshooting and tests**: new *Aladin Lite Viewer Issues* section in `docs/troubleshooting.rst`, plus tests for the diagnostics and the fallback in `tests/test_network_resilience.py`.
-
-### Version 1.9.0
-
-- **Login audit line**: every successful login writes a timestamped line with the pipeline version to the service logs, for example `[2026-10-18 18:46:22] RPP v1.9.0 - User 'intern1' logged in successfully (FastAPI backend).` The line is emitted by `api/main.py` (FastAPI), `backend.py` (legacy Flask) and `pages/login.py` (frontend).
-- **Curated catalog export**: `*_catalog.csv` / `.vot` now contain only the essential columns in a fixed order, starting with a unique `id` that matches the ID shown in the Aladin Lite popups; Astro-Colibri detections are sorted to the top of the files, and `*_transients.csv` reuses the same columns.
-- **Astrometry detection ladder**: 20 stars minimum target (Astrometry.net has no hard minimum; it solves from the brightest stars first), detection threshold 3 → 2 → 1 sigma, best-effort with at least 5 stars on sparse fields, and a retry of the solve at a lower threshold on failure.
-- **Astro-Colibri list and Aladin highlight**: every Astro-Colibri source returned for the field is listed in the app (name, RA/Dec, type, classification, match status, separation), the event RA/Dec are exported as `astrocolibri_ra` / `astrocolibri_dec`, and cross-matched sources are drawn as larger red squares (separate "Astro-Colibri matches" layer) in the Aladin Lite viewer.
-- **Astro-Colibri cross-match**: events are matched to the nearest catalog source with a progressive radius (5, then 10, 15 and finally 20 arcsec; events without coordinates are ignored); the log reports how many matches were found at each radius, and a warning is shown when sources were matched only at the loose 15 or 20 arcsec tiers. SkyBoT requests are now retried on network/HTTP 429/5xx errors, use the mid-exposure epoch and the ephemeris uncertainty (up to 30 arcsec) for the match. The outcome (number of matches, none, or service unavailable) is now displayed in the app instead of being buried in the log.
-- **Astro-Colibri cutouts**: postage stamps show the science frame and the HiPS template with the source circled and its calibrated magnitude in the title. The survey follows the field declination (PanSTARRS north, SkyMapper south) and automatically falls back to the other survey when the field is not covered.
-- **Transient finder** now detects sources with SExtractor (via `stdpipe`) and accepts `uint16` images. When the photometry table has no usable PSF magnitudes, it falls back to the calibrated 1.1 x FWHM aperture photometry instead of returning no candidates.
-- **SCAMP refinement** retries with wider tolerances when too few reference matches are found.
-- **Scale-aware error model**: the Poisson term of the per-pixel error is now validated against the frame itself. A normalised float stack used to get a Poisson term ~1e5 times the measured sky variance, because the resolved gain is in e-/ADU while the data are not in counts; the inflated uncertainties made 22 of 26 ePSF-to-star fits return a negative flux, which inverted the ePSF and made `EPSFBuilder` abort with *Cannot normalize ePSF*, dropping PSF photometry for the whole frame. `resolve_poisson_gain()` keeps the gain when it matches the data's scale and otherwise re-derives it from the sky level and its RMS (`gain = sky / rms²`), and `compute_error_map()` builds the error map from it (background RMS alone when no gain is usable). PSF photometry and the aperture S/N are restored on such frames.
-- **PSF star minimum lowered to 10** (was 15); a quality warning is shown when fewer than 25 PSF stars are available.
-- **Session isolation**: each browser session now has its own `work_<id>` folder for temporary uploads and intermediate results, so concurrent users (or several tabs of the same account) can no longer mix FITS files, headers or outputs. Final ZIP archives remain in the user-level results folder. (Version 1.8.8 was skipped.)
-- **Reset**: the *Reset* button now works in a single press and only clears the current session; it no longer clears the cache of every connected user.
-- **Stale-file cleanup**: leftover work folders and temporary uploads older than 24 hours are removed once per session after login; archived ZIPs are never deleted.
-- **Safer shared state**: the cached FITS parser is pure (no UI side effects), Matplotlib figures are closed after use, result-file matching respects name delimiters, and shared `astroquery` clients are configured once at import.
-- **Tests**: new session-isolation tests and UI regression checks.
-
-### Version 1.8.7
-
-- **Pixel scale**: the silent 1 arcsec/pixel fallback is removed. When the scale cannot be derived from the header (or the solved WCS), the pipeline stops and asks for the *Pixel scale override* sidebar value.
-- **Effective gain**: a single resolver (`resolve_effective_gain()`) is used for photometry errors, cosmic-ray masking and source detection. The `CVF` keyword is supported (`gain = 1/CVF`), explicit conversion keywords take precedence over `GAIN`, and the bare `GAIN` of QHY/ZWO cameras (a driver setting) is ignored. The plausible range is 0.02-100 e-/ADU.
-- **Robustness**: PSF S/N guards for non-positive fluxes, safer cross-match and Astro-Colibri handling, scoped ZIP/temp-file cleanup, HTML-escaped Aladin popups.
-- **Login**: a hint reminds Firefox users to press Enter after typing the password.
-
 ## Author
 
 **Pier-Francesco Rocci**
@@ -592,7 +534,7 @@ viewer is usually a WebGL2 or a network issue, not a caching one.
 ## Acknowledgements
 
 Development of this project was supported by AI language models: **ChatGPT**,
-**Claude**, **Mistral** and **DeepSeek**. Their assistance contributed to the
+**Claude** and **DeepSeek**. Their assistance contributed to the
 design, implementation and documentation of the pipeline.
 
 ## Contributing

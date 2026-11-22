@@ -14,6 +14,7 @@ the ASU-TSV helper at the end of this module.
 from __future__ import annotations
 
 import threading
+from typing import Any
 
 import numpy as np
 import requests
@@ -55,6 +56,7 @@ SIMBAD_SERVERS = (
 GAIA_PRIMARY_TAP_SERVER = "https://gea.esac.esa.int/"
 GAIA_FALLBACK_TAP_SERVER = "https://gaia.ari.uni-heidelberg.de/"
 GAIA_TAP_SERVERS = (GAIA_PRIMARY_TAP_SERVER, GAIA_FALLBACK_TAP_SERVER)
+GAIA_HTTP_TIMEOUT_SECONDS = 30
 
 _VIZIER_FALLBACK_LOCK = threading.Lock()
 _GAIA_MIRROR_CLIENT = None
@@ -157,11 +159,40 @@ def _gaia_mirror_client() -> object:
     return _GAIA_MIRROR_CLIENT
 
 
+def _apply_gaia_http_timeout(gaia_client: object) -> None:
+    """Apply a socket timeout to astroquery's TAP HTTP connections."""
+    tap_connection = getattr(gaia_client, "_Tap__connHandler", None)
+    connection_handler = getattr(
+        tap_connection, "_TapConn__connectionHandler", None
+    )
+    if connection_handler is None:
+        raise RuntimeError("Could not configure the Gaia TAP connection timeout.")
+    if getattr(connection_handler, "_rpp_timeout_configured", False):
+        return
+
+    # astroquery's TAP connection handler creates http.client connections without
+    # exposing a timeout argument.
+    original_get_connection = connection_handler.get_connection
+
+    def get_connection(
+        *, ishttps: bool = False, cookie: Any = None, verbose: bool = False
+    ) -> Any:
+        connection = original_get_connection(
+            ishttps=ishttps, cookie=cookie, verbose=verbose
+        )
+        connection.timeout = GAIA_HTTP_TIMEOUT_SECONDS
+        return connection
+
+    connection_handler.get_connection = get_connection
+    connection_handler._rpp_timeout_configured = True
+
+
 def query_gaia_with_fallback(
     gaia_client: object, query: str, **kwargs: object
 ) -> tuple[object, bool]:
     """Launch a Gaia TAP job, retrying on the Heidelberg mirror."""
     try:
+        _apply_gaia_http_timeout(gaia_client)
         return gaia_client.launch_job(query=query, **kwargs), False
     except Exception as primary_error:  # noqa: BLE001 - external service failures
         fallback_kwargs = dict(kwargs)
@@ -169,8 +200,10 @@ def query_gaia_with_fallback(
         # returns by default.
         fallback_kwargs.setdefault("output_format", "votable")
         try:
+            fallback_client = _gaia_mirror_client()
+            _apply_gaia_http_timeout(fallback_client)
             return (
-                _gaia_mirror_client().launch_job(query=query, **fallback_kwargs),
+                fallback_client.launch_job(query=query, **fallback_kwargs),
                 True,
             )
         except Exception as fallback_error:  # noqa: BLE001 - external service failures

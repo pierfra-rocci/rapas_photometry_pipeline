@@ -2330,19 +2330,20 @@ def calculate_zero_point(
     fwhm_radius_factor: float = 1.5,
 ) -> tuple[float | None, float | None, Figure | None]:
     """
-    Calculate photometric zero point from matched sources with GAIA.
+    Calculate the photometric zero point from matched catalog sources.
 
-    The zero point transforms instrumental magnitudes to the standard GAIA magnitude system,
-    accounting for atmospheric extinction using the provided airmass.
+    The zero point transforms instrumental magnitudes to the selected catalog
+    magnitude system, accounting for atmospheric extinction using the provided
+    airmass.
 
     Parameters
     ----------
     _phot_table : astropy.table.Table or pandas.DataFrame
         Photometry results table (underscore prevents caching issues)
     _matched_table : pandas.DataFrame
-        Table of GAIA cross-matched sources (used for calibration)
+        Table of catalog cross-matched sources (used for calibration)
     filter_band : str
-        GAIA magnitude band used (e.g., 'phot_g_mean_mag')
+        Catalog magnitude band used (e.g., ``phot_g_mean_mag``)
     air : float
         Airmass value for atmospheric extinction correction
 
@@ -2352,14 +2353,14 @@ def calculate_zero_point(
         (zero_point_value, zero_point_std, matplotlib_figure) where:
         - zero_point_value: Float value of the calculated zero point
         - zero_point_std: Standard deviation of the zero point
-        - matplotlib_figure: Figure object showing GAIA vs. calibrated magnitudes
+        - matplotlib_figure: Figure showing catalog vs. calibrated magnitudes
 
     Notes
     -----
     - Uses sigma clipping to remove outliers from zero point calculation
     - Applies a simple atmospheric extinction correction of 0.1*airmass
     - Stores the calibrated photometry table in session state as 'final_phot_table'
-    - Creates and saves a plot showing the relation between GAIA and calibrated magnitudes
+    - Creates and saves plots labeled with the catalog used for calibration
     """
     if _phot_table is None:
         st.info("No photometry table available to calculate zero point.")
@@ -2367,6 +2368,37 @@ def calculate_zero_point(
     if _matched_table is None or len(_matched_table) == 0:
         st.info("No matched sources to calculate zero point.")
         return None, None, None
+
+    catalog_label = _matched_table.attrs.get("calibration_catalog")
+    if catalog_label not in {
+        "Gaia DR3",
+        "GAIA Synthetic",
+        "PanSTARRS",
+        "SkyMapper",
+    }:
+        if filter_band in {
+            "phot_g_mean_mag",
+            "phot_bp_mean_mag",
+            "phot_rp_mean_mag",
+        }:
+            catalog_label = "Gaia DR3"
+        elif filter_band in {"gmag", "rmag", "imag", "zmag"}:
+            catalog_label = "PanSTARRS"
+        elif filter_band in {
+            "u_jkc_mag",
+            "v_jkc_mag",
+            "b_jkc_mag",
+            "r_jkc_mag",
+            "i_jkc_mag",
+            "u_sdss_mag",
+            "g_sdss_mag",
+            "r_sdss_mag",
+            "i_sdss_mag",
+            "z_sdss_mag",
+        }:
+            catalog_label = "GAIA Synthetic"
+        else:
+            catalog_label = "Gaia DR3"
 
     try:
         # Define aperture radii (should match the ones used in detection_and_photometry)
@@ -2580,7 +2612,7 @@ def calculate_zero_point(
             _matched_table[filter_band],
             _matched_table[plot_mag_col],
             alpha=0.5,
-            label="Matched sources",
+            label=catalog_label,
             color="blue",
         )
 
@@ -2644,9 +2676,9 @@ def calculate_zero_point(
         ideal_mag = np.linspace(mag_range[0], mag_range[1], 100)
         ax.plot(ideal_mag, ideal_mag, "k--", alpha=0.7)
 
-        ax.set_xlabel(f"Gaia {filter_band}")
+        ax.set_xlabel(f"{catalog_label} {filter_band}")
         ax.set_ylabel(f"Calib mag ({_plot_label}×FWHM aperture)")
-        ax.set_title("Gaia magnitude vs Calibrated magnitude")
+        ax.set_title(f"{catalog_label} magnitude vs Calibrated magnitude")
         ax.legend()
         ax.grid(True, alpha=0.5)
 
@@ -2677,12 +2709,15 @@ def calculate_zero_point(
             fmt="o",
             markersize=5,
             alpha=0.7,
-            label="Residuals",
+            label=catalog_label,
         )
         ax_resid.axhline(0, color="gray", ls="--")
-        ax_resid.set_xlabel("Calibrated magnitude")
+        ax_resid.set_xlabel(f"{catalog_label} {filter_band}")
         ax_resid.set_ylabel("Residual (catalog - calibrated)")
-        ax_resid.set_title(f"Photometric Residuals ({_plot_label}×FWHM aperture)")
+        ax_resid.set_title(
+            f"{catalog_label} Photometric Residuals "
+            f"({_plot_label}×FWHM aperture)"
+        )
         ax_resid.grid(True, alpha=0.5)
         ax_resid.legend()
 

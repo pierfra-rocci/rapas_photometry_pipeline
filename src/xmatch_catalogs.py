@@ -42,6 +42,36 @@ Gaia.MAIN_GAIA_TABLE = "gaiadr3.gaia_source"
 Skybot._get_raw_response = False
 
 
+def _apply_request_timeout(session: Any) -> None:
+    """Cap requests made through an astroquery session at 30 seconds."""
+    original_request = session.request
+
+    def request_with_timeout(method: str, url: str, **kwargs: Any) -> Any:
+        timeout = kwargs.get("timeout")
+        if timeout is None:
+            kwargs["timeout"] = HTTP_TIMEOUT_SECONDS
+        elif isinstance(timeout, tuple):
+            kwargs["timeout"] = tuple(
+                HTTP_TIMEOUT_SECONDS
+                if value is None
+                else min(value, HTTP_TIMEOUT_SECONDS)
+                for value in timeout
+            )
+        else:
+            kwargs["timeout"] = min(timeout, HTTP_TIMEOUT_SECONDS)
+        return original_request(method, url, **kwargs)
+
+    session.request = request_with_timeout
+
+
+def _create_vizier_client(*args: Any, **kwargs: Any) -> Any:
+    """Create a VizieR client whose primary and fallback requests are bounded."""
+    vizier_client = Vizier(*args, **kwargs)
+    timeout = getattr(vizier_client, "TIMEOUT", HTTP_TIMEOUT_SECONDS)
+    vizier_client.TIMEOUT = min(timeout, HTTP_TIMEOUT_SECONDS)
+    return vizier_client
+
+
 def _create_simbad_client(server: str) -> object:
     """Create a SIMBAD client for one mirror without persisting config changes."""
     with _SIMBAD_CLIENT_CREATION_LOCK:
@@ -51,6 +81,7 @@ def _create_simbad_client(server: str) -> object:
                 simbad_conf.servers_list.append(server)
             simbad_client = Simbad()
             simbad_client.server = server
+            _apply_request_timeout(simbad_client._session)
             return simbad_client
         finally:
             if not server_was_known:
@@ -236,7 +267,7 @@ def cross_match_with_gaia(
                     # SkyMapper DR4 catalog in Vizier
                     try:
                         # Use '+all' to get all available columns including coordinates
-                        v = Vizier(
+                        v = _create_vizier_client(
                             columns=["**", "+_r"]
                         )  # Get all columns plus distance
                         v.ROW_LIMIT = -1  # No row limit
@@ -268,7 +299,7 @@ def cross_match_with_gaia(
                     # PANSTARRS DR1 catalog in Vizier
                     try:
                         # Use '+all' to get all available columns including coordinates
-                        v = Vizier(
+                        v = _create_vizier_client(
                             columns=["**", "+_r"]
                         )  # Get all columns plus distance
                         v.ROW_LIMIT = -1  # No row limit
@@ -343,7 +374,7 @@ def cross_match_with_gaia(
                 log_messages.append(
                     "INFO: Attempting Gaia DR3 query via VizieR with a reduced column set."
                 )
-                gaia_vizier = Vizier(
+                gaia_vizier = _create_vizier_client(
                     columns=[
                         "Source",
                         "DR3Name",
@@ -766,7 +797,19 @@ def cross_match_with_gaia(
         if "snr" in matched_table.columns:
             matched_table = matched_table[matched_table["snr"] > 1]
 
-        catalog_type = catalog_name if is_sloan_filter else "Gaia"
+        if is_sloan_filter:
+            catalog_type = (
+                "SkyMapper" if catalog_name == "SkyMapper" else "PanSTARRS"
+            )
+        elif filter_band in {
+            "phot_g_mean_mag",
+            "phot_bp_mean_mag",
+            "phot_rp_mean_mag",
+        }:
+            catalog_type = "Gaia DR3"
+        else:
+            catalog_type = "GAIA Synthetic"
+        matched_table.attrs["calibration_catalog"] = catalog_type
         log_messages.append(
             f"SUCCESS: Found {len(matched_table)} {catalog_type} matches after filtering."
         )
@@ -1598,7 +1641,7 @@ def enhance_catalog(
     log_messages.append("INFO: Querying AAVSO VSX for variable stars...")
     try:
         if field_center_ra is not None and field_center_dec is not None:
-            _vsx = Vizier(row_limit=-1)
+            _vsx = _create_vizier_client(row_limit=-1)
             vizier_result, used_vizier_fallback = query_vizier_with_fallback(
                 _vsx,
                 "query_region",
@@ -1671,7 +1714,9 @@ def enhance_catalog(
     try:
         if field_center_ra is not None and field_center_dec is not None:
             # Set columns to retrieve from the quasar catalog
-            v = Vizier(columns=["RAJ2000", "DEJ2000", "Name", "z", "Rmag"])
+            v = _create_vizier_client(
+                columns=["RAJ2000", "DEJ2000", "Name", "z", "Rmag"]
+            )
             v.ROW_LIMIT = -1  # No row limit
 
             # Query the VII/294 catalog around the field center
@@ -1760,7 +1805,7 @@ def enhance_catalog(
     try:
         if field_center_ra is not None and field_center_dec is not None:
             # Prepare VizieR query
-            v = Vizier(
+            v = _create_vizier_client(
                 columns=[
                     "RAICRS",
                     "DEICRS",

@@ -307,9 +307,12 @@ Catalog Query Issues (SIMBAD, SkyBoT, etc.)
     service is down or slow.
 *   **Solution**:
 
-    *   VizieR and SIMBAD queries automatically retry through the Harvard and
-        IDIA mirrors, and Gaia TAP queries through the Heidelberg mirror. The
-        log records when a fallback is used.
+    *   SIMBAD, VizieR and Gaia TAP requests are limited to 30 seconds per
+        mirror. If the primary request times out or fails, the configured
+        fallback mirror is tried with the same timeout. The log records when a
+        fallback is used.
+    *   If all attempts fail, the pipeline continues without results from that
+        catalog; other processing and available catalog results are retained.
     *   Wait and try processing the image again later.
     *   Check your internet connection.
     *   Review the generated log file to see which catalog step timed out or was

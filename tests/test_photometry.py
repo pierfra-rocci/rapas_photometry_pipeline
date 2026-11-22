@@ -26,6 +26,8 @@ Author: Automated Testing Suite
 Date: 2026-01-07
 """
 
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -1559,6 +1561,84 @@ class TestColorTermCalibration:
 
 class TestZeroPointCalibration:
     """Test robust zero-point estimation and outlier rejection."""
+
+    @pytest.mark.parametrize(
+        ("filter_band", "catalog_label", "include_metadata"),
+        [
+            ("phot_g_mean_mag", "Gaia DR3", False),
+            ("u_jkc_mag", "GAIA Synthetic", False),
+            ("gmag", "PanSTARRS", True),
+            ("gmag", "SkyMapper", True),
+        ],
+    )
+    def test_zero_point_plots_use_selected_catalog_label(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        filter_band: str,
+        catalog_label: str,
+        include_metadata: bool,
+    ) -> None:
+        instrumental = np.array([-10.0, -9.5, -9.0, -8.5, -8.0])
+        catalog_magnitude = instrumental + 25.0 + np.array(
+            [-0.02, 0.01, 0.0, -0.01, 0.02]
+        )
+        matched_table = pd.DataFrame(
+            {
+                "instrumental_mag_1_3": instrumental,
+                "instrumental_mag_1_1": instrumental - 0.1,
+                "aperture_mag_err_1_1": np.full(len(instrumental), 0.03),
+                filter_band: catalog_magnitude,
+            }
+        )
+        if include_metadata:
+            matched_table.attrs["calibration_catalog"] = catalog_label
+        phot_table = pd.DataFrame(
+            {
+                "instrumental_mag_1_3": instrumental,
+                "instrumental_mag_1_1": instrumental - 0.1,
+            }
+        )
+
+        class FakeStreamlit:
+            def __init__(self) -> None:
+                self.session_state = {
+                    "base_filename": "zero_point_plot",
+                    "output_dir": str(tmp_path),
+                }
+
+            def info(self, _message: str) -> None:
+                pass
+
+            def warning(self, _message: str) -> None:
+                pass
+
+            def success(self, _message: str) -> None:
+                pass
+
+            def error(self, _message: str) -> None:
+                pass
+
+            def pyplot(self, _figure: Figure) -> None:
+                pass
+
+        monkeypatch.setattr(pipeline_module, "st", FakeStreamlit())
+        _, _, figure = calculate_zero_point(
+            phot_table,
+            matched_table,
+            filter_band=filter_band,
+            air=1.0,
+        )
+
+        assert figure is not None
+        assert catalog_label in figure.axes[0].get_title()
+        assert catalog_label in figure.axes[1].get_title()
+        assert figure.axes[0].get_xlabel() == f"{catalog_label} {filter_band}"
+        assert figure.axes[1].get_xlabel() == f"{catalog_label} {filter_band}"
+        for axis in figure.axes:
+            legend = axis.get_legend()
+            assert legend is not None
+            assert catalog_label in [text.get_text() for text in legend.get_texts()]
 
     def test_zero_point_rejects_outliers_and_recovers_true_baseline(
         self,

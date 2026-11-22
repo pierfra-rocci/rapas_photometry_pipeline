@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>User Guide &mdash; RAPAS Photometry Pipeline (RPP) v1.9.4 Documentation</title>
+  <title>User Guide &mdash; RAPAS Photometry Pipeline (RPP) v1.9.5 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=38ba398c"></script>
+      <script src="_static/documentation_options.js?v=9cc2bd95"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -244,6 +244,10 @@ as:</p>
 <li><p>Astro-Colibri, when an API key is provided</p></li>
 <li><p>TNS (Transient Name Server), from its public catalogue (no API key needed)</p></li>
 </ul>
+<p>SIMBAD, VizieR and Gaia TAP requests are limited to 30 seconds per mirror. If a
+mirror times out or otherwise fails, the query tries its configured fallback
+mirror with the same timeout; if all mirrors fail, catalog enrichment
+continues without that service’s results.</p>
 <p>Astro-Colibri and TNS are the two transient services. Both use a progressive
 match radius - 5, 10, 15, 20 and 30 arcsec - that pairs a transient with its
 closest detected source, keep the closest object when several claim the same

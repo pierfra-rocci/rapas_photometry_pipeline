@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Troubleshooting &mdash; RAPAS Photometry Pipeline (RPP) v1.9.4 Documentation</title>
+  <title>Troubleshooting &mdash; RAPAS Photometry Pipeline (RPP) v1.9.5 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=38ba398c"></script>
+      <script src="_static/documentation_options.js?v=9cc2bd95"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -429,9 +429,12 @@ log: 10 stars is the hard minimum and 25 the quality target.</p></li>
 service is down or slow.</p></li>
 <li><p><strong>Solution</strong>:</p>
 <ul>
-<li><p>VizieR and SIMBAD queries automatically retry through the Harvard and
-IDIA mirrors, and Gaia TAP queries through the Heidelberg mirror. The
-log records when a fallback is used.</p></li>
+<li><p>SIMBAD, VizieR and Gaia TAP requests are limited to 30 seconds per
+mirror. If the primary request times out or fails, the configured
+fallback mirror is tried with the same timeout. The log records when a
+fallback is used.</p></li>
+<li><p>If all attempts fail, the pipeline continues without results from that
+catalog; other processing and available catalog results are retained.</p></li>
 <li><p>Wait and try processing the image again later.</p></li>
 <li><p>Check your internet connection.</p></li>
 <li><p>Review the generated log file to see which catalog step timed out or was

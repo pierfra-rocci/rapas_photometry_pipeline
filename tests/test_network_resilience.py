@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 from contextlib import nullcontext
+from typing import Any
 
 import numpy as np
 import pytest
@@ -228,6 +229,69 @@ def test_simbad_query_retries_on_harvard_cfa_mirror(monkeypatch):
         xmatch_catalogs.SIMBAD_PRIMARY_SERVER,
         xmatch_catalogs.SIMBAD_FALLBACK_SERVER,
     ]
+
+
+def test_simbad_mirror_requests_use_30_second_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request_timeouts: list[object] = []
+
+    class FakeSession:
+        def request(self, _method: str, _url: str, **kwargs: Any) -> None:
+            request_timeouts.append(kwargs["timeout"])
+            if len(request_timeouts) == 1:
+                raise requests.exceptions.Timeout("primary timed out")
+
+    class FakeSimbad:
+        def __init__(self) -> None:
+            self._session = FakeSession()
+            self.server: str | None = None
+
+        def add_votable_fields(self, *_fields: str) -> None:
+            pass
+
+        def query_region(self, *_args: object, **_kwargs: object) -> list[str]:
+            self._session.request("GET", "https://simbad.example/query")
+            return ["fallback result"]
+
+    monkeypatch.setattr(xmatch_catalogs, "Simbad", FakeSimbad)
+
+    result, used_fallback, error = xmatch_catalogs.query_simbad_region_with_fallback(
+        SkyCoord(ra=1.0, dec=2.0, unit="deg"),
+        1.0 * u.arcmin,
+    )
+
+    assert result == ["fallback result"]
+    assert used_fallback is True
+    assert error is None
+    assert request_timeouts == [30, 30]
+
+
+def test_vizier_primary_and_fallback_use_30_second_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request_timeouts: list[int] = []
+
+    class FakeVizier:
+        def __init__(self) -> None:
+            self.TIMEOUT = 60
+            self.VIZIER_SERVER = VIZIER_PRIMARY_SERVER
+
+        def query_region(self, *_args: object, **_kwargs: object) -> list[str]:
+            request_timeouts.append(self.TIMEOUT)
+            if self.VIZIER_SERVER == VIZIER_PRIMARY_SERVER:
+                raise requests.exceptions.Timeout("primary timed out")
+            return ["fallback result"]
+
+    monkeypatch.setattr(xmatch_catalogs, "Vizier", FakeVizier)
+    vizier = xmatch_catalogs._create_vizier_client()
+    result, used_fallback = query_vizier_with_fallback(
+        vizier, "query_region", object()
+    )
+
+    assert result == ["fallback result"]
+    assert used_fallback is True
+    assert request_timeouts == [30, 30]
 
 
 def test_vizier_query_retries_on_harvard_mirror():
@@ -496,11 +560,13 @@ def test_cross_match_with_gaia_queries_vizier_cone(monkeypatch):
     catalog_table = _make_gaia_catalog_table(vizier_columns=True)
 
     class FakeVizier:
-        def __init__(self, *, columns, row_limit):
+        def __init__(self, *, columns: list[str], row_limit: int) -> None:
             query_args["columns"] = columns
             query_args["row_limit"] = row_limit
+            self.TIMEOUT = 60
 
         def query_region(self, center, *, radius, catalog):
+            query_args["timeout"] = self.TIMEOUT
             query_args.update(center=center, radius=radius, catalog=catalog)
             return [catalog_table]
 
@@ -518,9 +584,77 @@ def test_cross_match_with_gaia_queries_vizier_cone(monkeypatch):
     assert matched_table.loc[0, "catalog_source_id"] == "Gaia DR3 123456789"
     assert query_args["catalog"] == "I/355/gaiadr3"
     assert query_args["row_limit"] == 2000
+    assert query_args["timeout"] == 30
+    assert matched_table.attrs["calibration_catalog"] == "Gaia DR3"
     assert any(
         "Retrieved 1 Gaia sources from VizieR" in message for message in log_messages
     )
+
+
+@pytest.mark.parametrize(
+    ("dec", "catalog_label", "catalog_columns"),
+    [
+        (
+            2.0,
+            "PanSTARRS",
+            {
+                "RAJ2000": [150.0],
+                "DEJ2000": [2.0],
+                "objID": [123],
+                "gmag": [12.0],
+                "Nd": [5],
+            },
+        ),
+        (
+            -2.0,
+            "SkyMapper",
+            {
+                "RAICRS": [150.0],
+                "DEICRS": [-2.0],
+                "objID": [123],
+                "gPSF": [12.0],
+                "Ngood": [5],
+            },
+        ),
+    ],
+)
+def test_sloan_cross_match_records_the_selected_survey(
+    monkeypatch: pytest.MonkeyPatch,
+    dec: float,
+    catalog_label: str,
+    catalog_columns: dict[str, list[float] | list[int]],
+) -> None:
+    class FakeVizier:
+        def __init__(self, *, columns: list[str]) -> None:
+            self.TIMEOUT = 60
+
+        def query_region(
+            self, *_args: object, **_kwargs: object
+        ) -> list[Table]:
+            return [Table(catalog_columns)]
+
+    monkeypatch.setattr(xmatch_catalogs, "Vizier", FakeVizier)
+
+    wcs = _make_valid_wcs()
+    wcs.wcs.crval[1] = dec
+    matched_table, _ = cross_match_with_gaia(
+        Table(
+            {
+                "xcenter": [50.0],
+                "ycenter": [50.0],
+                "snr": [10.0],
+            }
+        ),
+        {"NAXIS1": 100, "NAXIS2": 100},
+        pixel_size_arcsec=1.5,
+        mean_fwhm_pixel=3.0,
+        filter_band="gmag",
+        filter_max_mag=18.0,
+        refined_wcs=wcs,
+    )
+
+    assert matched_table is not None
+    assert matched_table.attrs["calibration_catalog"] == catalog_label
 
 
 def test_cross_match_with_gaia_tap_query_omits_distance_ordering(monkeypatch):
@@ -1376,27 +1510,56 @@ def test_simbad_query_reaches_later_mirrors(monkeypatch):
     assert requested_servers == list(SIMBAD_SERVERS[:3])
 
 
-def test_gaia_query_uses_heidelberg_mirror(monkeypatch):
+def test_gaia_query_uses_heidelberg_mirror(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A Gaia TAP failure should retry on the Heidelberg mirror in VOTable."""
     from src.catalog_mirrors import query_gaia_with_fallback
 
-    class FailingPrimary:
-        def launch_job(self, **_kwargs):
-            raise requests.exceptions.ConnectTimeout("ESA archive unavailable")
+    connection_timeouts: list[float | None] = []
+
+    class FakeConnection:
+        timeout: float | None = None
+
+    class FakeConnectionHandler:
+        def get_connection(
+            self, *, ishttps: bool = False, cookie: Any = None, verbose: bool = False
+        ) -> FakeConnection:
+            return FakeConnection()
+
+    class FakeTapConnection:
+        def __init__(self) -> None:
+            self._TapConn__connectionHandler = FakeConnectionHandler()
 
     class FakeJob:
-        def get_results(self):
+        def get_results(self) -> str:
             return "mirror table"
 
-    class Mirror:
-        def launch_job(self, *, query, output_format):
+    class FakeGaiaClient:
+        def __init__(self, *, fail: bool) -> None:
+            self._Tap__connHandler = FakeTapConnection()
+            self.fail = fail
+
+        def launch_job(self, *, query: str, **kwargs: Any) -> FakeJob:
+            connection = self._Tap__connHandler._TapConn__connectionHandler.get_connection(
+                ishttps=True
+            )
+            connection_timeouts.append(connection.timeout)
+            if self.fail:
+                raise requests.exceptions.ConnectTimeout("ESA archive unavailable")
             assert query == "SELECT 1"
-            assert output_format == "votable"
+            assert kwargs["output_format"] == "votable"
             return FakeJob()
 
-    monkeypatch.setattr("src.catalog_mirrors._gaia_mirror_client", lambda: Mirror())
+    monkeypatch.setattr(
+        "src.catalog_mirrors._gaia_mirror_client",
+        lambda: FakeGaiaClient(fail=False),
+    )
 
-    job, used_fallback = query_gaia_with_fallback(FailingPrimary(), "SELECT 1")
+    job, used_fallback = query_gaia_with_fallback(
+        FakeGaiaClient(fail=True), "SELECT 1"
+    )
 
     assert job.get_results() == "mirror table"
     assert used_fallback is True
+    assert connection_timeouts == [30, 30]

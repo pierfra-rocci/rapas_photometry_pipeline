@@ -100,7 +100,7 @@ def test_readme_version_badge_matches():
 
 
 def test_readme_mentions_current_version():
-    """README.md must announce the current release."""
+    """README.md must announce the release and link to its change notes."""
     from src.__version__ import version
 
     readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
@@ -108,13 +108,16 @@ def test_readme_mentions_current_version():
     assert f"targets version {version}" in readme, (
         f"README.md does not state that the project targets version {version}"
     )
-    assert f"### Current Release ({version})" in readme, (
-        f"README.md has no 'Current Release ({version})' changelog section"
+    assert "[changelog.md](changelog.md)" in readme, (
+        "README.md does not link to the release notes"
+    )
+    assert f"### Current Release ({version})" not in readme, (
+        "README.md duplicates release notes instead of linking to changelog.md"
     )
 
 
 def test_changelog_mentions_current_version():
-    """docs/changelog.rst must open with the current release section."""
+    """The Markdown and Sphinx changelogs must announce the current release."""
     from src.__version__ import version
 
     changelog = (PROJECT_ROOT / "docs" / "changelog.rst").read_text(encoding="utf-8")
@@ -126,6 +129,10 @@ def test_changelog_mentions_current_version():
     )
     assert titles[0] == expected, (
         f"the newest changelog section is '{titles[0]}', expected '{expected}'"
+    )
+    markdown_changelog = (PROJECT_ROOT / "changelog.md").read_text(encoding="utf-8")
+    assert f"## Version {version}" in markdown_changelog, (
+        f"changelog.md has no release notes for version {version}"
     )
 
 

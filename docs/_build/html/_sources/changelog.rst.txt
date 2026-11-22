@@ -3,6 +3,13 @@ Changelog
 
 This document records all notable changes to RAPAS Photometry Pipeline.
 
+Version 1.9.5
+-------------
+
+The Version 1.9.5 release notes are maintained in the root
+`changelog.md <https://github.com/pierfra-rocci/rapas_photometry_pipeline/blob/main/changelog.md>`_.
+Earlier release history remains below.
+
 Version 1.9.4
 -------------
 

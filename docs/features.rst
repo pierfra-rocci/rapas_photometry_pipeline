@@ -262,6 +262,8 @@ Photometric Calibration
    - Calibration star quality assessment
    - Zero-point uncertainty estimation and propagation
    - Correct column name lookup for error columns
+   - Calibration plots identify the selected source catalog: Gaia DR3, GAIA
+     Synthetic, PanSTARRS, or SkyMapper
 
 **Color-Term Calibration**:
    - First-order color term fitted from the matched calibration stars after the
