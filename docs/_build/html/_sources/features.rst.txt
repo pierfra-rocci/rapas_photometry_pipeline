@@ -154,9 +154,12 @@ Source Detection & Photometry
      area is used (``area_overlap``)
    - Signal-to-noise ratio (S/N) computed from the background-subtracted flux and
      its full error, including the local-background and centroid uncertainties:
-     ``σ_flux² = σ_aperture² + σ_total_bkg² + σ_centroid²``
+     :math:`\sigma_{\mathrm{flux}}^2 =
+     \sigma_{\mathrm{aperture}}^2 + \sigma_{\mathrm{total,bkg}}^2 +
+     \sigma_{\mathrm{centroid}}^2`
    - Magnitude error calculated from the same flux used for the magnitude:
-     ``σ_mag = 1.0857 × (σ_flux / flux)``
+     :math:`\sigma_{\mathrm{mag}} =
+     1.0857\,(\sigma_{\mathrm{flux}}/\mathrm{flux})`
    - Aperture correction from the empirical-PSF encircled-energy curve (analytic
      Gaussian fallback) so aperture and PSF photometry share a total-flux scale;
      the correction factor is exported in ``apcorr_X_X`` and the underlying
@@ -180,7 +183,8 @@ Source Detection & Photometry
    - Per-source local-background subtraction (sigma-clipped median annulus) so
      residual sky/nebulosity does not bias the fitted PSF flux, applied both to
      the ePSF-building star cutouts and to the per-source fits
-   - Correct S/N calculation: ``S/N = flux_fit / flux_err``
+   - Correct S/N calculation: :math:`\mathrm{S/N} =
+     \mathrm{flux}_{\mathrm{fit}}/\mathrm{flux}_{\mathrm{err}}`
    - PSF-specific quality flags for reliability assessment
    - PSF model visualization and FITS output
    - **PSF-vs-aperture consistency check**: the median
@@ -201,7 +205,8 @@ Source Detection & Photometry
      plus the local annulus background subtracted per source
    - Poisson noise plus read noise modeling with ``calc_total_error``; the
      effective gain is taken from the FITS ``EGAIN``/``CCDGAIN`` keyword or the
-     ``CVF`` conversion factor (``gain = 1/CVF``), then from the user-supplied
+     ``CVF`` conversion factor (:math:`\mathrm{gain}=1/\mathrm{CVF}`), then from
+     the user-supplied
      *Detector Gain* parameter (``RPP_EFFECTIVE_GAIN`` for headless runs), then
      estimated empirically from the frame's variance-vs-signal statistics
      (photon transfer), and only then defaults to electrons (``gain = 1``). A
@@ -218,15 +223,22 @@ Source Detection & Photometry
      falls back to the background RMS map alone when no gain is usable
    - Local-background uncertainty propagation using the standard error of the
      median annulus (``ApertureStats.median_err``):
-     ``σ_flux² = σ_aperture² + σ_total_bkg² + σ_centroid²``
+     :math:`\sigma_{\mathrm{flux}}^2 =
+     \sigma_{\mathrm{aperture}}^2 + \sigma_{\mathrm{total,bkg}}^2 +
+     \sigma_{\mathrm{centroid}}^2`
    - Centroid-position term from re-measuring the aperture shifted by the
-     centroid uncertainty (``σ_centroid = σ_PSF/S/N``), capturing the real PSF
+     centroid uncertainty
+     (:math:`\sigma_{\mathrm{pos}} = \sigma_{\mathrm{PSF}}/\mathrm{S/N}`),
+     capturing the real PSF
      asymmetry (``centroid_flux_err_X_X``)
    - Zero-point and systematic-floor error propagation into every calibrated
      magnitude error:
-     ``σ_mag_calib = √(σ_mag_inst² + σ_zp² + σ_sys²)``, with the zero point's
-     median standard error ``σ_zp = √(π/2) × scatter/√N`` using the sigma-clipped
-     (untrimmed) residual scatter, so the ±0.5 mag outlier cut does not bias it,
+     :math:`\sigma_{\mathrm{mag,calib}} =
+     \sqrt{\sigma_{\mathrm{mag,inst}}^2 + \sigma_{\mathrm{zp}}^2 +
+     \sigma_{\mathrm{sys}}^2}`, with the zero point's median standard error
+     :math:`\sigma_{\mathrm{zp}} = \sqrt{\pi/2}\,
+     \mathrm{scatter}/\sqrt{N}` using the sigma-clipped (untrimmed) residual
+     scatter, so the ±0.5 mag outlier cut does not bias it,
      and the optional systematic floor ``σ_sys`` resolved by
      ``resolve_systematic_floor()``
    - Random and correlated components exposed separately: ``*_mag_err_*_random``
@@ -286,6 +298,11 @@ Photometric Calibration
 
 Multi-Catalog Cross-Matching
 ----------------------------
+
+SIMBAD, Gaia TAP, and VizieR requests share a 30-second timeout per request,
+including VizieR catalogue queries for AAVSO VSX and the ASU-TSV fallback.
+Primary and fallback mirrors each receive that limit; the complete mirror
+chain can take longer than 30 seconds.
 
 **GAIA DR3 Catalog**:
    - Stellar parameters, proper motions, and photometry

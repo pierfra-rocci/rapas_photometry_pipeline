@@ -502,6 +502,9 @@ viewer is usually a WebGL2 or a network issue, not a caching one.
 **External Catalog Timeout or Network Failure**:
 
 - SkyBoT, SIMBAD, GAIA, Astro-Colibri and TNS depend on external services.
+- SIMBAD, Gaia TAP, and VizieR requests (including AAVSO VSX) time out after
+  30 seconds per request. Fallback mirrors get the same limit, so the full
+  retry chain may take longer.
 - The TNS cross-match uses the public catalogue staged once a day by the TNS
   (`tns_public_objects.csv.zip`), downloaded with a plain `GET` and no API key:
   only the `tns_marker` user agent is sent (`RPP_TNS_MARKER_NAME` names it). One

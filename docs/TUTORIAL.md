@@ -149,15 +149,24 @@ the local background measured in the annulus (``σ_aperture`` and ``σ_total_bkg
 and the flux change induced by the uncertainty in the source centroid
 (``σ_centroid``):
 
-- **Flux error**: σ_flux² = σ_aperture² + σ_total_bkg² + σ_centroid², where the
-  local-background term uses the large-sample median standard error of the
-  annulus (``ApertureStats.median_err``) and the centroid term propagates the
-  position uncertainty of the source
-- **Instrumental error**: σ_mag = 1.0857 × (σ_flux / flux), computed from the same
+- **Flux error**:
+  $\sigma_{\mathrm{flux}}^2 =
+  \sigma_{\mathrm{aperture}}^2 + \sigma_{\mathrm{total,bkg}}^2 +
+  \sigma_{\mathrm{centroid}}^2$, where the local-background term uses the
+  large-sample median standard error of the annulus
+  (``ApertureStats.median_err``) and the centroid term propagates the position
+  uncertainty of the source
+- **Instrumental error**:
+  $\sigma_{\mathrm{mag}} =
+  1.0857\,(\sigma_{\mathrm{flux}}/\mathrm{flux})$, computed from the same
   background-subtracted, aperture-corrected flux as the magnitude itself
-- **Calibrated error**: σ_mag_calib = √(σ_mag_inst² + σ_zp² + σ_sys²), where σ_zp is
-  the formal uncertainty of the median zero point, calculated as 1.2533 × the
-  untrimmed calibration scatter / √N, and σ_sys is the systematic error floor.
+- **Calibrated error**:
+  $\sigma_{\mathrm{mag,calib}} =
+  \sqrt{\sigma_{\mathrm{mag,inst}}^2 + \sigma_{\mathrm{zp}}^2 +
+  \sigma_{\mathrm{sys}}^2}$, where $\sigma_{\mathrm{zp}}$ is the formal
+  uncertainty of the median zero point, calculated as
+  $\sqrt{\pi/2}\,\mathrm{scatter}/\sqrt{N}$ using the untrimmed calibration
+  scatter, and $\sigma_{\mathrm{sys}}$ is the systematic error floor.
   The formal zero-point uncertainty is written to the `zero_point_std` column; the
   untrimmed and retained calibrator scatters (`zero_point_scatter`,
   `zero_point_scatter_kept`) and the calibrator count (`zero_point_n`) are

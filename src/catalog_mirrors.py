@@ -20,6 +20,9 @@ import numpy as np
 import requests
 from astropy.table import Table
 
+# Shared limit for each request to SIMBAD, VizieR, and Gaia TAP.
+CATALOG_HTTP_TIMEOUT_SECONDS = 30
+
 # VizieR mirrors, primary first. The Harvard mirror is the first fallback
 # because it is the one astroquery has historically used.
 VIZIER_PRIMARY_SERVER = "vizier.cds.unistra.fr"
@@ -39,7 +42,8 @@ VIZIER_TSV_SERVERS = (
     "http://vizier.nao.ac.jp",
     "http://vizier.china-vo.org",
 )
-VIZIER_TSV_TIMEOUT_SECONDS = 60
+# Backwards-compatible name; all requests use the shared catalogue timeout.
+VIZIER_TSV_TIMEOUT_SECONDS = CATALOG_HTTP_TIMEOUT_SECONDS
 
 # SIMBAD mirrors, primary first (CDS, CfA Harvard, IDIA).
 SIMBAD_PRIMARY_SERVER = "simbad.cds.unistra.fr"
@@ -56,7 +60,8 @@ SIMBAD_SERVERS = (
 GAIA_PRIMARY_TAP_SERVER = "https://gea.esac.esa.int/"
 GAIA_FALLBACK_TAP_SERVER = "https://gaia.ari.uni-heidelberg.de/"
 GAIA_TAP_SERVERS = (GAIA_PRIMARY_TAP_SERVER, GAIA_FALLBACK_TAP_SERVER)
-GAIA_HTTP_TIMEOUT_SECONDS = 30
+# Backwards-compatible name; all requests use the shared catalogue timeout.
+GAIA_HTTP_TIMEOUT_SECONDS = CATALOG_HTTP_TIMEOUT_SECONDS
 
 _VIZIER_FALLBACK_LOCK = threading.Lock()
 _GAIA_MIRROR_CLIENT = None
@@ -81,6 +86,10 @@ def query_vizier_with_fallback(
     never silently kept for the following queries of the same client.
     """
     method = getattr(vizier_client, method_name)
+    timeout = getattr(vizier_client, "TIMEOUT", CATALOG_HTTP_TIMEOUT_SECONDS)
+    if timeout is None:
+        timeout = CATALOG_HTTP_TIMEOUT_SECONDS
+    vizier_client.TIMEOUT = min(timeout, CATALOG_HTTP_TIMEOUT_SECONDS)
     primary = getattr(vizier_client, "VIZIER_SERVER", VIZIER_PRIMARY_SERVER)
     if not isinstance(primary, str) or not primary:
         primary = VIZIER_PRIMARY_SERVER
@@ -105,29 +114,31 @@ def query_vizier_with_fallback(
 def get_vizier_catalog_with_fallback(
     catalogs_module: object, *args: object, **kwargs: object
 ) -> tuple[object, bool]:
-    """Call stdpipe's VizieR helper, retrying it against the next mirror."""
-    try:
-        return catalogs_module.get_cat_vizier(*args, **kwargs), False
-    except Exception as primary_error:  # noqa: BLE001 - external service failures
-        errors = [f"{VIZIER_PRIMARY_SERVER}: {primary_error}"]
-
-    # Only the mirror attempts swap the module's Vizier factory, so the lock is
-    # taken per attempt and the primary query above runs concurrently.
-    for server in VIZIER_SERVERS[1:]:
+    """Call stdpipe's VizieR helper with the shared timeout and mirror fallback."""
+    errors: list[str] = []
+    servers = VIZIER_SERVERS
+    for index, server in enumerate(servers):
         with _VIZIER_FALLBACK_LOCK:
             original_vizier = catalogs_module.Vizier
 
-            def fallback_vizier(
+            def configured_vizier(
                 *factory_args: object,
-                _server: str = server,
+                _server: str | None = server if index > 0 else None,
+                _factory: Any = original_vizier,
                 **factory_kwargs: object,
             ) -> object:
-                factory_kwargs.setdefault("vizier_server", _server)
-                return original_vizier(*factory_args, **factory_kwargs)
+                if _server is not None:
+                    factory_kwargs.setdefault("vizier_server", _server)
+                client = _factory(*factory_args, **factory_kwargs)
+                timeout = getattr(client, "TIMEOUT", CATALOG_HTTP_TIMEOUT_SECONDS)
+                if timeout is None:
+                    timeout = CATALOG_HTTP_TIMEOUT_SECONDS
+                client.TIMEOUT = min(timeout, CATALOG_HTTP_TIMEOUT_SECONDS)
+                return client
 
             try:
-                catalogs_module.Vizier = fallback_vizier
-                return catalogs_module.get_cat_vizier(*args, **kwargs), True
+                catalogs_module.Vizier = configured_vizier
+                return catalogs_module.get_cat_vizier(*args, **kwargs), index > 0
             except Exception as error:  # noqa: BLE001 - external service failures
                 errors.append(f"{server}: {error}")
             finally:
@@ -180,7 +191,7 @@ def _apply_gaia_http_timeout(gaia_client: object) -> None:
         connection = original_get_connection(
             ishttps=ishttps, cookie=cookie, verbose=verbose
         )
-        connection.timeout = GAIA_HTTP_TIMEOUT_SECONDS
+        connection.timeout = CATALOG_HTTP_TIMEOUT_SECONDS
         return connection
 
     connection_handler.get_connection = get_connection
@@ -260,7 +271,7 @@ def query_vizier_asu_tsv(
     sr0: float,
     filters: dict[str, str] | None = None,
     servers: tuple[str, ...] = VIZIER_TSV_SERVERS,
-    timeout: float = VIZIER_TSV_TIMEOUT_SECONDS,
+    timeout: float = CATALOG_HTTP_TIMEOUT_SECONDS,
 ) -> tuple[Table, str]:
     """Query VizieR through the ASU-TSV interface of the mirrors.
 
@@ -287,6 +298,7 @@ def query_vizier_asu_tsv(
     body = "\n".join(payload)
 
     errors: list[str] = []
+    timeout = min(timeout, CATALOG_HTTP_TIMEOUT_SECONDS)
     for server in servers:
         url = server.rstrip("/") + "/viz-bin/asu-tsv"
         try:

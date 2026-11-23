@@ -16,6 +16,8 @@
       <script src="_static/documentation_options.js?v=9cc2bd95"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "displayMath": [["$$", "$$"], ["\\[", "\\]"]]}, "options": {"processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+      <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -130,7 +132,7 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="photometry-formulas-and-error-calculations">
+  <section class="tex2jax_ignore mathjax_ignore" id="photometry-formulas-and-error-calculations">
 <h1>Photometry Formulas and Error Calculations<a class="headerlink" href="#photometry-formulas-and-error-calculations" title="Link to this heading"></a></h1>
 <p>This document provides detailed mathematical documentation for the photometric calculations used in the pipeline.</p>
 <section id="table-of-contents">
@@ -148,9 +150,8 @@
 <h2>Signal-to-Noise Ratio (S/N)<a class="headerlink" href="#signal-to-noise-ratio-s-n" title="Link to this heading"></a></h2>
 <section id="formula">
 <h3>Formula<a class="headerlink" href="#formula" title="Link to this heading"></a></h3>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">S</span><span class="o">/</span><span class="n">N</span> <span class="o">=</span> <span class="n">flux</span> <span class="o">/</span> <span class="n">flux_error</span>
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\mathrm{S/N} = \frac{\mathrm{flux}}{\mathrm{flux\_error}}\]</div>
 <p>Where:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">flux</span></code>: Source flux (background-corrected and aperture-corrected, see below)</p></li>
@@ -222,9 +223,9 @@ is kept for overlapping sources rather than zeroed.</p>
 instrumental magnitude is not. Before computing magnitudes the aperture flux is
 corrected for the fraction of the PSF that falls outside the aperture using the
 encircled-energy curve of the empirical PSF (or an analytic Gaussian fallback):</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">flux_total</span> <span class="o">=</span> <span class="n">flux_aperture</span> <span class="o">/</span> <span class="n">EE</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\mathrm{flux}_{\mathrm{total}} =
+\frac{\mathrm{flux}_{\mathrm{aperture}}}{\mathrm{EE}(r)}\]</div>
 <p>The correction factor <code class="docutils literal notranslate"><span class="pre">1/EE(r)</span></code> is stored per source in the <code class="docutils literal notranslate"><span class="pre">apcorr_X_X</span></code> column,
 and the encircled-energy fraction it came from in <code class="docutils literal notranslate"><span class="pre">ee_fraction_X_X</span></code> (so a large
 correction is traceable to a poorly-enclosed aperture rather than a silent
@@ -238,9 +239,11 @@ uncorrected, background-subtracted reference (useful for diagnostics) and does
 relative amount <code class="docutils literal notranslate"><span class="pre">(apcorr</span> <span class="pre">-</span> <span class="pre">1)/apcorr</span></code>. Unlike the statistical flux error, this
 shift does <strong>not</strong> cancel in the flux ratio, so it must be added to the
 magnitude error separately:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sigma_apcorr</span> <span class="o">=</span> <span class="n">MAG_ERR_COEFFICIENT</span> <span class="o">*</span> <span class="n">f_apcorr</span> <span class="o">*</span> <span class="o">|</span><span class="n">apcorr</span> <span class="o">-</span> <span class="mi">1</span><span class="o">|</span> <span class="o">/</span> <span class="n">apcorr</span>
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\sigma_{\mathrm{apcorr}} =
+\mathrm{MAG\_ERR\_COEFFICIENT}\,
+f_{\mathrm{apcorr}}\,
+\frac{|\mathrm{apcorr}-1|}{\mathrm{apcorr}}\]</div>
 <p>where <code class="docutils literal notranslate"><span class="pre">f_apcorr</span></code> is the fractional uncertainty of the correction
 (<code class="docutils literal notranslate"><span class="pre">APCORR_SYSTEMATIC_FRACTION</span></code> in <code class="docutils literal notranslate"><span class="pre">src.pipeline</span></code>, default 0.20, i.e. the
 correction is trusted to 20% of its size). The per-aperture term is stored in
@@ -263,9 +266,9 @@ very small. Setting <code class="docutils literal notranslate"><span class="pre"
 <h2>Magnitude Error Calculation<a class="headerlink" href="#magnitude-error-calculation" title="Link to this heading"></a></h2>
 <section id="id1">
 <h3>Formula<a class="headerlink" href="#id1" title="Link to this heading"></a></h3>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>σ_mag = 1.0857 × (σ_flux / flux)
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\sigma_{\mathrm{mag}} =
+1.0857\,\frac{\sigma_{\mathrm{flux}}}{\mathrm{flux}}\]</div>
 <p>Where:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">σ_mag</span></code>: Magnitude error (instrumental)</p></li>
@@ -277,35 +280,44 @@ very small. Setting <code class="docutils literal notranslate"><span class="pre"
 <section id="mathematical-derivation">
 <h3>Mathematical Derivation<a class="headerlink" href="#mathematical-derivation" title="Link to this heading"></a></h3>
 <p>Given the magnitude-flux relation:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>mag = -2.5 × log₁₀(flux)
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\mathrm{mag} = -2.5\log_{10}(\mathrm{flux})\]</div>
 <p>Using error propagation:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>σ_mag = |∂mag/∂flux| × σ_flux
-      = |-2.5 / (flux × ln(10))| × σ_flux
-      = (2.5 / ln(10)) × (σ_flux / flux)
-      ≈ 1.0857 × (σ_flux / flux)
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\begin{split}\begin{aligned}
+\sigma_{\mathrm{mag}}
+  &amp;= \left|\frac{\partial\,\mathrm{mag}}{\partial\,\mathrm{flux}}\right|
+     \sigma_{\mathrm{flux}} \\
+  &amp;= \left|\frac{-2.5}{\mathrm{flux}\,\ln(10)}\right|
+     \sigma_{\mathrm{flux}} \\
+  &amp;= \frac{2.5}{\ln(10)}
+     \frac{\sigma_{\mathrm{flux}}}{\mathrm{flux}} \\
+  &amp;\approx 1.0857\,
+     \frac{\sigma_{\mathrm{flux}}}{\mathrm{flux}}
+\end{aligned}\end{split}\]</div>
 <p>The statistical term above is combined in quadrature with the
 <strong>aperture-correction systematic</strong> <code class="docutils literal notranslate"><span class="pre">sigma_apcorr</span></code> (see the Aperture Correction
 section), which does not cancel in the flux ratio:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>σ_mag = √( (1.0857 × σ_flux / flux)² + σ_apcorr² )
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\sigma_{\mathrm{mag}} =
+\sqrt{
+  \left(1.0857\,\frac{\sigma_{\mathrm{flux}}}{\mathrm{flux}}\right)^2
+  + \sigma_{\mathrm{apcorr}}^2
+}\]</div>
 </section>
 <section id="relationship-to-s-n">
 <h3>Relationship to S/N<a class="headerlink" href="#relationship-to-s-n" title="Link to this heading"></a></h3>
 <p>For high signal-to-noise sources (S/N &gt; 5), the statistical term reduces to:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>σ_mag(stat) ≈ 1.0857 / S/N
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\sigma_{\mathrm{mag,stat}} \approx \frac{1.0857}{\mathrm{S/N}}\]</div>
 <p>This is valid because:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>σ_mag(stat) = 1.0857 × (σ_flux / flux)
-            = 1.0857 × (1 / (flux / σ_flux))
-            = 1.0857 / S/N
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\begin{split}\begin{aligned}
+\sigma_{\mathrm{mag,stat}}
+  &amp;= 1.0857\,\frac{\sigma_{\mathrm{flux}}}{\mathrm{flux}} \\
+  &amp;= 1.0857\,\frac{1}{\mathrm{flux}/\sigma_{\mathrm{flux}}} \\
+  &amp;= \frac{1.0857}{\mathrm{S/N}}
+\end{aligned}\end{split}\]</div>
 <p>At high S/N the actual exported <code class="docutils literal notranslate"><span class="pre">σ_mag</span></code> is dominated by the
 <code class="docutils literal notranslate"><span class="pre">σ_apcorr</span></code> systematic and the zero-point term rather than by <code class="docutils literal notranslate"><span class="pre">1.0857</span> <span class="pre">/</span> <span class="pre">S/N</span></code>.</p>
 </section>
@@ -369,14 +381,20 @@ threshold above the requested <code class="docutils literal notranslate"><span c
 surrounding the source (<code class="docutils literal notranslate"><span class="pre">ApertureStats</span></code>), not a plain mean, so neighbouring
 sources and cosmic rays do not bias it. For an aperture area <code class="docutils literal notranslate"><span class="pre">A_ap</span></code> and an
 annulus area <code class="docutils literal notranslate"><span class="pre">A_ann</span></code>:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>bkg_per_pixel     = sigma-clipped median of the annulus
-total_bkg         = bkg_per_pixel × A_ap
-sigma_bkg_pixel   = annulus_median_err        # sqrt(pi/2) × s / sqrt(A_ann)
-sigma_total_bkg   = sigma_bkg_pixel × A_ap
-flux              = aperture_sum − total_bkg
-σ_flux²           = σ_aperture² + σ_total_bkg² + σ_centroid²
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\begin{split}\begin{aligned}
+b_{\mathrm{pixel}} &amp;= \operatorname{median}_{\mathrm{clipped}}(\mathrm{annulus}) \\
+B_{\mathrm{total}} &amp;= b_{\mathrm{pixel}}\,A_{\mathrm{ap}} \\
+\sigma_{b,\mathrm{pixel}} &amp;= \sigma_{\mathrm{annulus,median}} \\
+  &amp;= \sqrt{\frac{\pi}{2}}\,\frac{s}{\sqrt{A_{\mathrm{ann}}}} \\
+\sigma_{\mathrm{total,bkg}} &amp;=
+  \sigma_{b,\mathrm{pixel}}\,A_{\mathrm{ap}} \\
+\mathrm{flux} &amp;= \mathrm{aperture\_sum}-B_{\mathrm{total}} \\
+\sigma_{\mathrm{flux}}^2 &amp;=
+  \sigma_{\mathrm{aperture}}^2
+  + \sigma_{\mathrm{total,bkg}}^2
+  + \sigma_{\mathrm{centroid}}^2
+\end{aligned}\end{split}\]</div>
 <p>Because the local background is a <strong>median</strong>, its uncertainty is the standard
 error of the median, <code class="docutils literal notranslate"><span class="pre">sqrt(pi/2)</span> <span class="pre">×</span> <span class="pre">s</span> <span class="pre">/</span> <span class="pre">sqrt(A_ann)</span></code> (~1.2533× larger than the
 mean-based <code class="docutils literal notranslate"><span class="pre">s</span> <span class="pre">/</span> <span class="pre">sqrt(A_ann)</span></code>), which is what <code class="docutils literal notranslate"><span class="pre">ApertureStats.median_err</span></code>
@@ -389,12 +407,22 @@ pipeline falls back to the mean-based estimate.</p>
 <h3>Centroid-Position Error<a class="headerlink" href="#centroid-position-error" title="Link to this heading"></a></h3>
 <p>A fixed aperture samples a different fraction of the PSF when the source is not
 perfectly centred. The corresponding flux error is</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>sigma_pos   = sigma_PSF / S/N            # per-axis centroid uncertainty
-sigma_pos   = clip(sigma_pos, 0.01, 0.5 × FWHM)
-sigma_flux  = 0.5 × sqrt( (F(x+σ)-F(x-σ))² + (F(y+σ)-F(y-σ))² )
-σ_flux²     = σ_aperture² + σ_total_bkg² + σ_centroid²
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\begin{split}\begin{aligned}
+\sigma_{\mathrm{pos}} &amp;=
+  \frac{\sigma_{\mathrm{PSF}}}{\mathrm{S/N}} \\
+\sigma_{\mathrm{pos}} &amp;=
+  \operatorname{clip}(\sigma_{\mathrm{pos}},\,0.01,\,0.5\,\mathrm{FWHM}) \\
+\sigma_{\mathrm{centroid}} &amp;=
+  \frac{1}{2}\sqrt{
+    \left[F(x+\sigma_{\mathrm{pos}})-F(x-\sigma_{\mathrm{pos}})\right]^2
+    + \left[F(y+\sigma_{\mathrm{pos}})-F(y-\sigma_{\mathrm{pos}})\right]^2
+  } \\
+\sigma_{\mathrm{flux}}^2 &amp;=
+  \sigma_{\mathrm{aperture}}^2
+  + \sigma_{\mathrm{total,bkg}}^2
+  + \sigma_{\mathrm{centroid}}^2
+\end{aligned}\end{split}\]</div>
 <p><code class="docutils literal notranslate"><span class="pre">sigma_PSF</span> <span class="pre">=</span> <span class="pre">FWHM</span> <span class="pre">/</span> <span class="pre">2.3548</span></code> and <code class="docutils literal notranslate"><span class="pre">F(...)</span></code> is the aperture sum re-measured with
 the aperture shifted by <code class="docutils literal notranslate"><span class="pre">±sigma_pos</span></code> along x or y (<code class="docutils literal notranslate"><span class="pre">centroid_flux_err_X_X</span></code>).
 Using the measured shifted sums rather than a symmetric-Gaussian derivative is
@@ -409,21 +437,27 @@ overestimates the S/N by the same amount in the background-limited regime.</p>
 <section id="calibrated-magnitude-error">
 <h3>Calibrated Magnitude Error<a class="headerlink" href="#calibrated-magnitude-error" title="Link to this heading"></a></h3>
 <p>When converting instrumental magnitudes to calibrated magnitudes using a zero point:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">mag_calib</span> <span class="o">=</span> <span class="n">mag_inst</span> <span class="o">+</span> <span class="n">zero_point</span>
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\mathrm{mag}_{\mathrm{calib}} =
+\mathrm{mag}_{\mathrm{inst}} + \mathrm{zero\_point}\]</div>
 <p>The error propagates as:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>σ_mag_calib = √(σ_mag_inst² + σ_zero_point² + σ_sys²)
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\sigma_{\mathrm{mag,calib}} =
+\sqrt{
+  \sigma_{\mathrm{mag,inst}}^2
+  + \sigma_{\mathrm{zero\_point}}^2
+  + \sigma_{\mathrm{sys}}^2
+}\]</div>
 <p>This is quadrature addition because the errors are independent. The zero point is
 a <strong>median</strong> of the calibrator residuals, so its formal uncertainty is the
 standard error of the median,</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>σ_zero_point = √(π/2) × scatter / √N ≈ 1.2533 × scatter / √N
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\sigma_{\mathrm{zero\_point}} =
+\sqrt{\frac{\pi}{2}}\,\frac{\mathrm{scatter}}{\sqrt{N}}
+\approx 1.2533\,\frac{\mathrm{scatter}}{\sqrt{N}}\]</div>
 <p>over the retained calibration stars (<code class="docutils literal notranslate"><span class="pre">N</span></code>), kept at full precision. The
-<code class="docutils literal notranslate"><span class="pre">√(π/2)</span></code> factor (about 25% larger than the mean-based <code class="docutils literal notranslate"><span class="pre">scatter</span> <span class="pre">/</span> <span class="pre">√N</span></code>) is
+<span class="math notranslate nohighlight">\(\sqrt{\pi/2}\)</span> factor (about 25% larger than the mean-based
+<span class="math notranslate nohighlight">\(\mathrm{scatter}/\sqrt{N}\)</span>) is
 exported as <code class="docutils literal notranslate"><span class="pre">MEDIAN_STD_ERROR_FACTOR</span></code> in <code class="docutils literal notranslate"><span class="pre">src.pipeline</span></code>.</p>
 <p>The <code class="docutils literal notranslate"><span class="pre">scatter</span></code> in this expression is taken from the <strong>sigma-clipped sample before
 the <code class="docutils literal notranslate"><span class="pre">|residual|</span> <span class="pre">&lt;=</span> <span class="pre">0.5</span> <span class="pre">mag</span></code> hard cut</strong>. That hard cut removes the tails and
@@ -448,12 +482,17 @@ shared by every source in the field, not an independent per-source error. Adding
 it in quadrature is conservative for a single source, but it does not average
 down over an ensemble. To support both uses, the total error is accompanied by
 two explicit component columns for every magnitude-error column:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">aperture_mag_err_1_3</span>           <span class="o">=</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">random</span><span class="o">^</span><span class="mi">2</span> <span class="o">+</span> <span class="n">correlated</span><span class="o">^</span><span class="mi">2</span><span class="p">)</span>   <span class="p">(</span><span class="n">total</span><span class="p">)</span>
-<span class="n">aperture_mag_err_1_3_random</span>     <span class="o">=</span> <span class="n">per</span><span class="o">-</span><span class="n">source</span> <span class="n">statistical</span> <span class="n">error</span> <span class="n">plus</span> <span class="n">the</span>
-                                   <span class="n">aperture</span><span class="o">-</span><span class="n">correction</span> <span class="n">systematic</span>
-<span class="n">_aperture_mag_err_1_3_correlated</span> <span class="o">=</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">σ_zp</span><span class="o">^</span><span class="mi">2</span> <span class="o">+</span> <span class="n">σ_sys</span><span class="o">^</span><span class="mi">2</span><span class="p">)</span>          <span class="p">(</span><span class="n">field</span><span class="o">-</span><span class="n">common</span><span class="p">)</span>
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\begin{split}\begin{aligned}
+\mathrm{aperture\_mag\_err}_{1.3}
+  &amp;= \sqrt{\mathrm{random}^2+\mathrm{correlated}^2}
+     &amp;&amp;\text{(total)} \\
+\mathrm{aperture\_mag\_err}_{1.3,\mathrm{random}}
+  &amp;= \text{per-source statistical error plus aperture-correction systematic} \\
+\mathrm{aperture\_mag\_err}_{1.3,\mathrm{correlated}}
+  &amp;= \sqrt{\sigma_{\mathrm{zp}}^2+\sigma_{\mathrm{sys}}^2}
+     &amp;&amp;\text{(field-common)}
+\end{aligned}\end{split}\]</div>
 <p>The same <code class="docutils literal notranslate"><span class="pre">_random</span></code> / <code class="docutils literal notranslate"><span class="pre">_correlated</span></code> suffixes exist for <code class="docutils literal notranslate"><span class="pre">psf_mag_err</span></code>, but the
 PSF random component is the PSF-fitting statistical error; it has no
 aperture-correction term. For relative photometry, quote <code class="docutils literal notranslate"><span class="pre">_random</span></code>; for absolute
@@ -484,7 +523,7 @@ The effective gain (counts per data unit) is resolved in this order:</p>
 <ol class="arabic">
 <li><p><strong>FITS conversion keyword</strong>, in the priority order of <code class="docutils literal notranslate"><span class="pre">GAIN_KEYWORDS</span></code>:
 explicit <code class="docutils literal notranslate"><span class="pre">EGAIN</span></code> and <code class="docutils literal notranslate"><span class="pre">CCDGAIN</span></code> (already e-/ADU) and <code class="docutils literal notranslate"><span class="pre">CVF</span></code> (a conversion
-factor in ADU/e-, so <code class="docutils literal notranslate"><span class="pre">gain</span> <span class="pre">=</span> <span class="pre">1/CVF</span></code>) are tried before the conventional
+factor in ADU/e-, so <span class="math notranslate nohighlight">\(\mathrm{gain}=1/\mathrm{CVF}\)</span>) are tried before the conventional
 <code class="docutils literal notranslate"><span class="pre">GAIN</span></code>. The value must be positive and inside the plausible range
 0.02-100 e-/ADU (<code class="docutils literal notranslate"><span class="pre">GAIN_PLAUSIBLE_RANGE</span></code>); anything outside it is reported
 and ignored. On a recognised <strong>driver-gain camera</strong> a bare <code class="docutils literal notranslate"><span class="pre">GAIN</span></code> is skipped
@@ -494,9 +533,9 @@ entirely (see below);</p></li>
 environment variable for headless runs (0 or empty means <em>automatic</em>);</p></li>
 <li><p><strong>empirical photon-transfer estimate</strong> from the frame itself: for boxes of
 pure sky the pixel variance grows linearly with the mean signal,</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>var(box) ≈ read_noise² + mean(box) / gain
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[   \operatorname{var}(\mathrm{box}) \approx
+   \mathrm{read\_noise}^2 + \frac{\operatorname{mean}(\mathrm{box})}{\mathrm{gain}}\]</div>
 <p>so <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">/</span> <span class="pre">slope</span></code> of a robust fit to (mean, variance) is the effective gain.
 The estimate is accepted only when the frame really constrains it: enough
 source-free boxes (sigma clipping removes &lt; 10% of the pixels), a sky level
@@ -533,9 +572,9 @@ aborted with <code class="docutils literal notranslate"><span class="pre">Cannot
 level stays within <code class="docutils literal notranslate"><span class="pre">POISSON_SKY_VARIANCE_TOLERANCE</span></code> (10×) of the measured
 background variance;</p></li>
 <li><p>otherwise it is <strong>replaced</strong> by the largest value the frame allows,</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>gain = sky_level / background_rms²
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[  \mathrm{gain} =
+  \frac{\mathrm{sky\_level}}{\mathrm{background\_rms}^2}\]</div>
 <p>because the sky Poisson variance cannot exceed the total sky variance, so the
 true gain in the data’s units is at least this large. Using that bound gives
 the largest (most conservative) Poisson term the frame admits, correct to
@@ -576,18 +615,24 @@ both the source and the annulus photometry.</p>
 <section id="atmospheric-extinction-optional">
 <h3>Atmospheric Extinction (Optional)<a class="headerlink" href="#atmospheric-extinction-optional" title="Link to this heading"></a></h3>
 <p>If atmospheric extinction is applied:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>mag_calib = mag_inst + zero_point - k × airmass
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\mathrm{mag}_{\mathrm{calib}} =
+\mathrm{mag}_{\mathrm{inst}}+\mathrm{zero\_point}
+- k\,\mathrm{airmass}\]</div>
 <p>Where:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">k</span></code>: Extinction coefficient (mag/airmass)</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">airmass</span></code>: Air mass during observation</p></li>
 </ul>
 <p>Error propagation becomes:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>σ_mag_calib = √(σ_mag_inst² + σ_zero_point² + σ_sys² + (airmass × σ_k)²)
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\sigma_{\mathrm{mag,calib}} =
+\sqrt{
+  \sigma_{\mathrm{mag,inst}}^2
+  + \sigma_{\mathrm{zero\_point}}^2
+  + \sigma_{\mathrm{sys}}^2
+  + (\mathrm{airmass}\,\sigma_k)^2
+}\]</div>
 </section>
 <section id="color-term-calibration-optional">
 <h3>Color-Term Calibration (Optional)<a class="headerlink" href="#color-term-calibration-optional" title="Link to this heading"></a></h3>
@@ -595,17 +640,17 @@ both the source and the annulus photometry.</p>
 apply a simple linear color-term correction after the standard zero-point
 calibration.</p>
 <p>Baseline calibrated magnitude:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">mag_calib</span> <span class="o">=</span> <span class="n">mag_inst</span> <span class="o">+</span> <span class="n">zero_point</span>
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\mathrm{mag}_{\mathrm{calib}} =
+\mathrm{mag}_{\mathrm{inst}}+\mathrm{zero\_point}\]</div>
 <p>Color-corrected calibrated magnitude:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">mag_calib_colorcorr</span> <span class="o">=</span> <span class="n">mag_calib</span> <span class="o">+</span> <span class="n">color_term_offset</span>
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\mathrm{mag}_{\mathrm{calib,colorcorr}} =
+\mathrm{mag}_{\mathrm{calib}}+\mathrm{color\_term\_offset}\]</div>
 <p>The fitted offset is modeled as:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>color_term_offset = intercept + C × (color - color_ref)
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\mathrm{color\_term\_offset} =
+\mathrm{intercept}+C\,(\mathrm{color}-\mathrm{color}_{\mathrm{ref}})\]</div>
 <p>Where:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">C</span></code>: fitted color-term coefficient</p></li>
@@ -618,15 +663,20 @@ existing scalar zero-point calibration as the compatibility baseline.</p>
 <p><strong>Uncertainty of the color correction.</strong> The fit parameter covariance is taken
 from the final least-squares fit (<code class="docutils literal notranslate"><span class="pre">scatter²</span> <span class="pre">×</span> <span class="pre">(Dᵀ</span> <span class="pre">D)⁻¹</span></code>) and propagated to each
 source through its color offset <code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">=</span> <span class="pre">color</span> <span class="pre">-</span> <span class="pre">color_ref</span></code>:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>var(color_term_offset) = var(intercept) + 2x·cov(intercept, C) + x²·var(C)
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\operatorname{var}(\mathrm{color\_term\_offset}) =
+\operatorname{var}(\mathrm{intercept})
++ 2x\,\operatorname{cov}(\mathrm{intercept},C)
++ x^2\operatorname{var}(C)\]</div>
 <p>It is stored in <code class="docutils literal notranslate"><span class="pre">color_term_offset_err</span></code> (and <code class="docutils literal notranslate"><span class="pre">color_term_std</span></code> / <code class="docutils literal notranslate"><span class="pre">intercept_std</span></code>
 are returned by the fit). Every color-corrected magnitude gets a parallel error
 column <code class="docutils literal notranslate"><span class="pre">*_colorcorr_err</span></code>:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>σ_mag_colorcorr = √(σ_mag_calib² + σ_color_term_offset²)
-</pre></div>
-</div>
+<div class="math notranslate nohighlight">
+\[\sigma_{\mathrm{mag,colorcorr}} =
+\sqrt{
+  \sigma_{\mathrm{mag,calib}}^2
+  + \sigma_{\mathrm{color\_term\_offset}}^2
+}\]</div>
 <p>where <code class="docutils literal notranslate"><span class="pre">σ_mag_calib</span></code> is the baseline calibrated error (already including the
 statistical, aperture-correction and zero-point terms). Sources without a usable
 catalog color keep NaN in every correction column.</p>
@@ -709,19 +759,19 @@ usable catalog colors, keep the standard zero-point-calibrated magnitudes only.<
 </thead>
 <tbody>
 <tr class="row-even"><td><p>S/N</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">flux</span> <span class="pre">/</span> <span class="pre">flux_error</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(\frac{\mathrm{flux}}{\mathrm{flux\_error}}\)</span></p></td>
 <td><p>3–1000</p></td>
 </tr>
 <tr class="row-odd"><td><p>Flux Error</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">√(σ_aperture²</span> <span class="pre">+</span> <span class="pre">σ_total_bkg²</span> <span class="pre">+</span> <span class="pre">σ_centroid²)</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(\sqrt{\sigma_{\mathrm{aperture}}^2+\sigma_{\mathrm{total,bkg}}^2+\sigma_{\mathrm{centroid}}^2}\)</span></p></td>
 <td><p>—</p></td>
 </tr>
 <tr class="row-even"><td><p>Local background error</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">median_err</span></code> = <code class="docutils literal notranslate"><span class="pre">√(π/2)·s/√A_ann</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(\mathrm{median\_err}=\sqrt{\pi/2}\,s/\sqrt{A_{\mathrm{ann}}}\)</span></p></td>
 <td><p>per-pixel background</p></td>
 </tr>
 <tr class="row-odd"><td><p>Centroid-position error</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">0.5·√(ΔF_x²</span> <span class="pre">+</span> <span class="pre">ΔF_y²)</span></code> at <code class="docutils literal notranslate"><span class="pre">±σ_PSF/S/N</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(\frac{1}{2}\sqrt{\Delta F_x^2+\Delta F_y^2}\)</span> at <span class="math notranslate nohighlight">\(\pm\sigma_{\mathrm{PSF}}/\mathrm{S/N}\)</span></p></td>
 <td><p>few % of statistical</p></td>
 </tr>
 <tr class="row-even"><td><p>Sky RMS</p></td>
@@ -729,23 +779,23 @@ usable catalog colors, keep the standard zero-point-calibrated magnitudes only.<
 <td><p>per-pixel noise</p></td>
 </tr>
 <tr class="row-odd"><td><p>Magnitude Error</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">√((1.0857·σ_flux/flux)²</span> <span class="pre">+</span> <span class="pre">σ_apcorr²)</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(\sqrt{(1.0857\,\sigma_{\mathrm{flux}}/\mathrm{flux})^2+\sigma_{\mathrm{apcorr}}^2}\)</span></p></td>
 <td><p>0.01–0.3 mag</p></td>
 </tr>
 <tr class="row-even"><td><p>Aperture Correction</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">flux_total</span> <span class="pre">=</span> <span class="pre">flux_aperture</span> <span class="pre">/</span> <span class="pre">EE(r)</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(\mathrm{flux}_{\mathrm{total}}=\mathrm{flux}_{\mathrm{aperture}}/\mathrm{EE}(r)\)</span></p></td>
 <td><p>1.00–1.15</p></td>
 </tr>
 <tr class="row-odd"><td><p>Aperture-correction systematic</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">σ_apcorr</span> <span class="pre">=</span> <span class="pre">1.0857</span> <span class="pre">·</span> <span class="pre">f_apcorr</span> <span class="pre">·</span> <span class="pre">|apcorr−1|</span> <span class="pre">/</span> <span class="pre">apcorr</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(\sigma_{\mathrm{apcorr}}=1.0857\,f_{\mathrm{apcorr}}\,\lvert\mathrm{apcorr}-1\rvert/\mathrm{apcorr}\)</span></p></td>
 <td><p>0.01–0.05 mag</p></td>
 </tr>
 <tr class="row-even"><td><p>Calibrated Mag Error</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">√(σ_inst²</span> <span class="pre">+</span> <span class="pre">σ_zp²</span> <span class="pre">+</span> <span class="pre">σ_sys²)</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(\sqrt{\sigma_{\mathrm{inst}}^2+\sigma_{\mathrm{zp}}^2+\sigma_{\mathrm{sys}}^2}\)</span></p></td>
 <td><p>0.02–0.35 mag</p></td>
 </tr>
 <tr class="row-odd"><td><p>Zero-point uncertainty</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">√(π/2)</span> <span class="pre">×</span> <span class="pre">scatter_untrimmed</span> <span class="pre">/</span> <span class="pre">√N</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(\sqrt{\pi/2}\,\mathrm{scatter}_{\mathrm{untrimmed}}/\sqrt{N}\)</span></p></td>
 <td><p>0.01–0.2 mag</p></td>
 </tr>
 <tr class="row-even"><td><p>Effective gain</p></td>
@@ -753,15 +803,15 @@ usable catalog colors, keep the standard zero-point-calibrated magnitudes only.<
 <td><p>e-/ADU</p></td>
 </tr>
 <tr class="row-odd"><td><p>Color-Corrected Mag</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">mag_calib</span> <span class="pre">+</span> <span class="pre">intercept</span> <span class="pre">+</span> <span class="pre">C</span> <span class="pre">×</span> <span class="pre">(color</span> <span class="pre">-</span> <span class="pre">color_ref)</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(\mathrm{mag}_{\mathrm{calib}}+\mathrm{intercept}+C\,(\mathrm{color}-\mathrm{color}_{\mathrm{ref}})\)</span></p></td>
 <td><p>calibration-dependent</p></td>
 </tr>
 <tr class="row-even"><td><p>Color-Corrected Mag Error</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">√(σ_mag_calib²</span> <span class="pre">+</span> <span class="pre">var(intercept)</span> <span class="pre">+</span> <span class="pre">2x·cov</span> <span class="pre">+</span> <span class="pre">x²·var(C))</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(\sqrt{\sigma_{\mathrm{mag,calib}}^2+\operatorname{var}(\mathrm{intercept})+2x\,\operatorname{cov}+x^2\operatorname{var}(C)}\)</span></p></td>
 <td><p>calibration-dependent</p></td>
 </tr>
 <tr class="row-odd"><td><p>Instrumental Magnitude</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">-2.5</span> <span class="pre">×</span> <span class="pre">log₁₀(flux_total)</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(-2.5\log_{10}(\mathrm{flux}_{\mathrm{total}})\)</span></p></td>
 <td><p>10–25 mag</p></td>
 </tr>
 </tbody>

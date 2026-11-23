@@ -20,6 +20,7 @@ from astroquery.vizier import Vizier
 from astroquery.imcce import Skybot
 
 from src.catalog_mirrors import (
+    CATALOG_HTTP_TIMEOUT_SECONDS,
     SIMBAD_SERVERS,
     query_gaia_with_fallback,
     query_vizier_with_fallback,
@@ -29,7 +30,7 @@ from src.tools_pipeline import URL, safe_wcs_create
 from src.utils import safe_catalog_query, skybot_cone_search
 
 # Timeout (seconds) for outbound HTTP requests so a slow service cannot hang a run
-HTTP_TIMEOUT_SECONDS = 30
+HTTP_TIMEOUT_SECONDS = CATALOG_HTTP_TIMEOUT_SECONDS
 # Kept as module-level names for callers that refer to them here.
 SIMBAD_PRIMARY_SERVER = SIMBAD_SERVERS[0]
 SIMBAD_FALLBACK_SERVER = SIMBAD_SERVERS[1]
@@ -43,22 +44,22 @@ Skybot._get_raw_response = False
 
 
 def _apply_request_timeout(session: Any) -> None:
-    """Cap requests made through an astroquery session at 30 seconds."""
+    """Cap requests made through an astroquery session at the shared limit."""
     original_request = session.request
 
     def request_with_timeout(method: str, url: str, **kwargs: Any) -> Any:
         timeout = kwargs.get("timeout")
         if timeout is None:
-            kwargs["timeout"] = HTTP_TIMEOUT_SECONDS
+            kwargs["timeout"] = CATALOG_HTTP_TIMEOUT_SECONDS
         elif isinstance(timeout, tuple):
             kwargs["timeout"] = tuple(
-                HTTP_TIMEOUT_SECONDS
+                CATALOG_HTTP_TIMEOUT_SECONDS
                 if value is None
-                else min(value, HTTP_TIMEOUT_SECONDS)
+                else min(value, CATALOG_HTTP_TIMEOUT_SECONDS)
                 for value in timeout
             )
         else:
-            kwargs["timeout"] = min(timeout, HTTP_TIMEOUT_SECONDS)
+            kwargs["timeout"] = min(timeout, CATALOG_HTTP_TIMEOUT_SECONDS)
         return original_request(method, url, **kwargs)
 
     session.request = request_with_timeout
@@ -67,8 +68,10 @@ def _apply_request_timeout(session: Any) -> None:
 def _create_vizier_client(*args: Any, **kwargs: Any) -> Any:
     """Create a VizieR client whose primary and fallback requests are bounded."""
     vizier_client = Vizier(*args, **kwargs)
-    timeout = getattr(vizier_client, "TIMEOUT", HTTP_TIMEOUT_SECONDS)
-    vizier_client.TIMEOUT = min(timeout, HTTP_TIMEOUT_SECONDS)
+    timeout = getattr(vizier_client, "TIMEOUT", CATALOG_HTTP_TIMEOUT_SECONDS)
+    if timeout is None:
+        timeout = CATALOG_HTTP_TIMEOUT_SECONDS
+    vizier_client.TIMEOUT = min(timeout, CATALOG_HTTP_TIMEOUT_SECONDS)
     return vizier_client
 
 

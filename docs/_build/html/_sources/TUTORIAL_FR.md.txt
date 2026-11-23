@@ -147,15 +147,24 @@ du fond local mesuré dans l'anneau (``σ_aperture`` et ``σ_total_bkg``) et la
 variation de flux induite par l'incertitude sur le centre de la source
 (``σ_centroid``) :
 
-- **Erreur de flux** : σ_flux² = σ_aperture² + σ_total_bkg² + σ_centroid², où le
-  terme de fond local utilise l'erreur standard médiane grand-échantillon de
-  l'anneau (``ApertureStats.median_err``) et le terme de centroïde propage
-  l'incertitude de position de la source
-- **Erreur instrumentale** : σ_mag = 1,0857 × (σ_flux / flux), calculée à partir
-  du même flux corrigé du fond et de l'ouverture que la magnitude elle-même
-- **Erreur calibrée** : σ_mag_calib = √(σ_mag_inst² + σ_zp² + σ_sys²), où σ_zp est
-  l'incertitude formelle de la médiane du point zéro, calculée comme 1,2533 × la
-  dispersion de calibration non tronquée / √N, et σ_sys le plancher d'erreur
+- **Erreur de flux** :
+  $\sigma_{\mathrm{flux}}^2 =
+  \sigma_{\mathrm{aperture}}^2 + \sigma_{\mathrm{total,bkg}}^2 +
+  \sigma_{\mathrm{centroid}}^2$, où le terme de fond local utilise l'erreur
+  standard médiane grand-échantillon de l'anneau
+  (``ApertureStats.median_err``) et le terme de centroïde propage l'incertitude
+  de position de la source
+- **Erreur instrumentale** :
+  $\sigma_{\mathrm{mag}} =
+  1{,}0857\,(\sigma_{\mathrm{flux}}/\mathrm{flux})$, calculée à partir du même
+  flux corrigé du fond et de l'ouverture que la magnitude elle-même
+- **Erreur calibrée** :
+  $\sigma_{\mathrm{mag,calib}} =
+  \sqrt{\sigma_{\mathrm{mag,inst}}^2 + \sigma_{\mathrm{zp}}^2 +
+  \sigma_{\mathrm{sys}}^2}$, où $\sigma_{\mathrm{zp}}$ est l'incertitude
+  formelle de la médiane du point zéro, calculée comme
+  $\sqrt{\pi/2}\,\mathrm{dispersion}/\sqrt{N}$ à partir de la dispersion de
+  calibration non tronquée, et $\sigma_{\mathrm{sys}}$ le plancher d'erreur
   systématique.
   L'incertitude formelle du point zéro est écrite dans la colonne `zero_point_std` ;
   les dispersions de calibration non tronquée et retenue (`zero_point_scatter`,

@@ -16,6 +16,8 @@
       <script src="_static/documentation_options.js?v=9cc2bd95"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "displayMath": [["$$", "$$"], ["\\[", "\\]"]]}, "options": {"processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+      <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -99,7 +101,7 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="step-by-step-photometry-tutorial">
+  <section class="tex2jax_ignore mathjax_ignore" id="step-by-step-photometry-tutorial">
 <h1>Step-by-Step Photometry Tutorial<a class="headerlink" href="#step-by-step-photometry-tutorial" title="Link to this heading"></a></h1>
 <blockquote>
 <div><p><strong>Français</strong> : ce tutoriel est aussi disponible en <a class="reference internal" href="TUTORIAL_FR.html"><span class="std std-doc">français</span></a>.</p>
@@ -263,15 +265,24 @@ the local background measured in the annulus (<code class="docutils literal notr
 and the flux change induced by the uncertainty in the source centroid
 (<code class="docutils literal notranslate"><span class="pre">σ_centroid</span></code>):</p>
 <ul class="simple">
-<li><p><strong>Flux error</strong>: σ_flux² = σ_aperture² + σ_total_bkg² + σ_centroid², where the
-local-background term uses the large-sample median standard error of the
-annulus (<code class="docutils literal notranslate"><span class="pre">ApertureStats.median_err</span></code>) and the centroid term propagates the
-position uncertainty of the source</p></li>
-<li><p><strong>Instrumental error</strong>: σ_mag = 1.0857 × (σ_flux / flux), computed from the same
+<li><p><strong>Flux error</strong>:
+<span class="math notranslate nohighlight">\(\sigma_{\mathrm{flux}}^2 =
+\sigma_{\mathrm{aperture}}^2 + \sigma_{\mathrm{total,bkg}}^2 +
+\sigma_{\mathrm{centroid}}^2\)</span>, where the local-background term uses the
+large-sample median standard error of the annulus
+(<code class="docutils literal notranslate"><span class="pre">ApertureStats.median_err</span></code>) and the centroid term propagates the position
+uncertainty of the source</p></li>
+<li><p><strong>Instrumental error</strong>:
+<span class="math notranslate nohighlight">\(\sigma_{\mathrm{mag}} =
+1.0857\,(\sigma_{\mathrm{flux}}/\mathrm{flux})\)</span>, computed from the same
 background-subtracted, aperture-corrected flux as the magnitude itself</p></li>
-<li><p><strong>Calibrated error</strong>: σ_mag_calib = √(σ_mag_inst² + σ_zp² + σ_sys²), where σ_zp is
-the formal uncertainty of the median zero point, calculated as 1.2533 × the
-untrimmed calibration scatter / √N, and σ_sys is the systematic error floor.
+<li><p><strong>Calibrated error</strong>:
+<span class="math notranslate nohighlight">\(\sigma_{\mathrm{mag,calib}} =
+\sqrt{\sigma_{\mathrm{mag,inst}}^2 + \sigma_{\mathrm{zp}}^2 +
+\sigma_{\mathrm{sys}}^2}\)</span>, where <span class="math notranslate nohighlight">\(\sigma_{\mathrm{zp}}\)</span> is the formal
+uncertainty of the median zero point, calculated as
+<span class="math notranslate nohighlight">\(\sqrt{\pi/2}\,\mathrm{scatter}/\sqrt{N}\)</span> using the untrimmed calibration
+scatter, and <span class="math notranslate nohighlight">\(\sigma_{\mathrm{sys}}\)</span> is the systematic error floor.
 The formal zero-point uncertainty is written to the <code class="docutils literal notranslate"><span class="pre">zero_point_std</span></code> column; the
 untrimmed and retained calibrator scatters (<code class="docutils literal notranslate"><span class="pre">zero_point_scatter</span></code>,
 <code class="docutils literal notranslate"><span class="pre">zero_point_scatter_kept</span></code>) and the calibrator count (<code class="docutils literal notranslate"><span class="pre">zero_point_n</span></code>) are

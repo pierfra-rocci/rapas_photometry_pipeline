@@ -34,8 +34,8 @@ Science and Processing Modules
    lower-level processing helpers. It also owns the effective-gain resolution
    (``resolve_effective_gain`` / ``instrument_uses_driver_gain``) shared by the
    error model, the cosmic-ray mask and SEP detection: explicit ``EGAIN``,
-   ``CCDGAIN`` and ``CVF`` (``gain = 1/CVF``) keywords take precedence over the
-   conventional ``GAIN``, which is ignored on recognised driver-gain cameras
+   ``CCDGAIN`` and ``CVF`` (:math:`\mathrm{gain}=1/\mathrm{CVF}`) keywords take
+   precedence over the conventional ``GAIN``, which is ignored on recognised driver-gain cameras
    (QHY/ZWO) because it is an abstract driver setting rather than e-/ADU.
 
 ``src/astrometry.py``
@@ -193,19 +193,29 @@ Photometric Formula Conventions
 
 The project documentation and code use the following formulas consistently:
 
-- ``σ_flux² = σ_aperture² + σ_total_bkg² + σ_centroid²`` (aperture-sum error,
-  the local-background error from the sigma-clipped annulus, and the
-  centroid-position term)
-- ``σ_bkg_pixel = ApertureStats.median_err`` = ``√(π/2) · s / √A_ann`` (standard
-  error of the median annulus level)
-- ``S/N = flux / flux_error`` (computed from the background-subtracted,
-  aperture-corrected flux)
-- ``σ_mag = 1.0857 × (σ_flux / flux)``, combined in quadrature with the
-  aperture-correction systematic
-  ``σ_apcorr = 1.0857 · f_apcorr · |apcorr − 1| / apcorr``
-- ``flux_total = flux_aperture / EE(r)`` (encircled-energy aperture correction)
-- ``σ_mag_calib = √(σ_mag_inst² + σ_zp² + σ_sys²)``, where ``σ_zp`` uses the
-  sigma-clipped, untrimmed residual scatter and the ``√(π/2)`` median factor
+- :math:`\sigma_{\mathrm{flux}}^2 =
+  \sigma_{\mathrm{aperture}}^2 + \sigma_{\mathrm{total,bkg}}^2 +
+  \sigma_{\mathrm{centroid}}^2` (aperture-sum error, the local-background error
+  from the sigma-clipped annulus, and the centroid-position term)
+- :math:`\sigma_{\mathrm{bkg,pixel}} =
+  \mathrm{ApertureStats.median\_err} =
+  \sqrt{\pi/2}\,s/\sqrt{A_{\mathrm{ann}}}` (standard error of the median
+  annulus level)
+- :math:`\mathrm{S/N} = \mathrm{flux}/\mathrm{flux\_error}` (computed from the
+  background-subtracted, aperture-corrected flux)
+- :math:`\sigma_{\mathrm{mag}} =
+  1.0857\,(\sigma_{\mathrm{flux}}/\mathrm{flux})`, combined in quadrature with
+  the aperture-correction systematic
+  :math:`\sigma_{\mathrm{apcorr}} =
+  1.0857\,f_{\mathrm{apcorr}}\,|\mathrm{apcorr}-1|/\mathrm{apcorr}`
+- :math:`\mathrm{flux}_{\mathrm{total}} =
+  \mathrm{flux}_{\mathrm{aperture}}/\mathrm{EE}(r)` (encircled-energy aperture
+  correction)
+- :math:`\sigma_{\mathrm{mag,calib}} =
+  \sqrt{\sigma_{\mathrm{mag,inst}}^2 + \sigma_{\mathrm{zp}}^2 +
+  \sigma_{\mathrm{sys}}^2}`, where :math:`\sigma_{\mathrm{zp}}` uses the
+  sigma-clipped, untrimmed residual scatter and the :math:`\sqrt{\pi/2}` median
+  factor
 
 Photometry Error Columns
 ^^^^^^^^^^^^^^^^^^^^^^^^^

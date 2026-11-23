@@ -151,10 +151,12 @@ as:
 - Astro-Colibri, when an API key is provided
 - TNS (Transient Name Server), from its public catalogue (no API key needed)
 
-SIMBAD, VizieR and Gaia TAP requests are limited to 30 seconds per mirror. If a
-mirror times out or otherwise fails, the query tries its configured fallback
-mirror with the same timeout; if all mirrors fail, catalog enrichment
-continues without that service's results.
+SIMBAD, Gaia TAP, and VizieR requests (including AAVSO VSX and the VizieR
+ASU-TSV fallback) share a 30-second timeout for each primary or fallback
+request. If a mirror times out or otherwise fails, the query tries its
+configured fallback with the same limit. This is a per-request limit, not a
+30-second budget for the complete mirror chain; if all mirrors fail, catalog
+enrichment continues without that service's results.
 
 Astro-Colibri and TNS are the two transient services. Both use a progressive
 match radius - 5, 10, 15, 20 and 30 arcsec - that pairs a transient with its

@@ -16,6 +16,8 @@
       <script src="_static/documentation_options.js?v=9cc2bd95"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "displayMath": [["$$", "$$"], ["\\[", "\\]"]]}, "options": {"processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+      <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -99,7 +101,7 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="tutoriel-pas-a-pas-pipeline-de-photometrie-rapas">
+  <section class="tex2jax_ignore mathjax_ignore" id="tutoriel-pas-a-pas-pipeline-de-photometrie-rapas">
 <h1>Tutoriel pas à pas – Pipeline de Photométrie RAPAS<a class="headerlink" href="#tutoriel-pas-a-pas-pipeline-de-photometrie-rapas" title="Link to this heading"></a></h1>
 <blockquote>
 <div><p><strong>English</strong>: this tutorial is also available in <a class="reference internal" href="TUTORIAL.html"><span class="std std-doc">English</span></a>.</p>
@@ -262,15 +264,24 @@ du fond local mesuré dans l’anneau (<code class="docutils literal notranslate
 variation de flux induite par l’incertitude sur le centre de la source
 (<code class="docutils literal notranslate"><span class="pre">σ_centroid</span></code>) :</p>
 <ul class="simple">
-<li><p><strong>Erreur de flux</strong> : σ_flux² = σ_aperture² + σ_total_bkg² + σ_centroid², où le
-terme de fond local utilise l’erreur standard médiane grand-échantillon de
-l’anneau (<code class="docutils literal notranslate"><span class="pre">ApertureStats.median_err</span></code>) et le terme de centroïde propage
-l’incertitude de position de la source</p></li>
-<li><p><strong>Erreur instrumentale</strong> : σ_mag = 1,0857 × (σ_flux / flux), calculée à partir
-du même flux corrigé du fond et de l’ouverture que la magnitude elle-même</p></li>
-<li><p><strong>Erreur calibrée</strong> : σ_mag_calib = √(σ_mag_inst² + σ_zp² + σ_sys²), où σ_zp est
-l’incertitude formelle de la médiane du point zéro, calculée comme 1,2533 × la
-dispersion de calibration non tronquée / √N, et σ_sys le plancher d’erreur
+<li><p><strong>Erreur de flux</strong> :
+<span class="math notranslate nohighlight">\(\sigma_{\mathrm{flux}}^2 =
+\sigma_{\mathrm{aperture}}^2 + \sigma_{\mathrm{total,bkg}}^2 +
+\sigma_{\mathrm{centroid}}^2\)</span>, où le terme de fond local utilise l’erreur
+standard médiane grand-échantillon de l’anneau
+(<code class="docutils literal notranslate"><span class="pre">ApertureStats.median_err</span></code>) et le terme de centroïde propage l’incertitude
+de position de la source</p></li>
+<li><p><strong>Erreur instrumentale</strong> :
+<span class="math notranslate nohighlight">\(\sigma_{\mathrm{mag}} =
+1{,}0857\,(\sigma_{\mathrm{flux}}/\mathrm{flux})\)</span>, calculée à partir du même
+flux corrigé du fond et de l’ouverture que la magnitude elle-même</p></li>
+<li><p><strong>Erreur calibrée</strong> :
+<span class="math notranslate nohighlight">\(\sigma_{\mathrm{mag,calib}} =
+\sqrt{\sigma_{\mathrm{mag,inst}}^2 + \sigma_{\mathrm{zp}}^2 +
+\sigma_{\mathrm{sys}}^2}\)</span>, où <span class="math notranslate nohighlight">\(\sigma_{\mathrm{zp}}\)</span> est l’incertitude
+formelle de la médiane du point zéro, calculée comme
+<span class="math notranslate nohighlight">\(\sqrt{\pi/2}\,\mathrm{dispersion}/\sqrt{N}\)</span> à partir de la dispersion de
+calibration non tronquée, et <span class="math notranslate nohighlight">\(\sigma_{\mathrm{sys}}\)</span> le plancher d’erreur
 systématique.
 L’incertitude formelle du point zéro est écrite dans la colonne <code class="docutils literal notranslate"><span class="pre">zero_point_std</span></code> ;
 les dispersions de calibration non tronquée et retenue (<code class="docutils literal notranslate"><span class="pre">zero_point_scatter</span></code>,

@@ -83,9 +83,11 @@ def test_query_vizier_asu_tsv_skips_unreachable_mirrors(monkeypatch):
     from src.catalog_mirrors import VIZIER_TSV_SERVERS, query_vizier_asu_tsv
 
     requested = []
+    request_timeouts = []
 
     def fake_post(url, data, timeout):
         requested.append(url)
+        request_timeouts.append(timeout)
         if "cfa.harvard" in url:
             raise requests.exceptions.ConnectTimeout("timed out")
         if "idia" in url:
@@ -93,11 +95,14 @@ def test_query_vizier_asu_tsv_skips_unreachable_mirrors(monkeypatch):
         return _FakeTSVResponse(200, _VIZIER_TSV_SAMPLE)
 
     monkeypatch.setattr("src.catalog_mirrors.requests.post", fake_post)
-    table, server = query_vizier_asu_tsv("II/349/ps1", 150.0, 32.78, 0.1)
+    table, server = query_vizier_asu_tsv(
+        "II/349/ps1", 150.0, 32.78, 0.1, timeout=60
+    )
 
     assert len(table) == 2
     assert server == VIZIER_TSV_SERVERS[2]
     assert len(requested) == 3
+    assert request_timeouts == [30] * 3
 
 
 def test_query_vizier_asu_tsv_reports_total_failure(monkeypatch):
@@ -152,10 +157,13 @@ def test_vizier_query_retries_on_harvard_mirror():
     class MirrorAwareVizier:
         def __init__(self):
             self.VIZIER_SERVER = VIZIER_PRIMARY_SERVER
+            self.TIMEOUT = 60
             self.servers = []
+            self.timeouts = []
 
         def query_region(self, *_args, **_kwargs):
             self.servers.append(self.VIZIER_SERVER)
+            self.timeouts.append(self.TIMEOUT)
             if self.VIZIER_SERVER == VIZIER_PRIMARY_SERVER:
                 raise requests.exceptions.ConnectTimeout("primary unavailable")
             return ["fallback result"]
@@ -166,16 +174,20 @@ def test_vizier_query_retries_on_harvard_mirror():
     assert result == ["fallback result"]
     assert used_fallback is True
     assert vizier.servers == [VIZIER_PRIMARY_SERVER, VIZIER_FALLBACK_SERVER]
+    assert vizier.timeouts == [30, 30]
 
 
 def test_stdpipe_vizier_query_retries_on_harvard_mirror():
     """The stdpipe VizieR path should use the same mirror fallback."""
+    request_timeouts = []
 
     class MirrorAwareVizier:
         def __init__(self, *, vizier_server=VIZIER_PRIMARY_SERVER):
             self.server = vizier_server
+            self.TIMEOUT = 60
 
         def query_region(self):
+            request_timeouts.append(self.TIMEOUT)
             if self.server == VIZIER_PRIMARY_SERVER:
                 raise requests.exceptions.ConnectTimeout("primary unavailable")
             return "fallback result"
@@ -191,6 +203,7 @@ def test_stdpipe_vizier_query_retries_on_harvard_mirror():
 
     assert result == "fallback result"
     assert used_fallback is True
+    assert request_timeouts == [30, 30]
     assert catalogs.Vizier is MirrorAwareVizier
 
 
@@ -285,6 +298,7 @@ def test_vizier_primary_and_fallback_use_30_second_timeout(
 
     monkeypatch.setattr(xmatch_catalogs, "Vizier", FakeVizier)
     vizier = xmatch_catalogs._create_vizier_client()
+    assert vizier.TIMEOUT == 30
     result, used_fallback = query_vizier_with_fallback(
         vizier, "query_region", object()
     )

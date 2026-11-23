@@ -16,9 +16,9 @@ This document provides detailed mathematical documentation for the photometric c
 
 ### Formula
 
-```
-S/N = flux / flux_error
-```
+$$
+\mathrm{S/N} = \frac{\mathrm{flux}}{\mathrm{flux\_error}}
+$$
 
 Where:
 
@@ -91,9 +91,10 @@ instrumental magnitude is not. Before computing magnitudes the aperture flux is
 corrected for the fraction of the PSF that falls outside the aperture using the
 encircled-energy curve of the empirical PSF (or an analytic Gaussian fallback):
 
-```
-flux_total = flux_aperture / EE(r)
-```
+$$
+\mathrm{flux}_{\mathrm{total}} =
+\frac{\mathrm{flux}_{\mathrm{aperture}}}{\mathrm{EE}(r)}
+$$
 
 The correction factor `1/EE(r)` is stored per source in the `apcorr_X_X` column,
 and the encircled-energy fraction it came from in `ee_fraction_X_X` (so a large
@@ -111,9 +112,12 @@ relative amount `(apcorr - 1)/apcorr`. Unlike the statistical flux error, this
 shift does **not** cancel in the flux ratio, so it must be added to the
 magnitude error separately:
 
-```
-sigma_apcorr = MAG_ERR_COEFFICIENT * f_apcorr * |apcorr - 1| / apcorr
-```
+$$
+\sigma_{\mathrm{apcorr}} =
+\mathrm{MAG\_ERR\_COEFFICIENT}\,
+f_{\mathrm{apcorr}}\,
+\frac{|\mathrm{apcorr}-1|}{\mathrm{apcorr}}
+$$
 
 where `f_apcorr` is the fractional uncertainty of the correction
 (`APCORR_SYSTEMATIC_FRACTION` in `src.pipeline`, default 0.20, i.e. the
@@ -137,9 +141,10 @@ snr = flux / flux_error  # = 100.0
 
 ### Formula
 
-```
-σ_mag = 1.0857 × (σ_flux / flux)
-```
+$$
+\sigma_{\mathrm{mag}} =
+1.0857\,\frac{\sigma_{\mathrm{flux}}}{\mathrm{flux}}
+$$
 
 Where:
 
@@ -152,42 +157,56 @@ Where:
 
 Given the magnitude-flux relation:
 
-```
-mag = -2.5 × log₁₀(flux)
-```
+$$
+\mathrm{mag} = -2.5\log_{10}(\mathrm{flux})
+$$
 
 Using error propagation:
 
-```
-σ_mag = |∂mag/∂flux| × σ_flux
-      = |-2.5 / (flux × ln(10))| × σ_flux
-      = (2.5 / ln(10)) × (σ_flux / flux)
-      ≈ 1.0857 × (σ_flux / flux)
-```
+$$
+\begin{aligned}
+\sigma_{\mathrm{mag}}
+  &= \left|\frac{\partial\,\mathrm{mag}}{\partial\,\mathrm{flux}}\right|
+     \sigma_{\mathrm{flux}} \\
+  &= \left|\frac{-2.5}{\mathrm{flux}\,\ln(10)}\right|
+     \sigma_{\mathrm{flux}} \\
+  &= \frac{2.5}{\ln(10)}
+     \frac{\sigma_{\mathrm{flux}}}{\mathrm{flux}} \\
+  &\approx 1.0857\,
+     \frac{\sigma_{\mathrm{flux}}}{\mathrm{flux}}
+\end{aligned}
+$$
 
 The statistical term above is combined in quadrature with the
 **aperture-correction systematic** `sigma_apcorr` (see the Aperture Correction
 section), which does not cancel in the flux ratio:
 
-```
-σ_mag = √( (1.0857 × σ_flux / flux)² + σ_apcorr² )
-```
+$$
+\sigma_{\mathrm{mag}} =
+\sqrt{
+  \left(1.0857\,\frac{\sigma_{\mathrm{flux}}}{\mathrm{flux}}\right)^2
+  + \sigma_{\mathrm{apcorr}}^2
+}
+$$
 
 ### Relationship to S/N
 
 For high signal-to-noise sources (S/N > 5), the statistical term reduces to:
 
-```
-σ_mag(stat) ≈ 1.0857 / S/N
-```
+$$
+\sigma_{\mathrm{mag,stat}} \approx \frac{1.0857}{\mathrm{S/N}}
+$$
 
 This is valid because:
 
-```
-σ_mag(stat) = 1.0857 × (σ_flux / flux)
-            = 1.0857 × (1 / (flux / σ_flux))
-            = 1.0857 / S/N
-```
+$$
+\begin{aligned}
+\sigma_{\mathrm{mag,stat}}
+  &= 1.0857\,\frac{\sigma_{\mathrm{flux}}}{\mathrm{flux}} \\
+  &= 1.0857\,\frac{1}{\mathrm{flux}/\sigma_{\mathrm{flux}}} \\
+  &= \frac{1.0857}{\mathrm{S/N}}
+\end{aligned}
+$$
 
 At high S/N the actual exported `σ_mag` is dominated by the
 `σ_apcorr` systematic and the zero-point term rather than by `1.0857 / S/N`.
@@ -256,14 +275,21 @@ surrounding the source (`ApertureStats`), not a plain mean, so neighbouring
 sources and cosmic rays do not bias it. For an aperture area `A_ap` and an
 annulus area `A_ann`:
 
-```
-bkg_per_pixel     = sigma-clipped median of the annulus
-total_bkg         = bkg_per_pixel × A_ap
-sigma_bkg_pixel   = annulus_median_err        # sqrt(pi/2) × s / sqrt(A_ann)
-sigma_total_bkg   = sigma_bkg_pixel × A_ap
-flux              = aperture_sum − total_bkg
-σ_flux²           = σ_aperture² + σ_total_bkg² + σ_centroid²
-```
+$$
+\begin{aligned}
+b_{\mathrm{pixel}} &= \operatorname{median}_{\mathrm{clipped}}(\mathrm{annulus}) \\
+B_{\mathrm{total}} &= b_{\mathrm{pixel}}\,A_{\mathrm{ap}} \\
+\sigma_{b,\mathrm{pixel}} &= \sigma_{\mathrm{annulus,median}} \\
+  &= \sqrt{\frac{\pi}{2}}\,\frac{s}{\sqrt{A_{\mathrm{ann}}}} \\
+\sigma_{\mathrm{total,bkg}} &=
+  \sigma_{b,\mathrm{pixel}}\,A_{\mathrm{ap}} \\
+\mathrm{flux} &= \mathrm{aperture\_sum}-B_{\mathrm{total}} \\
+\sigma_{\mathrm{flux}}^2 &=
+  \sigma_{\mathrm{aperture}}^2
+  + \sigma_{\mathrm{total,bkg}}^2
+  + \sigma_{\mathrm{centroid}}^2
+\end{aligned}
+$$
 
 Because the local background is a **median**, its uncertainty is the standard
 error of the median, `sqrt(pi/2) × s / sqrt(A_ann)` (~1.2533× larger than the
@@ -278,12 +304,23 @@ pipeline falls back to the mean-based estimate.
 A fixed aperture samples a different fraction of the PSF when the source is not
 perfectly centred. The corresponding flux error is
 
-```
-sigma_pos   = sigma_PSF / S/N            # per-axis centroid uncertainty
-sigma_pos   = clip(sigma_pos, 0.01, 0.5 × FWHM)
-sigma_flux  = 0.5 × sqrt( (F(x+σ)-F(x-σ))² + (F(y+σ)-F(y-σ))² )
-σ_flux²     = σ_aperture² + σ_total_bkg² + σ_centroid²
-```
+$$
+\begin{aligned}
+\sigma_{\mathrm{pos}} &=
+  \frac{\sigma_{\mathrm{PSF}}}{\mathrm{S/N}} \\
+\sigma_{\mathrm{pos}} &=
+  \operatorname{clip}(\sigma_{\mathrm{pos}},\,0.01,\,0.5\,\mathrm{FWHM}) \\
+\sigma_{\mathrm{centroid}} &=
+  \frac{1}{2}\sqrt{
+    \left[F(x+\sigma_{\mathrm{pos}})-F(x-\sigma_{\mathrm{pos}})\right]^2
+    + \left[F(y+\sigma_{\mathrm{pos}})-F(y-\sigma_{\mathrm{pos}})\right]^2
+  } \\
+\sigma_{\mathrm{flux}}^2 &=
+  \sigma_{\mathrm{aperture}}^2
+  + \sigma_{\mathrm{total,bkg}}^2
+  + \sigma_{\mathrm{centroid}}^2
+\end{aligned}
+$$
 
 `sigma_PSF = FWHM / 2.3548` and `F(...)` is the aperture sum re-measured with
 the aperture shifted by `±sigma_pos` along x or y (`centroid_flux_err_X_X`).
@@ -301,26 +338,35 @@ overestimates the S/N by the same amount in the background-limited regime.
 
 When converting instrumental magnitudes to calibrated magnitudes using a zero point:
 
-```
-mag_calib = mag_inst + zero_point
-```
+$$
+\mathrm{mag}_{\mathrm{calib}} =
+\mathrm{mag}_{\mathrm{inst}} + \mathrm{zero\_point}
+$$
 
 The error propagates as:
 
-```
-σ_mag_calib = √(σ_mag_inst² + σ_zero_point² + σ_sys²)
-```
+$$
+\sigma_{\mathrm{mag,calib}} =
+\sqrt{
+  \sigma_{\mathrm{mag,inst}}^2
+  + \sigma_{\mathrm{zero\_point}}^2
+  + \sigma_{\mathrm{sys}}^2
+}
+$$
 
 This is quadrature addition because the errors are independent. The zero point is
 a **median** of the calibrator residuals, so its formal uncertainty is the
 standard error of the median,
 
-```
-σ_zero_point = √(π/2) × scatter / √N ≈ 1.2533 × scatter / √N
-```
+$$
+\sigma_{\mathrm{zero\_point}} =
+\sqrt{\frac{\pi}{2}}\,\frac{\mathrm{scatter}}{\sqrt{N}}
+\approx 1.2533\,\frac{\mathrm{scatter}}{\sqrt{N}}
+$$
 
 over the retained calibration stars (`N`), kept at full precision. The
-`√(π/2)` factor (about 25% larger than the mean-based `scatter / √N`) is
+$\sqrt{\pi/2}$ factor (about 25% larger than the mean-based
+$\mathrm{scatter}/\sqrt{N}$) is
 exported as `MEDIAN_STD_ERROR_FACTOR` in `src.pipeline`.
 
 The `scatter` in this expression is taken from the **sigma-clipped sample before
@@ -349,12 +395,18 @@ it in quadrature is conservative for a single source, but it does not average
 down over an ensemble. To support both uses, the total error is accompanied by
 two explicit component columns for every magnitude-error column:
 
-```
-aperture_mag_err_1_3           = sqrt(random^2 + correlated^2)   (total)
-aperture_mag_err_1_3_random     = per-source statistical error plus the
-                                   aperture-correction systematic
-_aperture_mag_err_1_3_correlated = sqrt(σ_zp^2 + σ_sys^2)          (field-common)
-```
+$$
+\begin{aligned}
+\mathrm{aperture\_mag\_err}_{1.3}
+  &= \sqrt{\mathrm{random}^2+\mathrm{correlated}^2}
+     &&\text{(total)} \\
+\mathrm{aperture\_mag\_err}_{1.3,\mathrm{random}}
+  &= \text{per-source statistical error plus aperture-correction systematic} \\
+\mathrm{aperture\_mag\_err}_{1.3,\mathrm{correlated}}
+  &= \sqrt{\sigma_{\mathrm{zp}}^2+\sigma_{\mathrm{sys}}^2}
+     &&\text{(field-common)}
+\end{aligned}
+$$
 
 The same `_random` / `_correlated` suffixes exist for `psf_mag_err`, but the
 PSF random component is the PSF-fitting statistical error; it has no
@@ -386,7 +438,7 @@ The effective gain (counts per data unit) is resolved in this order:
 
 1. **FITS conversion keyword**, in the priority order of `GAIN_KEYWORDS`:
    explicit `EGAIN` and `CCDGAIN` (already e-/ADU) and `CVF` (a conversion
-   factor in ADU/e-, so `gain = 1/CVF`) are tried before the conventional
+   factor in ADU/e-, so $\mathrm{gain}=1/\mathrm{CVF}$) are tried before the conventional
    `GAIN`. The value must be positive and inside the plausible range
    0.02-100 e-/ADU (`GAIN_PLAUSIBLE_RANGE`); anything outside it is reported
    and ignored. On a recognised **driver-gain camera** a bare `GAIN` is skipped
@@ -397,9 +449,10 @@ The effective gain (counts per data unit) is resolved in this order:
 3. **empirical photon-transfer estimate** from the frame itself: for boxes of
    pure sky the pixel variance grows linearly with the mean signal,
 
-   ```
-   var(box) ≈ read_noise² + mean(box) / gain
-   ```
+   $$
+   \operatorname{var}(\mathrm{box}) \approx
+   \mathrm{read\_noise}^2 + \frac{\operatorname{mean}(\mathrm{box})}{\mathrm{gain}}
+   $$
 
    so `1 / slope` of a robust fit to (mean, variance) is the effective gain.
    The estimate is accepted only when the frame really constrains it: enough
@@ -441,9 +494,10 @@ The gain is therefore validated against the frame itself in
   background variance;
 - otherwise it is **replaced** by the largest value the frame allows,
 
-  ```
-  gain = sky_level / background_rms²
-  ```
+  $$
+  \mathrm{gain} =
+  \frac{\mathrm{sky\_level}}{\mathrm{background\_rms}^2}
+  $$
 
   because the sky Poisson variance cannot exceed the total sky variance, so the
   true gain in the data's units is at least this large. Using that bound gives
@@ -486,9 +540,11 @@ both the source and the annulus photometry.
 
 If atmospheric extinction is applied:
 
-```
-mag_calib = mag_inst + zero_point - k × airmass
-```
+$$
+\mathrm{mag}_{\mathrm{calib}} =
+\mathrm{mag}_{\mathrm{inst}}+\mathrm{zero\_point}
+- k\,\mathrm{airmass}
+$$
 
 Where:
 
@@ -497,9 +553,15 @@ Where:
 
 Error propagation becomes:
 
-```
-σ_mag_calib = √(σ_mag_inst² + σ_zero_point² + σ_sys² + (airmass × σ_k)²)
-```
+$$
+\sigma_{\mathrm{mag,calib}} =
+\sqrt{
+  \sigma_{\mathrm{mag,inst}}^2
+  + \sigma_{\mathrm{zero\_point}}^2
+  + \sigma_{\mathrm{sys}}^2
+  + (\mathrm{airmass}\,\sigma_k)^2
+}
+$$
 
 ### Color-Term Calibration (Optional)
 
@@ -509,21 +571,24 @@ calibration.
 
 Baseline calibrated magnitude:
 
-```
-mag_calib = mag_inst + zero_point
-```
+$$
+\mathrm{mag}_{\mathrm{calib}} =
+\mathrm{mag}_{\mathrm{inst}}+\mathrm{zero\_point}
+$$
 
 Color-corrected calibrated magnitude:
 
-```
-mag_calib_colorcorr = mag_calib + color_term_offset
-```
+$$
+\mathrm{mag}_{\mathrm{calib,colorcorr}} =
+\mathrm{mag}_{\mathrm{calib}}+\mathrm{color\_term\_offset}
+$$
 
 The fitted offset is modeled as:
 
-```
-color_term_offset = intercept + C × (color - color_ref)
-```
+$$
+\mathrm{color\_term\_offset} =
+\mathrm{intercept}+C\,(\mathrm{color}-\mathrm{color}_{\mathrm{ref}})
+$$
 
 Where:
 
@@ -539,17 +604,24 @@ existing scalar zero-point calibration as the compatibility baseline.
 from the final least-squares fit (`scatter² × (Dᵀ D)⁻¹`) and propagated to each
 source through its color offset `x = color - color_ref`:
 
-```
-var(color_term_offset) = var(intercept) + 2x·cov(intercept, C) + x²·var(C)
-```
+$$
+\operatorname{var}(\mathrm{color\_term\_offset}) =
+\operatorname{var}(\mathrm{intercept})
++ 2x\,\operatorname{cov}(\mathrm{intercept},C)
++ x^2\operatorname{var}(C)
+$$
 
 It is stored in `color_term_offset_err` (and `color_term_std` / `intercept_std`
 are returned by the fit). Every color-corrected magnitude gets a parallel error
 column `*_colorcorr_err`:
 
-```
-σ_mag_colorcorr = √(σ_mag_calib² + σ_color_term_offset²)
-```
+$$
+\sigma_{\mathrm{mag,colorcorr}} =
+\sqrt{
+  \sigma_{\mathrm{mag,calib}}^2
+  + \sigma_{\mathrm{color\_term\_offset}}^2
+}
+$$
 
 where `σ_mag_calib` is the baseline calibrated error (already including the
 statistical, aperture-correction and zero-point terms). Sources without a usable
@@ -601,20 +673,20 @@ usable_sources = df[df["quality_flag_1_1"].isin(["good", "marginal"])]
 
 | Quantity | Formula | Typical Values |
 |----------|---------|----------------|
-| S/N | `flux / flux_error` | 3–1000 |
-| Flux Error | `√(σ_aperture² + σ_total_bkg² + σ_centroid²)` | — |
-| Local background error | `median_err` = `√(π/2)·s/√A_ann` | per-pixel background |
-| Centroid-position error | `0.5·√(ΔF_x² + ΔF_y²)` at `±σ_PSF/S/N` | few % of statistical |
+| S/N | $\frac{\mathrm{flux}}{\mathrm{flux\_error}}$ | 3–1000 |
+| Flux Error | $\sqrt{\sigma_{\mathrm{aperture}}^2+\sigma_{\mathrm{total,bkg}}^2+\sigma_{\mathrm{centroid}}^2}$ | — |
+| Local background error | $\mathrm{median\_err}=\sqrt{\pi/2}\,s/\sqrt{A_{\mathrm{ann}}}$ | per-pixel background |
+| Centroid-position error | $\frac{1}{2}\sqrt{\Delta F_x^2+\Delta F_y^2}$ at $\pm\sigma_{\mathrm{PSF}}/\mathrm{S/N}$ | few % of statistical |
 | Sky RMS | MAD of the sigma-clipped box (`MADStdBackgroundRMS`) | per-pixel noise |
-| Magnitude Error | `√((1.0857·σ_flux/flux)² + σ_apcorr²)` | 0.01–0.3 mag |
-| Aperture Correction | `flux_total = flux_aperture / EE(r)` | 1.00–1.15 |
-| Aperture-correction systematic | `σ_apcorr = 1.0857 · f_apcorr · \|apcorr−1\| / apcorr` | 0.01–0.05 mag |
-| Calibrated Mag Error | `√(σ_inst² + σ_zp² + σ_sys²)` | 0.02–0.35 mag |
-| Zero-point uncertainty | `√(π/2) × scatter_untrimmed / √N` | 0.01–0.2 mag |
+| Magnitude Error | $\sqrt{(1.0857\,\sigma_{\mathrm{flux}}/\mathrm{flux})^2+\sigma_{\mathrm{apcorr}}^2}$ | 0.01–0.3 mag |
+| Aperture Correction | $\mathrm{flux}_{\mathrm{total}}=\mathrm{flux}_{\mathrm{aperture}}/\mathrm{EE}(r)$ | 1.00–1.15 |
+| Aperture-correction systematic | $\sigma_{\mathrm{apcorr}}=1.0857\,f_{\mathrm{apcorr}}\,\lvert\mathrm{apcorr}-1\rvert/\mathrm{apcorr}$ | 0.01–0.05 mag |
+| Calibrated Mag Error | $\sqrt{\sigma_{\mathrm{inst}}^2+\sigma_{\mathrm{zp}}^2+\sigma_{\mathrm{sys}}^2}$ | 0.02–0.35 mag |
+| Zero-point uncertainty | $\sqrt{\pi/2}\,\mathrm{scatter}_{\mathrm{untrimmed}}/\sqrt{N}$ | 0.01–0.2 mag |
 | Effective gain | `EGAIN`/`CCDGAIN`/`1/CVF` → user → `1/slope(var vs mean)` → `1` | e-/ADU |
-| Color-Corrected Mag | `mag_calib + intercept + C × (color - color_ref)` | calibration-dependent |
-| Color-Corrected Mag Error | `√(σ_mag_calib² + var(intercept) + 2x·cov + x²·var(C))` | calibration-dependent |
-| Instrumental Magnitude | `-2.5 × log₁₀(flux_total)` | 10–25 mag |
+| Color-Corrected Mag | $\mathrm{mag}_{\mathrm{calib}}+\mathrm{intercept}+C\,(\mathrm{color}-\mathrm{color}_{\mathrm{ref}})$ | calibration-dependent |
+| Color-Corrected Mag Error | $\sqrt{\sigma_{\mathrm{mag,calib}}^2+\operatorname{var}(\mathrm{intercept})+2x\,\operatorname{cov}+x^2\operatorname{var}(C)}$ | calibration-dependent |
+| Instrumental Magnitude | $-2.5\log_{10}(\mathrm{flux}_{\mathrm{total}})$ | 10–25 mag |
 
 ---
 

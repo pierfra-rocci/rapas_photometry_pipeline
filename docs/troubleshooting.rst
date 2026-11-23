@@ -269,7 +269,8 @@ service.
         factor for the gain setting in use, read from the manufacturer's
         gain-vs-e-/ADU chart.
     *   If the header carries a genuine conversion factor, provide it as
-        ``EGAIN``/``CCDGAIN`` (e-/ADU) or ``CVF`` (RPP uses ``gain = 1/CVF``).
+        ``EGAIN``/``CCDGAIN`` (e-/ADU) or ``CVF``
+        (RPP uses :math:`\mathrm{gain}=1/\mathrm{CVF}`).
 
 **PSF photometry is skipped, or the log says "Cannot normalize ePSF"**
 
@@ -287,7 +288,8 @@ service.
 
     *   Update RPP: ``resolve_poisson_gain`` now detects that the gain cannot
         describe the data's units and re-derives it from the sky level and its
-        RMS (``gain = sky level / RMS²``), reporting it with the message
+        RMS (:math:`\mathrm{gain}=\mathrm{sky\_level}/\mathrm{RMS}^2`),
+        reporting it with the message
         "Using the background-consistent gain ...". The same repaired map also
         restores the aperture S/N and magnitude errors of such frames.
     *   For an exact error model, supply the gain in the *units of the data*:
