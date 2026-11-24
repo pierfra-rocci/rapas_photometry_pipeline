@@ -14,8 +14,10 @@ import datetime
 import re
 import threading
 import time
+import json
 from contextlib import contextmanager
 from urllib.parse import quote
+from typing import Any
 
 from src.__version__ import version
 from api.user_ids import initialize_user_id_reservations, reserve_user_id
@@ -82,6 +84,20 @@ def get_db_connection():
         raise
     finally:
         conn.close()
+
+
+def _sanitize_config_json(config_json: Any) -> Any:
+    """Strip removed Observatory settings from a serialized user config."""
+    if not isinstance(config_json, str):
+        return config_json
+    try:
+        config = json.loads(config_json)
+    except json.JSONDecodeError:
+        return config_json
+    if isinstance(config, dict) and "observatory_data" in config:
+        config.pop("observatory_data")
+        return json.dumps(config)
+    return config_json
 
 
 # Create users table if it doesn't exist
@@ -447,6 +463,7 @@ def save_config():
 
     if config_json is None:
         return "config_json required.", 400
+    config_json = _sanitize_config_json(config_json)
 
     try:
         with get_db_connection() as conn:
@@ -478,7 +495,7 @@ def get_config():
         return "An error occurred while retrieving configuration.", 500
 
     if row and row["config_json"]:
-        return row["config_json"], 200
+        return _sanitize_config_json(row["config_json"]), 200
     else:
         return "{}", 200
 

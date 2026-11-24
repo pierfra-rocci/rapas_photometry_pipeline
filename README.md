@@ -10,11 +10,11 @@
 
 ![RAPAS Logo](rapas_logo.png)
 
-![Version](https://img.shields.io/badge/version-1.9.5-blue)
+![Version](https://img.shields.io/badge/version-1.9.6-blue)
 
 A comprehensive astronomical photometry pipeline built with Streamlit, featuring local astrometric plate solving with an optional online fallback, multi-catalog cross-matching, and advanced photometric analysis capabilities.
 
-The project currently targets version 1.9.5. See [changelog.md](changelog.md)
+The project currently targets version 1.9.6. See [changelog.md](changelog.md)
 for the latest release notes and [docs/changelog.rst](docs/changelog.rst) for
 the release history.
 
@@ -162,9 +162,12 @@ and the pipeline version, for example
 The FastAPI backend, the legacy Flask backend and the Streamlit frontend each
 emit their own line (see [Service Logs](#service-logs)).
 
-### 4. Configure Observatory
+### 4. Review FITS Metadata
 
-Set your observatory location and parameters in the sidebar (name, latitude, longitude, elevation).
+The pipeline uses observation coordinates, time, and site coordinates from the
+FITS header to calculate airmass when no valid airmass value is already
+present. If required header fields are missing, the run continues, logs a
+warning, and reports airmass as `N/A`.
 
 ### 5. Upload FITS File
 
@@ -243,11 +246,13 @@ Main API routes currently exposed by `api/main.py` include:
 
 ## Configuration
 
-### Observatory Parameters
+### Airmass
 
-- **Name**: Observatory identifier
-- **Latitude/Longitude**: Geographic coordinates (decimal degrees)
-- **Elevation**: Height above sea level (meters)
+Airmass is read from the FITS header when available or calculated from the
+header's target coordinates, observation time, and site latitude/longitude.
+Missing required metadata produces a warning and an `N/A` airmass result; it
+does not stop processing. The existing numeric zero fallback is retained for
+calibration calculations.
 
 ### Analysis Parameters
 

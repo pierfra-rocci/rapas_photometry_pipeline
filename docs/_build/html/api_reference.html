@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>API Reference &mdash; RAPAS Photometry Pipeline (RPP) v1.9.5 Documentation</title>
+  <title>API Reference &mdash; RAPAS Photometry Pipeline (RPP) v1.9.6 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=9cc2bd95"></script>
+      <script src="_static/documentation_options.js?v=ab3a37ff"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "displayMath": [["$$", "$$"], ["\\[", "\\]"]]}, "options": {"processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
@@ -200,8 +200,12 @@ invalid, multi-extension, or multi-dimensional FITS content. For
 multi-extension files, select the first nonempty numeric image HDU, not a
 table or one-dimensional array.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">src.tools_app.update_observatory_from_fits_header(header)</span></code></dt><dd><p>Extract observatory metadata (name, latitude, longitude, elevation) from a
-FITS header and update the Streamlit session state observatory fields.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">src.tools_app.get_airmass_inputs_from_header(header)</span></code></dt><dd><p>Resolve the target/time/site metadata used for airmass calculation from a
+FITS header and report any required fields that are missing.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src.tools_app.update_observatory_from_fits_header(header)</span></code></dt><dd><p>Legacy compatibility helper for callers that still maintain Observatory
+session state. The application no longer uses this helper for its sidebar,
+configuration, or airmass calculation.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">src.tools_app.display_archived_files_browser(api_client)</span></code></dt><dd><p>Render the archived FITS file and ZIP result browser in the Streamlit
 sidebar. Queries the backend for the current user’s stored files.</p>

@@ -430,6 +430,8 @@ def get_config(
             status_code=500,
             detail="Stored configuration is invalid JSON.",
         ) from exc
+    if isinstance(data, dict):
+        data.pop("observatory_data", None)
     return ConfigResponse(config=data)
 
 
@@ -440,7 +442,9 @@ def save_config(
     db: Session = Depends(get_db),
 ) -> Message:
     """Persist configuration blob for the authenticated user."""
-    serialized = json.dumps(payload.config)
+    config = payload.config.copy()
+    config.pop("observatory_data", None)
+    serialized = json.dumps(config)
     if len(serialized.encode("utf-8")) > MAX_CONFIG_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,

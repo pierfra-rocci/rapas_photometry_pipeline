@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Backend API &mdash; RAPAS Photometry Pipeline (RPP) v1.9.5 Documentation</title>
+  <title>Backend API &mdash; RAPAS Photometry Pipeline (RPP) v1.9.6 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=9cc2bd95"></script>
+      <script src="_static/documentation_options.js?v=ab3a37ff"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -164,22 +164,22 @@ example
 <p>The <strong>Save Settings</strong> button in <code class="docutils literal notranslate"><span class="pre">pages/app.py</span></code> serializes the whole
 <code class="docutils literal notranslate"><span class="pre">analysis_parameters</span></code> dictionary (every sidebar control, including
 <em>Max Magnitude Error</em> <code class="docutils literal notranslate"><span class="pre">mag_err_max</span></code> and <em>Detector Gain</em> <code class="docutils literal notranslate"><span class="pre">effective_gain</span></code>)
-together with <code class="docutils literal notranslate"><span class="pre">observatory_data</span></code> and <code class="docutils literal notranslate"><span class="pre">colibri_api_key</span></code> into a single JSON
-blob:</p>
+together with <code class="docutils literal notranslate"><span class="pre">colibri_api_key</span></code> into a single JSON blob:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
   <span class="s2">"analysis_parameters"</span><span class="p">:</span> <span class="p">{</span> <span class="o">...</span> <span class="p">},</span>
-  <span class="s2">"observatory_data"</span><span class="p">:</span> <span class="p">{</span> <span class="o">...</span> <span class="p">},</span>
   <span class="s2">"colibri_api_key"</span><span class="p">:</span> <span class="s2">"..."</span>
 <span class="p">}</span>
 </pre></div>
 </div>
 <p>The frontend picks a persistence path from <code class="docutils literal notranslate"><span class="pre">st.session_state.backend_mode</span></code>.
-On the next login, <code class="docutils literal notranslate"><span class="pre">pages/login.py</span></code> fetches the blob and assigns its
-<code class="docutils literal notranslate"><span class="pre">analysis_parameters</span></code> / <code class="docutils literal notranslate"><span class="pre">observatory_data</span></code> entries back into session state
-(<code class="docutils literal notranslate"><span class="pre">initialize_session_state</span></code> in <code class="docutils literal notranslate"><span class="pre">src/tools_app.py</span></code> then fills in any missing
-defaults). Because the entire parameters dictionary is stored verbatim, every
-sidebar control round-trips without the backend needing to know its individual
-fields.</p>
+On the next login, <code class="docutils literal notranslate"><span class="pre">pages/login.py</span></code> fetches the blob and restores the
+<code class="docutils literal notranslate"><span class="pre">analysis_parameters</span></code> and <code class="docutils literal notranslate"><span class="pre">colibri_api_key</span></code> entries. Both backends remove
+the deprecated <code class="docutils literal notranslate"><span class="pre">observatory_data</span></code> key from configuration reads and writes;
+existing database rows and the database schema are left unchanged.
+<code class="docutils literal notranslate"><span class="pre">initialize_session_state</span></code> in <code class="docutils literal notranslate"><span class="pre">src/tools_app.py</span></code> fills in any missing
+analysis-parameter defaults. Because the entire parameters dictionary is
+stored verbatim, every sidebar control round-trips without the backend needing
+to know its individual fields.</p>
 <section id="fastapi-backend-recommended">
 <h3>FastAPI backend (recommended)<a class="headerlink" href="#fastapi-backend-recommended" title="Link to this heading"></a></h3>
 <ul class="simple">

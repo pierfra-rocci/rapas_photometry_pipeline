@@ -59,22 +59,22 @@ Configuration Persistence
 The **Save Settings** button in ``pages/app.py`` serializes the whole
 ``analysis_parameters`` dictionary (every sidebar control, including
 *Max Magnitude Error* ``mag_err_max`` and *Detector Gain* ``effective_gain``)
-together with ``observatory_data`` and ``colibri_api_key`` into a single JSON
-blob::
+together with ``colibri_api_key`` into a single JSON blob::
 
     {
       "analysis_parameters": { ... },
-      "observatory_data": { ... },
       "colibri_api_key": "..."
     }
 
 The frontend picks a persistence path from ``st.session_state.backend_mode``.
-On the next login, ``pages/login.py`` fetches the blob and assigns its
-``analysis_parameters`` / ``observatory_data`` entries back into session state
-(``initialize_session_state`` in ``src/tools_app.py`` then fills in any missing
-defaults). Because the entire parameters dictionary is stored verbatim, every
-sidebar control round-trips without the backend needing to know its individual
-fields.
+On the next login, ``pages/login.py`` fetches the blob and restores the
+``analysis_parameters`` and ``colibri_api_key`` entries. Both backends remove
+the deprecated ``observatory_data`` key from configuration reads and writes;
+existing database rows and the database schema are left unchanged.
+``initialize_session_state`` in ``src/tools_app.py`` fills in any missing
+analysis-parameter defaults. Because the entire parameters dictionary is
+stored verbatim, every sidebar control round-trips without the backend needing
+to know its individual fields.
 
 FastAPI backend (recommended)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -485,11 +485,9 @@ else:
                     config = None
 
         if config:
+            config.pop("observatory_data", None)
             if "analysis_parameters" in config:
                 st.session_state["analysis_parameters"] = config["analysis_parameters"]
-
-            if "observatory_data" in config:
-                st.session_state["observatory_data"] = config["observatory_data"]
 
             if "colibri_api_key" in config:
                 st.session_state["colibri_api_key"] = config["colibri_api_key"]
@@ -498,23 +496,17 @@ else:
 
             if "analysis_parameters" not in st.session_state:
                 st.session_state["analysis_parameters"] = {}
-            if "observatory_data" not in st.session_state:
-                st.session_state["observatory_data"] = {}
 
     except requests.exceptions.RequestException as e:
         st.warning(f"Could not load user config: Connection error - {e}")
 
         if "analysis_parameters" not in st.session_state:
             st.session_state["analysis_parameters"] = {}
-        if "observatory_data" not in st.session_state:
-            st.session_state["observatory_data"] = {}
     except Exception as e:
         st.warning(f"Could not load user config: {e}")
 
         if "analysis_parameters" not in st.session_state:
             st.session_state["analysis_parameters"] = {}
-        if "observatory_data" not in st.session_state:
-            st.session_state["observatory_data"] = {}
 
     try:
         st.switch_page("pages/app.py")

@@ -115,6 +115,34 @@ def test_config_round_trip_preserves_new_parameters(api_client):
 
     assert stored["mag_err_max"] == 1.5
     assert stored["effective_gain"] == 1.35
+    assert "observatory_data" not in reloaded.json()["config"]
+    with session_factory() as session:
+        user = session.query(User).filter_by(username="alice").one()
+        assert "observatory_data" not in json.loads(user.config_json)
+
+
+def test_api_config_read_sanitizes_existing_observatory_data(api_client):
+    """Old configuration blobs are sanitized without rewriting user records."""
+    client, session_factory = api_client
+    _create_user(session_factory, "carol", "secret")
+    legacy_blob = {
+        "analysis_parameters": {"seeing": 3.0},
+        "observatory_data": {"name": "Legacy site"},
+        "profile_metadata": {"kept": True},
+    }
+    with session_factory() as session:
+        user = session.query(User).filter_by(username="carol").one()
+        user.config_json = json.dumps(legacy_blob)
+        session.commit()
+
+    response = client.get("/api/config", auth=("carol", "secret"))
+
+    assert response.status_code == 200
+    assert "observatory_data" not in response.json()["config"]
+    assert response.json()["config"]["profile_metadata"] == {"kept": True}
+    with session_factory() as session:
+        user = session.query(User).filter_by(username="carol").one()
+        assert json.loads(user.config_json) == legacy_blob
 
 
 def test_config_round_trip_preserves_zero_mag_err_max(api_client):
@@ -152,6 +180,9 @@ class _FakeSessionState:
     def __setitem__(self, key: str, value) -> None:
         self._data[key] = value
 
+    def pop(self, key: str, default=None):
+        return self._data.pop(key, default)
+
     def get(self, key: str, default=None):
         return self._data.get(key, default)
 
@@ -179,6 +210,29 @@ def test_initialize_session_state_seeds_new_parameter_defaults(monkeypatch, tmp_
     assert fake_state["output_dir"] is None
     assert seeded["mag_err_max"] == 2.0
     assert seeded["effective_gain"] == 0.0
+
+
+def test_initialize_session_state_discards_legacy_observatory_values(
+    monkeypatch, tmp_path
+):
+    fake_state = _FakeSessionState(
+        {
+            "observatory_data": {"name": "Old site"},
+            "observatory_latitude": 12.0,
+            "observatory_longitude": 34.0,
+        }
+    )
+    monkeypatch.setattr(
+        tools_app,
+        "st",
+        types.SimpleNamespace(session_state=fake_state),
+    )
+
+    tools_app.initialize_session_state()
+
+    assert "observatory_data" not in fake_state
+    assert "observatory_latitude" not in fake_state
+    assert "observatory_longitude" not in fake_state
 
 
 def _assigned_subscripts(tree: ast.Module) -> set[tuple[str, ...]]:
@@ -241,6 +295,16 @@ def test_login_restores_analysis_parameters_from_stored_config():
                 restored = True
 
     assert restored, "login.py no longer restores analysis_parameters from the config"
+    assert not any(
+        isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Subscript)
+            and isinstance(target.slice, ast.Constant)
+            and target.slice.value == "observatory_data"
+            for target in node.targets
+        )
+        for node in ast.walk(tree)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -325,6 +389,52 @@ def test_legacy_config_round_trip_preserves_new_parameters(legacy_backend):
     stored = json.loads(reloaded.get_data(as_text=True))
     assert stored["analysis_parameters"]["mag_err_max"] == 1.5
     assert stored["analysis_parameters"]["effective_gain"] == 1.35
+    assert "observatory_data" not in stored
+    connection = sqlite3.connect(db_path)
+    try:
+        persisted = connection.execute(
+            "SELECT config_json FROM users WHERE username = ?", ("alice",)
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert "observatory_data" not in json.loads(persisted)
+
+
+def test_legacy_config_read_sanitizes_existing_observatory_data(legacy_backend):
+    """Legacy reads hide historical Observatory settings without DB migration."""
+    db_path = legacy_backend.DB_PATH
+    _create_legacy_user(db_path, "carol", "secret")
+    legacy_blob = {
+        "analysis_parameters": {"seeing": 3.0},
+        "observatory_data": {"name": "Legacy site"},
+        "profile_metadata": {"kept": True},
+    }
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.execute(
+            "UPDATE users SET config_json = ? WHERE username = ?",
+            (json.dumps(legacy_blob), "carol"),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    with legacy_backend.app.test_client() as client:
+        response = client.get("/get_config", auth=("carol", "secret"))
+
+    stored = json.loads(response.get_data(as_text=True))
+    assert response.status_code == 200
+    assert "observatory_data" not in stored
+    assert stored["profile_metadata"] == {"kept": True}
+
+    connection = sqlite3.connect(db_path)
+    try:
+        persisted = connection.execute(
+            "SELECT config_json FROM users WHERE username = ?", ("carol",)
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert json.loads(persisted) == legacy_blob
 
 
 def test_legacy_config_round_trip_preserves_zero_values(legacy_backend):

@@ -16,12 +16,15 @@ Le chargement du fichier le met en attente dans l'interface et affiche immédiat
 
 > **Note** : Chaque session de navigateur est isolée des autres. Si un fichier ou un en-tête incorrect s'affiche, appuyez une fois sur **Reset** : cela ne réinitialise que votre propre session et supprime immédiatement le fichier chargé.
 
-## 2. Configurer l'Observatoire
+## 2. Vérifier les métadonnées FITS
 
-Dans la barre latérale (section **🔭 Observatory**), renseignez les informations de l'observatoire :
-
-- **Name** : ex. « Backyard Observatory »
-- **Latitude**, **Longitude**, **Elevation** : En degrés décimaux / mètres. Ces valeurs peuvent être remplies automatiquement depuis l'en-tête FITS — vérifiez-les.
+Le pipeline utilise les coordonnées de la cible, l'heure d'observation et la
+latitude/longitude du site dans l'en-tête FITS pour calculer la masse d'air
+lorsqu'aucune valeur valide n'y figure déjà. Si des champs requis manquent, un
+avertissement est affiché et enregistré dans le journal ; le traitement
+continue et la masse d'air est indiquée comme `N/A`.
+Le repli numérique existant à zéro est conservé pour les calculs de
+calibration.
 
 ## 3. Définir les Paramètres d'Analyse
 

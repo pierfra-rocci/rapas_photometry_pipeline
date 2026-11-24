@@ -1,5 +1,13 @@
 # Changelog
 
+## Version 1.9.6
+
+**Released: November 24, 2026**
+
+### Release metadata and documentation
+
+- Updated the project version to 1.9.6 and rebuilt the published documentation.
+
 ## Version 1.9.5
 
 **Released: November 22, 2026**

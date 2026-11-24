@@ -69,8 +69,9 @@ Quick Start (Development)
    - Register or log in.
    - On the FastAPI backend, the app supports password recovery and per-user
      saved configuration.
-   - Set observatory values and analysis parameters in the sidebar before the
-     scientific run.
+   - Set analysis parameters in the sidebar before the scientific run.
+   - Airmass is obtained from the FITS header. Missing required header metadata
+     is reported as a warning and ``N/A`` without stopping the run.
 
 6. **Upload the FITS file and start processing**
 

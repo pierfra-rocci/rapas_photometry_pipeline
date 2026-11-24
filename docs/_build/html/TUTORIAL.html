@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Step-by-Step Photometry Tutorial &mdash; RAPAS Photometry Pipeline (RPP) v1.9.5 Documentation</title>
+  <title>Step-by-Step Photometry Tutorial &mdash; RAPAS Photometry Pipeline (RPP) v1.9.6 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=9cc2bd95"></script>
+      <script src="_static/documentation_options.js?v=ab3a37ff"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "displayMath": [["$$", "$$"], ["\\[", "\\]"]]}, "options": {"processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
@@ -52,7 +52,7 @@
 <li class="toctree-l1"><a class="reference internal" href="user_guide.html">User Guide</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Step-by-Step Photometry Tutorial</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#upload-a-fits-file">1. Upload a FITS File</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#configure-observatory">2. Configure Observatory</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#review-fits-metadata">2. Review FITS Metadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#set-analysis-parameters">3. Set Analysis Parameters</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#optional-astro-colibri-api-key">4. (Optional) Astro-Colibri API Key</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#optional-transient-candidates">5. (Optional) Transient Candidates</a></li>
@@ -120,13 +120,13 @@ only after you click the Start Analysis button.</p>
 <div><p><strong>Note</strong>: Each browser session is isolated from the others. If a wrong file or header is shown, press <strong>Reset</strong> once: it clears only your own session and drops the previously loaded file immediately.</p>
 </div></blockquote>
 </section>
-<section id="configure-observatory">
-<h2>2. Configure Observatory<a class="headerlink" href="#configure-observatory" title="Link to this heading"></a></h2>
-<p>In the sidebar, set your observatory details:</p>
-<ul class="simple">
-<li><p><strong>Name</strong>: e.g., “Backyard Observatory”</p></li>
-<li><p><strong>Latitude, Longitude, Elevation</strong>: Decimal degrees/meters. These may be auto-filled from the FITS header, but always verify.</p></li>
-</ul>
+<section id="review-fits-metadata">
+<h2>2. Review FITS Metadata<a class="headerlink" href="#review-fits-metadata" title="Link to this heading"></a></h2>
+<p>The pipeline uses target coordinates, observation time, and site
+latitude/longitude from the FITS header to calculate airmass when no valid
+airmass value is already present. If required fields are missing, a warning is
+shown and logged, the run continues, and the reported airmass is <code class="docutils literal notranslate"><span class="pre">N/A</span></code>.
+The existing numeric zero fallback is retained for calibration calculations.</p>
 </section>
 <section id="set-analysis-parameters">
 <h2>3. Set Analysis Parameters<a class="headerlink" href="#set-analysis-parameters" title="Link to this heading"></a></h2>

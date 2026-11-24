@@ -67,7 +67,8 @@ Configuration Persistence
 The frontend saves user settings as a single JSON blob and reloads it on the
 next login. The blob carries ``analysis_parameters`` (every sidebar control,
 including *Max Magnitude Error* ``mag_err_max`` and *Detector Gain*
-``effective_gain``), ``observatory_data`` and ``colibri_api_key``.
+``effective_gain``), and ``colibri_api_key``. Observatory settings are no
+longer part of saved configuration.
 
 - **Save**: the **Save Settings** button in ``pages/app.py`` serializes the
   current dictionaries into the blob.

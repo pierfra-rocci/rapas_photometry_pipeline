@@ -19,12 +19,13 @@ only after you click the Start Analysis button.
 
 > **Note**: Each browser session is isolated from the others. If a wrong file or header is shown, press **Reset** once: it clears only your own session and drops the previously loaded file immediately.
 
-## 2. Configure Observatory
+## 2. Review FITS Metadata
 
-In the sidebar, set your observatory details:
-
-- **Name**: e.g., "Backyard Observatory"
-- **Latitude, Longitude, Elevation**: Decimal degrees/meters. These may be auto-filled from the FITS header, but always verify.
+The pipeline uses target coordinates, observation time, and site
+latitude/longitude from the FITS header to calculate airmass when no valid
+airmass value is already present. If required fields are missing, a warning is
+shown and logged, the run continues, and the reported airmass is `N/A`.
+The existing numeric zero fallback is retained for calibration calculations.
 
 ## 3. Set Analysis Parameters
 

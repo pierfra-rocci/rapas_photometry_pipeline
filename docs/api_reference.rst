@@ -105,9 +105,14 @@ Useful Functions
    multi-extension files, select the first nonempty numeric image HDU, not a
    table or one-dimensional array.
 
+``src.tools_app.get_airmass_inputs_from_header(header)``
+   Resolve the target/time/site metadata used for airmass calculation from a
+   FITS header and report any required fields that are missing.
+
 ``src.tools_app.update_observatory_from_fits_header(header)``
-   Extract observatory metadata (name, latitude, longitude, elevation) from a
-   FITS header and update the Streamlit session state observatory fields.
+   Legacy compatibility helper for callers that still maintain Observatory
+   session state. The application no longer uses this helper for its sidebar,
+   configuration, or airmass calculation.
 
 ``src.tools_app.display_archived_files_browser(api_client)``
    Render the archived FITS file and ZIP result browser in the Streamlit

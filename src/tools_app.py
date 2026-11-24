@@ -9,6 +9,7 @@ import warnings
 from contextlib import ExitStack
 from datetime import datetime
 from io import BytesIO
+from typing import Any
 
 # Third-Party Imports
 import streamlit as st
@@ -2027,34 +2028,20 @@ def initialize_session_state() -> None:
             if key not in st.session_state.analysis_parameters:
                 st.session_state.analysis_parameters[key] = value
 
-    # Observatory Parameters (keep only dictionary, remove individual keys)
-    default_observatory_data = {
-        "name": "Obs",
-        "latitude": 0.0,
-        "longitude": 0.0,
-        "elevation": 0.0,
-    }
-
-    if "observatory_data" not in st.session_state:
-        st.session_state.observatory_data = default_observatory_data.copy()
-    else:
-        for key, value in default_observatory_data.items():
-            if key not in st.session_state.observatory_data:
-                st.session_state.observatory_data[key] = value
+    for key in (
+        "observatory_data",
+        "observatory_name",
+        "observatory_latitude",
+        "observatory_longitude",
+        "observatory_elevation",
+    ):
+        st.session_state.pop(key, None)
 
     # API Keys and File Loading
     if "colibri_api_key" not in st.session_state:
         st.session_state.colibri_api_key = None
     if "files_loaded" not in st.session_state:
         st.session_state.files_loaded = {"science_file": None}
-
-    # --- Sync session state with loaded config ---
-    if "observatory_data" in st.session_state:
-        obs = st.session_state["observatory_data"]
-        st.session_state["observatory_name"] = obs.get("name", "")
-        st.session_state["observatory_latitude"] = obs.get("latitude", 0.0)
-        st.session_state["observatory_longitude"] = obs.get("longitude", 0.0)
-        st.session_state["observatory_elevation"] = obs.get("elevation", 0.0)
 
     if "analysis_parameters" in st.session_state:
         ap = st.session_state["analysis_parameters"]
@@ -2076,64 +2063,119 @@ def initialize_session_state() -> None:
         st.session_state["colibri_api_key"] = st.session_state["colibri_api_key"]
 
 
-def update_observatory_from_fits_header(header):
-    """
-    Update observatory data in session state from FITS header information.
+def get_airmass_inputs_from_header(
+    header: Any,
+) -> tuple[dict[str, Any], list[str]]:
+    """Resolve the required airmass inputs from a FITS header.
 
-    Parameters
-    ----------
-    header : astropy.io.fits.Header
-        FITS header object to extract observatory information from
-
-    Returns
-    -------
-    bool
-        True if any observatory data was updated, False otherwise
+    A valid airmass already recorded in the header does not require the other
+    metadata. For a derived value, target coordinates, observation time, and
+    site latitude/longitude must be present. Missing or invalid site elevation
+    continues to use the existing zero-meter fallback.
     """
+    airmass_keywords = ("AIRMASS", "SECZ", "AIRMASS_START", "AIRMASS_END")
+    for keyword in airmass_keywords:
+        value = header.get(keyword)
+        try:
+            if value is not None and 1.0 <= float(value) <= 30.0:
+                return {}, []
+        except (TypeError, ValueError):
+            continue
+
+    required_groups = (
+        (("RA", "OBJRA", "CRVAL1"), "RA/OBJRA/CRVAL1"),
+        (("DEC", "OBJDEC", "CRVAL2"), "DEC/OBJDEC/CRVAL2"),
+        (
+            ("DATE-OBS", "DATE", "DATE_OBS", "DATEOBS", "MJD-OBS"),
+            "DATE-OBS/DATE/DATE_OBS/DATEOBS/MJD-OBS",
+        ),
+    )
+    missing: list[str] = []
+    for keys, label in required_groups:
+        if not any(
+            header.get(key) is not None and str(header.get(key)).strip()
+            for key in keys
+        ):
+            missing.append(label)
+
+    site_values: dict[str, float] = {}
+    for key, lower, upper in (
+        ("SITELAT", -90.0, 90.0),
+        ("SITELONG", -180.0, 180.0),
+    ):
+        try:
+            value = float(header[key])
+            if not lower <= value <= upper:
+                raise ValueError
+            site_values[key] = value
+        except (KeyError, TypeError, ValueError):
+            missing.append(key)
+
+    if missing:
+        return {}, missing
+
+    try:
+        elevation = float(header.get("SITEELEV", 0.0))
+        if not np.isfinite(elevation) or elevation < -400.0:
+            elevation = 0.0
+    except (TypeError, ValueError):
+        elevation = 0.0
+
+    observatory_name = next(
+        (
+            str(header[key]).strip()
+            for key in ("TELESCOP", "OBSERVER")
+            if header.get(key)
+            and str(header[key]).strip().upper() not in ("UNKNOWN", "NONE")
+        ),
+        "FITS header",
+    )
+    return {
+        "name": observatory_name,
+        "latitude": site_values["SITELAT"],
+        "longitude": site_values["SITELONG"],
+        "elevation": elevation,
+    }, []
+
+
+def update_observatory_from_fits_header(header: Any) -> bool:
+    """Retain the legacy session-state updater for external callers."""
+    data = st.session_state.setdefault(
+        "observatory_data",
+        {"name": "Obs", "latitude": 0.0, "longitude": 0.0, "elevation": 0.0},
+    )
     updated = False
 
-    # Check for observatory name
-    for key in ["TELESCOP", "OBSERVER"]:
-        if key in header and header[key]:
-            observatory_name = str(header[key]).strip()
-            if observatory_name and observatory_name not in ["", "UNKNOWN", "None"]:
-                st.session_state.observatory_data["name"] = observatory_name
-                st.session_state["observatory_name"] = observatory_name
+    for key in ("TELESCOP", "OBSERVER"):
+        if header.get(key):
+            name = str(header[key]).strip()
+            if name and name.upper() not in ("UNKNOWN", "NONE"):
+                data["name"] = name
+                st.session_state["observatory_name"] = name
                 updated = True
                 break
 
-    # Check for site latitude - Fixed key name from SITELAN to SITELAT
-    if "SITELAT" in header and header["SITELAT"] is not None:
+    for header_key, state_key, lower, upper in (
+        ("SITELAT", "latitude", -90.0, 90.0),
+        ("SITELONG", "longitude", -180.0, 180.0),
+    ):
         try:
-            latitude = float(header["SITELAT"])
-            if -90 <= latitude <= 90:  # Valid latitude range
-                st.session_state.observatory_data["latitude"] = latitude
-                st.session_state["observatory_latitude"] = latitude
+            value = float(header[header_key])
+            if lower <= value <= upper:
+                data[state_key] = value
+                st.session_state[f"observatory_{state_key}"] = value
                 updated = True
-        except (ValueError, TypeError):
-            pass
+        except (KeyError, TypeError, ValueError):
+            continue
 
-    # Check for site longitude
-    if "SITELONG" in header and header["SITELONG"] is not None:
-        try:
-            longitude = float(header["SITELONG"])
-            if -180 <= longitude <= 180:  # Valid longitude range
-                st.session_state.observatory_data["longitude"] = longitude
-                st.session_state["observatory_longitude"] = longitude
-                updated = True
-        except (ValueError, TypeError):
-            pass
-
-    # Check for site elevation
-    if "SITEELEV" in header and header["SITEELEV"] is not None:
-        try:
-            elevation = float(header["SITEELEV"])
-            if elevation >= -400:  # Reasonable minimum (below sea level)
-                st.session_state.observatory_data["elevation"] = elevation
-                st.session_state["observatory_elevation"] = elevation
-                updated = True
-        except (ValueError, TypeError):
-            pass
+    try:
+        elevation = float(header["SITEELEV"])
+        if elevation >= -400.0:
+            data["elevation"] = elevation
+            st.session_state["observatory_elevation"] = elevation
+            updated = True
+    except (KeyError, TypeError, ValueError):
+        pass
 
     return updated
 

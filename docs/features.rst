@@ -20,7 +20,7 @@ User Authentication & Multi-User Support
 
 **Configuration Persistence**:
    - User-specific settings stored in backend database
-   - Observatory parameters, analysis settings, and API keys
+   - Analysis settings and API keys
    - Automatic loading of saved configurations on login
    - Configuration persistence when the API backend is active
 
@@ -54,7 +54,10 @@ Advanced Image Processing
      metadata only in a temporary copy when necessary
    - Reject conflicting CD and PC matrices, singular or non-finite transforms,
      and transforms that fail reference-pixel or available image-corner checks
-   - Observatory information extraction from headers
+   - Airmass calculation from FITS-header metadata when available
+   - Missing airmass metadata is reported as a warning; processing continues
+     and the result is marked ``N/A``; calibration retains its numeric zero
+     fallback
    - Preserve valid projections and SIP distortions; convert output celestial
      coordinates to ICRS
 

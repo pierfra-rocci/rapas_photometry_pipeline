@@ -28,7 +28,7 @@ Application Layout
 
 The interface is divided into two main areas:
 
-- Sidebar for account actions, observatory settings, analysis parameters, transient options, API key input, settings save, and archived-result browsing
+- Sidebar for account actions, analysis parameters, transient options, API key input, settings save, and archived-result browsing
 - Main panel for FITS upload, image preview, processing progress, tables, plots, logs, and downloads
 
 Step 1: Sign In
@@ -59,7 +59,6 @@ Step 3: Configure Parameters
 
 Use the sidebar to review or change:
 
-- Observatory name, latitude, longitude, and elevation
 - Estimated seeing, detection threshold, FWHM radius factor, and border mask size
 - **Pixel scale override** (arcsec/pixel), only needed when the FITS header and WCS give no pixel scale; ``0`` means automatic
 - Calibration filter band (the maximum calibration magnitude is fixed at 21, the GAIA catalogue limit)
@@ -67,8 +66,12 @@ Use the sidebar to review or change:
 - **Transient Candidates** options to enable the transient finder and choose a reference filter
 - Optional Astro-Colibri UID key
 
-If observatory metadata are present in the FITS header, the application may use
-them to prefill the observatory fields.
+The application uses FITS-header coordinates, observation time, and site
+latitude/longitude to calculate airmass when the header does not already
+contain a valid airmass value. If required metadata are missing, it warns the
+user, logs the missing fields, continues processing, and reports airmass as
+``N/A``. The existing numeric zero fallback remains in use for calibration
+calculations.
 
 Step 4: Start Analysis
 ----------------------
@@ -268,7 +271,7 @@ them. The catalog may also include trace columns such as ``source_color``,
 Saved Settings and Archives
 ---------------------------
 
-- Use **Save Settings** to persist observatory and analysis parameters to your account; the FastAPI and legacy backends both store the values, which are restored automatically the next time you log in.
+- Use **Save Settings** to persist analysis parameters and the optional Astro-Colibri key to your account; the FastAPI and legacy backends restore them automatically the next time you log in.
 - Use the archived-results area to review previously stored FITS uploads and ZIP outputs tied to your account.
 - In the archived-results sidebar browser, ZIP content is loaded only when you click to download a specific archive, reducing rerun overhead while keeping the full archive list visible.
 

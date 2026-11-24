@@ -23,7 +23,7 @@ from src.tools_app import (
     load_tutorial_text,
     plot_magnitude_distribution,
     plot_photometry_offsets,
-    update_observatory_from_fits_header,
+    get_airmass_inputs_from_header,
     display_catalog_in_aladin,
     display_archived_files_browser,
     provide_download_buttons,
@@ -344,58 +344,6 @@ with st.expander("📘 Quick Start Tutorial"):
 st.sidebar.markdown(f"**Version:** _{version}_")
 st.sidebar.caption(st.session_state.backend_status_message)
 
-with st.sidebar.expander("🔭 Observatory", expanded=False):
-    st.session_state.observatory_name = st.text_input(
-        "Observatory Name",
-        value=st.session_state.observatory_name,
-        help="Name of the observatory (e.g., TJMS).",
-    )
-
-    # Latitude input with locale handling
-    latitude_input = st.text_input(
-        "Latitude (deg)",
-        value=str(st.session_state.observatory_latitude),
-        help="Observatory latitude in decimal degrees (North positive). Accepts both comma and dot as decimal separator.",
-    )
-    try:
-        latitude = float(latitude_input.replace(",", "."))
-        if -90 <= latitude <= 90:
-            st.session_state.observatory_latitude = latitude
-        else:
-            st.error("Latitude must be between -90 and 90 degrees")
-    except ValueError:
-        if latitude_input.strip():  # Only show error if input is not empty
-            st.error("Please enter a valid number for latitude.")
-
-    # Longitude input with locale handling
-    longitude_input = st.text_input(
-        "Longitude (deg)",
-        value=str(st.session_state.observatory_longitude),
-        help="Observatory longitude in decimal degrees (East positive). Accepts both comma and dot as decimal separator.",
-    )
-    try:
-        longitude = float(longitude_input.replace(",", "."))
-        if -180 <= longitude <= 180:
-            st.session_state.observatory_longitude = longitude
-        else:
-            st.error("Longitude must be between -180 and 180 degrees")
-    except ValueError:
-        if longitude_input.strip():
-            st.error("Please enter a valid number for longitude.")
-
-    # Elevation input with locale handling
-    elevation_input = st.text_input(
-        "Elevation (m)",
-        value=str(st.session_state.observatory_elevation),
-        help="Observatory elevation above sea level in meters. Accepts both comma and dot as decimal separator.",
-    )
-    try:
-        elevation = float(elevation_input.replace(",", "."))
-        st.session_state.observatory_elevation = elevation
-    except ValueError:
-        if elevation_input.strip():
-            st.error("Please enter a valid number for elevation.")
-
 with st.sidebar.expander("⚙️ Parameters", expanded=False):
     st.session_state.analysis_parameters["seeing"] = st.slider(
         "Estimated FWHM (arcsec)",
@@ -562,13 +510,11 @@ with st.sidebar.expander("⚙️ Parameters", expanded=False):
 
 if st.sidebar.button("💾 Save Settings"):
     analysis_params = dict(st.session_state.get("analysis_parameters", {}))
-    observatory_params = dict(st.session_state.get("observatory_data", {}))
     colibri_api_key = st.session_state.get("colibri_api_key")
 
     # Add pre-process options to analysis_parameters
     params = {
         "analysis_parameters": analysis_params,
-        "observatory_data": observatory_params,
         "colibri_api_key": colibri_api_key,
     }
     name = st.session_state.get("username", "user")
@@ -713,14 +659,6 @@ else:
 
 science_file_path = None
 
-# Update observatory_data dictionary with current session state values
-st.session_state.observatory_data = {
-    "name": st.session_state.observatory_name,
-    "latitude": st.session_state.observatory_latitude,
-    "longitude": st.session_state.observatory_longitude,
-    "elevation": st.session_state.observatory_elevation,
-}
-
 # Add button to start the analysis (appears right after image upload)
 if science_file is not None:
     preview_header = st.session_state.get("preview_header")
@@ -847,15 +785,6 @@ if _run_analysis_now:
         write_to_log(
             st.session_state.log_buffer, f"Loaded FITS file: {science_file.name}"
         )
-
-        # Update observatory data from FITS header if available
-        result = update_observatory_from_fits_header(science_header)
-        if result:
-            st.success("Observatory information updated from FITS header")
-            write_to_log(
-                st.session_state.log_buffer,
-                f"Observatory data updated from FITS header: {st.session_state.observatory_data}",
-            )
 
     # Extract filter from header with multiple possible keywords
     filter_raw = None
@@ -1370,21 +1299,44 @@ if _run_analysis_now:
             science_header["RA"] = st.session_state["valid_ra"]
             science_header["DEC"] = st.session_state["valid_dec"]
 
-        try:
-            # Create observatory dictionary using user inputs
-            observatory_data = {
-                "name": st.session_state.observatory_data["name"],
-                "latitude": st.session_state.observatory_data["latitude"],
-                "longitude": st.session_state.observatory_data["longitude"],
-                "elevation": st.session_state.observatory_data["elevation"],
-            }
-
-            air = airmass(science_header, observatory=observatory_data)
-            st.write(f"Airmass : {air:.2f}")
-        except Exception as e:
-            st.info(f"Error calculating airmass: {e}")
+        observatory_data, missing_airmass_fields = (
+            get_airmass_inputs_from_header(science_header)
+        )
+        airmass_result: float | str
+        if missing_airmass_fields:
+            missing_fields = ", ".join(missing_airmass_fields)
+            warning = (
+                "Airmass unavailable; missing required FITS header fields: "
+                f"{missing_fields}. Continuing with airmass marked N/A."
+            )
+            st.warning(warning)
+            write_to_log(log_buffer, warning, level="WARNING")
             air = 0.0
-            st.write(f"Using default airmass: {air:.2f}")
+            airmass_result = "N/A"
+        else:
+            try:
+                air = airmass(science_header, observatory=observatory_data)
+                if air > 0.0:
+                    airmass_result = air
+                    st.write(f"Airmass : {air:.2f}")
+                else:
+                    warning = (
+                        "Airmass could not be calculated from the FITS header. "
+                        "Continuing with airmass marked N/A."
+                    )
+                    st.warning(warning)
+                    write_to_log(log_buffer, warning, level="WARNING")
+                    air = 0.0
+                    airmass_result = "N/A"
+            except Exception as exc:
+                warning = (
+                    f"Airmass calculation failed ({exc}). "
+                    "Continuing with airmass marked N/A."
+                )
+                st.warning(warning)
+                write_to_log(log_buffer, warning, level="WARNING")
+                air = 0.0
+                airmass_result = "N/A"
 
         image_to_process = science_data
         header_to_process = copy_header_or_none(science_header)
@@ -1672,7 +1624,7 @@ if _run_analysis_now:
                                         # Add metadata
                                         final_table["zero_point"] = zero_point_value
                                         final_table["zero_point_std"] = zero_point_std
-                                        final_table["airmass"] = air
+                                        final_table["airmass"] = airmass_result
 
                                         # Clean the table
                                         final_table, log_messages = (
@@ -1712,7 +1664,7 @@ if _run_analysis_now:
                                         # Add metadata
                                         final_table["zero_point"] = zero_point_value
                                         final_table["zero_point_std"] = zero_point_std
-                                        final_table["airmass"] = air
+                                        final_table["airmass"] = airmass_result
 
                                         # Clean the table
                                         final_table, log_messages = (
@@ -2216,11 +2168,6 @@ if "log_buffer" in st.session_state and st.session_state["log_buffer"] is not No
         # Get parameters from session state
         filter_band = st.session_state.analysis_parameters["filter_band"]
         filter_max_mag = 21.0
-
-        write_to_log(
-            log_buffer,
-            f"Elevation: {st.session_state.observatory_data['elevation']} m",
-        )
 
         write_to_log(log_buffer, "Gaia Parameters", level="INFO")
         write_to_log(log_buffer, f"Gaia Band: {filter_band}")

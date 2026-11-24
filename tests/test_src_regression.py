@@ -33,6 +33,7 @@ from src.tools_pipeline import (  # noqa: E402
     resolve_photometric_color_columns,
 )
 from src.pipeline import airmass, make_border_mask  # noqa: E402
+from src.tools_app import get_airmass_inputs_from_header  # noqa: E402
 from src.astrometry import (  # noqa: E402
     estimate_pixel_scale_robust,
     get_adaptive_min_sources,
@@ -444,6 +445,43 @@ class TestAirmassFromHeader:
 
     def test_no_observatory_returns_zero(self):
         assert airmass(self._header()) == 0.0
+
+
+class TestAirmassInputsFromHeader:
+    def test_existing_header_airmass_needs_no_other_metadata(self):
+        inputs, missing = get_airmass_inputs_from_header({"AIRMASS": 1.4})
+
+        assert inputs == {}
+        assert missing == []
+
+    def test_derived_airmass_requires_target_time_and_site_coordinates(self):
+        header = fits.Header(
+            [
+                ("RA", 150.1),
+                ("DEC", 2.2),
+                ("DATE-OBS", "2026-01-15T22:30:00"),
+                ("SITELAT", 45.2),
+                ("SITELONG", 0.2),
+            ]
+        )
+        inputs, missing = get_airmass_inputs_from_header(header)
+
+        assert missing == []
+        assert inputs == {
+            "name": "FITS header",
+            "latitude": 45.2,
+            "longitude": 0.2,
+            "elevation": 0.0,
+        }
+
+    def test_missing_required_header_fields_are_reported(self):
+        inputs, missing = get_airmass_inputs_from_header({"RA": 150.1})
+
+        assert inputs == {}
+        assert "DEC/OBJDEC/CRVAL2" in missing
+        assert "DATE-OBS/DATE/DATE_OBS/DATEOBS/MJD-OBS" in missing
+        assert "SITELAT" in missing
+        assert "SITELONG" in missing
 
 
 # ---------------------------------------------------------------------------

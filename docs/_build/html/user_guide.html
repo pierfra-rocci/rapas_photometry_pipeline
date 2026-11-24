@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>User Guide &mdash; RAPAS Photometry Pipeline (RPP) v1.9.5 Documentation</title>
+  <title>User Guide &mdash; RAPAS Photometry Pipeline (RPP) v1.9.6 Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=9cc2bd95"></script>
+      <script src="_static/documentation_options.js?v=ab3a37ff"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -125,7 +125,7 @@ legacy backend.</p>
 <h2>Application Layout<a class="headerlink" href="#application-layout" title="Link to this heading"></a></h2>
 <p>The interface is divided into two main areas:</p>
 <ul class="simple">
-<li><p>Sidebar for account actions, observatory settings, analysis parameters, transient options, API key input, settings save, and archived-result browsing</p></li>
+<li><p>Sidebar for account actions, analysis parameters, transient options, API key input, settings save, and archived-result browsing</p></li>
 <li><p>Main panel for FITS upload, image preview, processing progress, tables, plots, logs, and downloads</p></li>
 </ul>
 </section>
@@ -158,7 +158,6 @@ origin (<code class="docutils literal notranslate"><span class="pre">legacy</spa
 <h2>Step 3: Configure Parameters<a class="headerlink" href="#step-3-configure-parameters" title="Link to this heading"></a></h2>
 <p>Use the sidebar to review or change:</p>
 <ul class="simple">
-<li><p>Observatory name, latitude, longitude, and elevation</p></li>
 <li><p>Estimated seeing, detection threshold, FWHM radius factor, and border mask size</p></li>
 <li><p><strong>Pixel scale override</strong> (arcsec/pixel), only needed when the FITS header and WCS give no pixel scale; <code class="docutils literal notranslate"><span class="pre">0</span></code> means automatic</p></li>
 <li><p>Calibration filter band (the maximum calibration magnitude is fixed at 21, the GAIA catalogue limit)</p></li>
@@ -166,8 +165,12 @@ origin (<code class="docutils literal notranslate"><span class="pre">legacy</spa
 <li><p><strong>Transient Candidates</strong> options to enable the transient finder and choose a reference filter</p></li>
 <li><p>Optional Astro-Colibri UID key</p></li>
 </ul>
-<p>If observatory metadata are present in the FITS header, the application may use
-them to prefill the observatory fields.</p>
+<p>The application uses FITS-header coordinates, observation time, and site
+latitude/longitude to calculate airmass when the header does not already
+contain a valid airmass value. If required metadata are missing, it warns the
+user, logs the missing fields, continues processing, and reports airmass as
+<code class="docutils literal notranslate"><span class="pre">N/A</span></code>. The existing numeric zero fallback remains in use for calibration
+calculations.</p>
 </section>
 <section id="step-4-start-analysis">
 <h2>Step 4: Start Analysis<a class="headerlink" href="#step-4-start-analysis" title="Link to this heading"></a></h2>
@@ -244,10 +247,12 @@ as:</p>
 <li><p>Astro-Colibri, when an API key is provided</p></li>
 <li><p>TNS (Transient Name Server), from its public catalogue (no API key needed)</p></li>
 </ul>
-<p>SIMBAD, VizieR and Gaia TAP requests are limited to 30 seconds per mirror. If a
-mirror times out or otherwise fails, the query tries its configured fallback
-mirror with the same timeout; if all mirrors fail, catalog enrichment
-continues without that service’s results.</p>
+<p>SIMBAD, Gaia TAP, and VizieR requests (including AAVSO VSX and the VizieR
+ASU-TSV fallback) share a 30-second timeout for each primary or fallback
+request. If a mirror times out or otherwise fails, the query tries its
+configured fallback with the same limit. This is a per-request limit, not a
+30-second budget for the complete mirror chain; if all mirrors fail, catalog
+enrichment continues without that service’s results.</p>
 <p>Astro-Colibri and TNS are the two transient services. Both use a progressive
 match radius - 5, 10, 15, 20 and 30 arcsec - that pairs a transient with its
 closest detected source, keep the closest object when several claim the same
@@ -350,7 +355,7 @@ them. The catalog may also include trace columns such as <code class="docutils l
 <section id="saved-settings-and-archives">
 <h2>Saved Settings and Archives<a class="headerlink" href="#saved-settings-and-archives" title="Link to this heading"></a></h2>
 <ul class="simple">
-<li><p>Use <strong>Save Settings</strong> to persist observatory and analysis parameters to your account; the FastAPI and legacy backends both store the values, which are restored automatically the next time you log in.</p></li>
+<li><p>Use <strong>Save Settings</strong> to persist analysis parameters and the optional Astro-Colibri key to your account; the FastAPI and legacy backends restore them automatically the next time you log in.</p></li>
 <li><p>Use the archived-results area to review previously stored FITS uploads and ZIP outputs tied to your account.</p></li>
 <li><p>In the archived-results sidebar browser, ZIP content is loaded only when you click to download a specific archive, reducing rerun overhead while keeping the full archive list visible.</p></li>
 </ul>

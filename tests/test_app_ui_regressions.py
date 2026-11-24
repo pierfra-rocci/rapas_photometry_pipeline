@@ -81,13 +81,23 @@ def _has_keyword(call: ast.Call, name: str, value: object) -> bool:
 
 
 def test_analysis_warnings_are_limited_to_zero_source_cases() -> None:
-    """Only a run that found nothing may still raise a warning in the analysis."""
-    analysis_warnings = [
-        _first_string_arg(call)
+    """Warnings cover unavailable airmass and zero-source transient runs."""
+    warning_calls = [
+        call
         for call in _streamlit_calls("warning")
         if call.lineno >= 900
     ]
-    assert analysis_warnings == ["No transient candidates found."]
+    warning_texts = [
+        _first_string_arg(call)
+        for call in warning_calls
+    ]
+    string_constants = {
+        node.value
+        for node in ast.walk(_app_tree())
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+    assert "No transient candidates found." in warning_texts
+    assert any("Airmass unavailable" in message for message in string_constants)
 
 
 def test_compact_pipeline_scale_is_less_than_one() -> None:
@@ -156,8 +166,14 @@ def test_app_shows_header_preview_before_analysis_button() -> None:
 def test_key_pipeline_status_messages_use_expected_levels() -> None:
     success_messages = _streamlit_messages("success")
     info_messages = _streamlit_messages("info")
+    string_constants = {
+        node.value
+        for node in ast.walk(_app_tree())
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
 
-    assert "Observatory information updated from FITS header" in success_messages
+    assert not any("Observatory" in message for message in success_messages)
+    assert any("Airmass unavailable" in message for message in string_constants)
     assert any(
         "File '" in message and "is ready." in message for message in success_messages
     )
@@ -172,6 +188,19 @@ def test_key_pipeline_status_messages_use_expected_levels() -> None:
         "Catalog data is available but cannot be displayed in interactive viewer."
         in info_messages
     )
+
+
+def test_observatory_settings_are_not_rendered_or_saved() -> None:
+    tree = _app_tree()
+    string_constants = {
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+
+    assert "🔭 Observatory" not in string_constants
+    assert "observatory_data" not in string_constants
+    assert "N/A" in string_constants
 
 
 def test_transient_finder_reports_aperture_fallback_in_one_short_line() -> None:
