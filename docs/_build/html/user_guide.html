@@ -160,7 +160,7 @@ origin (<code class="docutils literal notranslate"><span class="pre">legacy</spa
 <ul class="simple">
 <li><p>Estimated seeing, detection threshold, FWHM radius factor, and border mask size</p></li>
 <li><p><strong>Pixel scale override</strong> (arcsec/pixel), only needed when the FITS header and WCS give no pixel scale; <code class="docutils literal notranslate"><span class="pre">0</span></code> means automatic</p></li>
-<li><p>Calibration filter band (the maximum calibration magnitude is fixed at 21, the GAIA catalogue limit)</p></li>
+<li><p>Calibration filter band: <code class="docutils literal notranslate"><span class="pre">RAPAS_G</span></code>, <code class="docutils literal notranslate"><span class="pre">RAPAS_GBP</span></code> or <code class="docutils literal notranslate"><span class="pre">RAPAS_GRP</span></code> for the versioned RAPAS (Gaia) filters, or a synthetic UBVRI/ugriz band (the maximum calibration magnitude is fixed at 21, the GAIA catalogue limit). The <code class="docutils literal notranslate"><span class="pre">FILTER</span></code>/<code class="docutils literal notranslate"><span class="pre">FLT</span></code> header value is matched against these names</p></li>
 <li><p><strong>Astrometry check</strong> to force solving or refining the WCS workflow</p></li>
 <li><p><strong>Transient Candidates</strong> options to enable the transient finder and choose a reference filter</p></li>
 <li><p>Optional Astro-Colibri UID key</p></li>

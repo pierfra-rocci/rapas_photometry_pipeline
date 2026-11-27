@@ -61,7 +61,7 @@ Use the sidebar to review or change:
 
 - Estimated seeing, detection threshold, FWHM radius factor, and border mask size
 - **Pixel scale override** (arcsec/pixel), only needed when the FITS header and WCS give no pixel scale; ``0`` means automatic
-- Calibration filter band (the maximum calibration magnitude is fixed at 21, the GAIA catalogue limit)
+- Calibration filter band: ``RAPAS_G``, ``RAPAS_GBP`` or ``RAPAS_GRP`` for the versioned RAPAS (Gaia) filters, or a synthetic UBVRI/ugriz band (the maximum calibration magnitude is fixed at 21, the GAIA catalogue limit). The ``FILTER``/``FLT`` header value is matched against these names
 - **Astrometry check** to force solving or refining the WCS workflow
 - **Transient Candidates** options to enable the transient finder and choose a reference filter
 - Optional Astro-Colibri UID key

@@ -797,11 +797,16 @@ if _run_analysis_now:
         filter_raw = "Unknown"
 
     # Map the raw filter name to standardized GAIA band using GAIA_BANDS.
-    # Normalize by lowercasing and removing spaces so "RAPAS G" matches "RapasG".
+    # Drop separators and case so the versioned band labels match the header
+    # whether it is written "RAPAS_G", "RAPAS G", "RAPAS-G" or "RAPASG".
+    def _normalize_filter_name(name):
+        compact = str(name).strip().lower()
+        return compact.replace(" ", "").replace("_", "").replace("-", "")
+
     gaia_band_dict = {
-        label.lower().replace(" ", ""): field for label, field in GAIA_BANDS
+        _normalize_filter_name(label): field for label, field in GAIA_BANDS
     }
-    filter_mapped = gaia_band_dict.get(filter_raw.lower().replace(" ", ""), filter_raw)
+    filter_mapped = gaia_band_dict.get(_normalize_filter_name(filter_raw), filter_raw)
 
     # Get the current selected filter band from analysis parameters
     selected_filter = st.session_state.analysis_parameters["filter_band"]

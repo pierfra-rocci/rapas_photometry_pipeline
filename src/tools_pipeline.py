@@ -79,10 +79,13 @@ BACKGROUND_EXCLUDE_PERCENTILE = 10.0
 # over-smooths the model and leaves large-scale residuals.
 BACKGROUND_SMALL_MESH_THRESHOLD = 12
 
+# Versioned RAPAS (Gaia) calibration bands. A V2 of these filters is expected
+# next year, so the band names carry their version: "RAPAS_G", "RAPAS_GBP" and
+# "RAPAS_GRP". Acquisition software writes the same names in FILTER/FLT.
 GAIA_BANDS = [
-    ("Rapas G", "phot_g_mean_mag"),
-    ("Rapas Bp", "phot_bp_mean_mag"),
-    ("Rapas Rp", "phot_rp_mean_mag"),
+    ("RAPAS_G", "phot_g_mean_mag"),
+    ("RAPAS_GBP", "phot_bp_mean_mag"),
+    ("RAPAS_GRP", "phot_rp_mean_mag"),
     ("U", "u_jkc_mag"),
     ("V", "v_jkc_mag"),
     ("B", "b_jkc_mag"),
@@ -94,6 +97,16 @@ GAIA_BANDS = [
     ("i", "imag"),
     ("z", "zmag"),
 ]
+
+
+# Exported photometry column prefixes of the RAPAS bands. Kept explicit so the
+# versioned band labels above do not rename the catalog columns (rapasg_psf_mag,
+# rapasbp_psf_mag, rapasrp_psf_mag) and break existing catalogues or scripts.
+GAIA_BAND_PREFIXES = {
+    "phot_g_mean_mag": "rapasg",
+    "phot_bp_mean_mag": "rapasbp",
+    "phot_rp_mean_mag": "rapasrp",
+}
 
 
 def get_filter_prefix(filter_band: str | None) -> str | None:
@@ -113,9 +126,13 @@ def get_filter_prefix(filter_band: str | None) -> str | None:
     if not filter_band:
         return None
 
+    legacy_prefix = GAIA_BAND_PREFIXES.get(filter_band)
+    if legacy_prefix:
+        return legacy_prefix
+
     for label, field in GAIA_BANDS:
         if field == filter_band:
-            return label.strip().lower().replace(" ", "")
+            return label.strip().lower().replace(" ", "").replace("_", "")
 
     return None
 
@@ -460,6 +477,13 @@ FILTER_DICT = {
     "gaia_g": "phot_g_mean_mag",
     "gaia_bp": "phot_bp_mean_mag",
     "gaia_rp": "phot_rp_mean_mag",
+    # Versioned RAPAS band names as written by acquisition software
+    "rapas_g": "phot_g_mean_mag",
+    "rapas_gbp": "phot_bp_mean_mag",
+    "rapas_grp": "phot_rp_mean_mag",
+    "rapasg": "phot_g_mean_mag",
+    "rapasgbp": "phot_bp_mean_mag",
+    "rapasgrp": "phot_rp_mean_mag",
     "bp": "phot_bp_mean_mag",
     "rp": "phot_rp_mean_mag",
     "g_gaia": "phot_g_mean_mag",

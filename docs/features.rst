@@ -293,7 +293,8 @@ Photometric Calibration
      final catalog lacks usable color information for a source
 
 **Magnitude Systems**:
-   - GAIA G, BP, RP photometric bands
+   - Versioned RAPAS bands (``RAPAS_G``, ``RAPAS_GBP``, ``RAPAS_GRP``) for Gaia
+     G, BP and RP photometry
    - Johnson-Cousins UBVRI synthetic photometry
    - SDSS ugriz synthetic photometry
    - Instrumental to standard magnitude conversion

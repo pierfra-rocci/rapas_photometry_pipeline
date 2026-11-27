@@ -1744,6 +1744,14 @@ def plot_cutout(
     return fig
 
 
+# Versioned RAPAS band names as written by acquisition software in the FITS
+# FILTER/FLT keyword, mapped to the canonical filter used by the finder.
+_RAW_FILTER_ALIASES = {
+    "rapasg": "G",
+    "rapasgbp": "BP",
+    "rapasgrp": "RP",
+}
+
 CALIBRATION_BAND_TO_FILTER = {
     "phot_g_mean_mag": "G",
     "phot_bp_mean_mag": "BP",
@@ -1789,6 +1797,9 @@ def normalize_calibration_filter(filter_mag, default="r"):
     if not filter_mag:
         return default
     name = str(filter_mag).strip()
+    compact = name.lower().replace(" ", "").replace("_", "").replace("-", "")
+    if compact in _RAW_FILTER_ALIASES:
+        return _RAW_FILTER_ALIASES[compact]
     if name in CALIBRATION_BAND_TO_FILTER:
         return CALIBRATION_BAND_TO_FILTER[name]
     stripped = name[:-3] if name.endswith("mag") else name

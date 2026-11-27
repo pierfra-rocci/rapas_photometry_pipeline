@@ -261,7 +261,7 @@ calibration calculations.
 - **FWHM Radius Factor**: Multiplier applied to the measured FWHM for the user-defined aperture radius (0.5 – 2.0; values 1.1 and 1.3 are reserved for the two fixed apertures)
 - **Pixel scale override (arcsec/pixel)**: Only used when the pixel scale cannot be read from the FITS header (`PIXSCALE`, CD matrix, pixel size + focal length...). `0` means automatic. If the scale is unknown and this field is `0`, the run stops and asks for a value; no default scale is assumed
 - **Border Mask**: Pixel border exclusion size
-- **Filter Band**: GAIA or synthetic magnitude band for calibration (maximum calibration magnitude is fixed at 21, the GAIA limit)
+- **Filter Band**: Calibration band. The RAPAS (Gaia) filters are versioned: `RAPAS_G`, `RAPAS_GBP` and `RAPAS_GRP` (a V2 is expected next year); synthetic UBVRI/ugriz bands are also available (maximum calibration magnitude is fixed at 21, the GAIA limit). The FITS `FILTER`/`FLT` value is matched against the same names, so `RAPAS_G`, `RAPAS G` and `RAPASG` select the same band
 - **Astrometry Check**: Toggle to force a plate solve/WCS refinement
 
 If **Astrometry Check** is enabled, the app forces a fresh plate-solving attempt

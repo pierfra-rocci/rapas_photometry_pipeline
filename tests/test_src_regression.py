@@ -323,6 +323,20 @@ class TestExtractFilterFromHeader:
         assert raw == "mystery"
         assert mapped == "phot_g_mean_mag"
 
+    def test_versioned_rapas_bands(self):
+        for raw, mapped in (
+            ("RAPAS_G", "phot_g_mean_mag"),
+            ("RAPAS_GBP", "phot_bp_mean_mag"),
+            ("RAPAS_GRP", "phot_rp_mean_mag"),
+            ("RAPAS G", "phot_g_mean_mag"),
+            ("RAPAS-GBP", "phot_bp_mean_mag"),
+            ("rapasgrp", "phot_rp_mean_mag"),
+        ):
+            assert extract_filter_from_header(fits.Header([("FLT", raw)])) == (
+                raw,
+                mapped,
+            )
+
     def test_filter_keyword_priority(self):
         # FILTER wins over FILTERS which wins over FLT
         header = fits.Header([("FILTER", "g"), ("FLT", "r")])
