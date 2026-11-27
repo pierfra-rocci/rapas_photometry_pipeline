@@ -1218,7 +1218,7 @@ def solve_with_astrometrynet(
     if STDPIPE_IMPORT_ERROR is not None:
         error_message = (
             "Astrometry dependencies are not available: "
-            f"{STDPIPE_IMPORT_ERROR}. Install setuptools==71.0.0 "
+            f"{STDPIPE_IMPORT_ERROR}. Install setuptools==81.0.0 "
             "so pkg_resources remains available for sip_tpv/stdpipe."
         )
         log_messages.append(f"ERROR: {error_message}")

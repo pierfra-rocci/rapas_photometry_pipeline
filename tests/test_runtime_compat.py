@@ -24,8 +24,8 @@ def test_pyproject_pins_compatible_setuptools() -> None:
     build_requires = pyproject["build-system"]["requires"]
     dependencies = pyproject["project"]["dependencies"]
 
-    assert any(req == "setuptools==71.0.0" for req in build_requires)
-    assert any(dep == "setuptools==71.0.0" for dep in dependencies)
+    assert any(req == "setuptools==81.0.0" for req in build_requires)
+    assert any(dep == "setuptools==81.0.0" for dep in dependencies)
 
 
 def test_solve_with_astrometrynet_fails_gracefully_without_stdpipe_runtime(
@@ -51,5 +51,5 @@ def test_solve_with_astrometrynet_fails_gracefully_without_stdpipe_runtime(
     assert wcs_obj is None
     assert header is None
     assert error is not None
-    assert "setuptools==71.0.0" in error
+    assert "setuptools==81.0.0" in error
     assert any("ERROR:" in message for message in log_messages)
